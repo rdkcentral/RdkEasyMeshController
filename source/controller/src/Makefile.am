@@ -39,9 +39,16 @@ em_ctl_SOURCES = $(srcdir)/map_ctrl_cli.c \
 em_ctl_LDADD = ${top_builddir}/source/libplatform/src/libutils.a \
                ${top_builddir}/source/ieee1905/src/al/libal.a \
                ${top_builddir}/source/ieee1905/src/factory/libfactory.a \
-               ${top_builddir}/source/ieee1905/src/common/libcommon.a \               
-               ${top_builddir}/source/ssp/libssp.a
-
+               ${top_builddir}/source/ieee1905/src/common/libcommon.a \
+               ${top_builddir}/source/ssp/libssp.a \
+               -ldbus-1 \
+               -lrdkloggers \
+               -ljson-c \
+               -lz \
+               -lcrypto \
+               -lpthread \
+               -lccsp_common \
+               -lubox
 
 em_ctl_CPPFLAGS += $(SYSTEMD_CFLAGS) 
 em_ctl_CPPFLAGS += "-DFEATURE_SUPPORT_RDKLOG"
