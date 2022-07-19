@@ -39,6 +39,7 @@
 #include "map_timer_handler.h"
 #include "map_retry_handler.h"
 #include "map_airdata.h"
+#include "ssp_internal.h"
 
 /*#######################################################################
 #                       DEFINES                                         #
@@ -62,7 +63,7 @@ static bool g_signal_stop = false;
 /*#######################################################################
 #                       LOCAL FUNCTIONS                                 #
 ########################################################################*/
-static void signal_stop_handler(UNUSED int signum)
+static void signal_stop_handler(int signum)
 {
     if (signum != SIGINT) {
         ssp_stack_backtrace();
@@ -115,11 +116,6 @@ static void interface_cb(const char *ifname, bool added)
         map_restart_topology_discovery();
     }
 }
-
-/* TODO: create a proper header file */
-int ssp_fini(void);
-int ssp_main(int argc, char *argv[]);
-void ssp_stack_backtrace(void);
 
 /*#######################################################################
 #                       MAIN                                            #
