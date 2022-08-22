@@ -404,17 +404,50 @@ static int profile_load(map_profile_cfg_t *profile, uint8_t index)
     if (!enable) {
         return -1;
     }
-    CosaEmctlProfileGetBackhaul(index, &bh);
-    CosaEmctlProfileGetExtender(index, &profile->extender);
-    CosaEmctlProfileGetFrequencyBands(index, &freq_bands);
-    CosaEmctlProfileGetFronthaul(index, &fh);
-    CosaEmctlProfileGetGateway(index, &profile->gateway);
-    CosaEmctlProfileGetKeypassphrase(index, &key_passphrase);
-    CosaEmctlProfileGetLabel(index, &label);
-    CosaEmctlProfileGetSecurityMode(index, &security_mode);
-    CosaEmctlProfileGetSSID(index, &ssid);
-    CosaEmctlProfileGetType(index, &type);
-    CosaEmctlProfileGetVLANID(index, &profile->vlan_id);
+    if (CosaEmctlProfileGetBackhaul(index, &bh) != 0) {
+        log_lib_e("CosaEmctlProfileGetBackhaul failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetExtender(index, &profile->extender) != 0) {
+        log_lib_e("CosaEmctlProfileGetExtender failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetFrequencyBands(index, &freq_bands) != 0) {
+        log_lib_e("CosaEmctlProfileGetFrequencyBands failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetFronthaul(index, &fh) != 0) {
+        log_lib_e("CosaEmctlProfileGetFronthaul failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetGateway(index, &profile->gateway) != 0) {
+        log_lib_e("CosaEmctlProfileGetGateway failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetKeypassphrase(index, &key_passphrase) != 0) {
+        log_lib_e("CosaEmctlProfileGetKeypassphrase failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetLabel(index, &label) != 0) {
+        log_lib_e("CosaEmctlProfileGetLabel failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetSecurityMode(index, &security_mode) != 0) {
+        log_lib_e("CosaEmctlProfileGetSecurityMode failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetSSID(index, &ssid) != 0) {
+        log_lib_e("CosaEmctlProfileGetSSID failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetType(index, &type) != 0) {
+        log_lib_e("CosaEmctlProfileGetType failed");
+        return -1;
+    }
+    if (CosaEmctlProfileGetVLANID(index, &profile->vlan_id) != 0) {
+        log_lib_e("CosaEmctlProfileGetVLANID failed");
+        return -1;
+    }
 
     profile->profile_idx = index;
     profile->type = profile_type_from_string(type);
@@ -464,7 +497,7 @@ static int cfg_load(map_cfg_t *cfg, bool init)
         DataGet(CtlDeviceInfoSerialNumber, &cfg->serial_number);        /* NOT mandatory */
         DataGet(CtlStoragePath, &cfg->storage_path);                    /* NOT mandatory ? */
 #endif
-        cfg->interfaces = strdup("^lo$|^eth.*|^wl.*");
+        cfg->interfaces = strdup("^lo$|^eth.*|^wl.*|^sw_.*|^n[rs]gmii.*");
         vlan_id = -1;
         pcp = 0;
         cfg->primary_vlan_pattern = strdup("${ifname}.${pvid}");

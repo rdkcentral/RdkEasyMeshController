@@ -1,0 +1,9 @@
+[Unit]
+Description=Waits to trigger RdkEasyMeshController
+
+[Path]
+PathExists=/tmp/wifi_initialized
+Unit=RdkEasyMeshController.service
+
+[Install]
+WantedBy=multi-user.target
