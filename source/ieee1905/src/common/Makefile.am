@@ -4,14 +4,21 @@
 # Licensed under the BSD+Patent License.
 ##########################################################################
 
-AM_CFLAGS = -D_ANSC_USER
+AM_CFLAGS = -D_ANSC_LINUX
+AM_CFLAGS += -D_ANSC_USER
 
-AM_CPPFLAGS = -D_GNU_SOURCE -DMULTIAP -D_FLAVOUR_AIRTIES_ -DSEND_EMPTY_TLVS -DFIX_BROKEN_TLVS -DSPEED_UP_DISCOVERY
+AM_CFLAGS += -D_GNU_SOURCE
+AM_CFLAGS += -Wall -Wextra -Werror
+
+AM_CFLAGS += -DMULTIAP -D_FLAVOUR_AIRTIES_ -DSEND_EMPTY_TLVS -DFIX_BROKEN_TLVS -DSPEED_UP_DISCOVERY
 
 lib_LIBRARIES = libcommon.a
 
-libcommon_a_CPPFLAGS = -I$(srcdir)/interfaces -I$(top_srcdir)/source/libplatform/include  -I$(top_srcdir)/source/ssp
+libcommon_a_CPPFLAGS = -I$(srcdir)/interfaces \
+                       -I$(top_srcdir)/source/libplatform/include \
+                       -I$(top_srcdir)/source/ssp
 
-libcommon_a_SOURCES = $(srcdir)/src_independent/utils.c $(srcdir)/src_linux/platform.c
+libcommon_a_SOURCES = $(srcdir)/src_independent/utils.c \
+                      $(srcdir)/src_linux/platform.c
 
 libcommon_a_LIBADD = ${top_builddir}/source/libplatform/src/libutils.a

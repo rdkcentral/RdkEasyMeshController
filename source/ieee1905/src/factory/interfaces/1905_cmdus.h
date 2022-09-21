@@ -152,6 +152,7 @@
 /* MAP R3 */
 #define CMDU_TYPE_MAP_DPP_CCE_INDICATION                        0x801d
 #define CMDU_TYPE_MAP_PROXIED_ENCAP_DPP                         0x8029
+#define CMDU_TYPE_MAP_DIRECT_ENCAP_DPP                          0x802a
 #define CMDU_TYPE_MAP_CHIRP_NOTIFICATION                        0x802f
 
 /*#######################################################################

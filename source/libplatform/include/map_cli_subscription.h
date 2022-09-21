@@ -64,7 +64,7 @@ int subscriptions_del(subscriptions_t *subscriptions,
  *
  * @param[in/out] subscriptions
  * @param[in]     event
- * @param[in]     event
+ * @param[in]     function
  * @param[in]     context
  * @return 0 if successful, -1 if not.
  */

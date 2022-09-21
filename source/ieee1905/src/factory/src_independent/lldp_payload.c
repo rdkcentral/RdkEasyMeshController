@@ -222,7 +222,7 @@ uint8_t *forge_lldp_PAYLOAD_from_structure(i1905_lldp_payload_t *memory_structur
             stream = forge_lldp_TLV_from_structure((uint8_t *)memory_structure->list_of_TLVs[i], &stream_len);
             if (NULL == stream) {
                 /* Could not forge the packet. Error? */
-                log_i1905_w("forge_lldp_TLV_from_structure(\"chassis ID\") failed!");
+                log_i1905_e("forge_lldp_TLV_from_structure(\"chassis ID\") failed!");
                 free(buffer);
                 return NULL;
             }
@@ -235,7 +235,7 @@ uint8_t *forge_lldp_PAYLOAD_from_structure(i1905_lldp_payload_t *memory_structur
     stream = forge_lldp_TLV_from_structure((uint8_t *)&end_of_lldppdu_tlv, &stream_len);
     if (NULL == stream) {
         /* Could not forge the packet. Error? */
-        log_i1905_w("forge_lldp_TLV_from_structure() failed!\n");
+        log_i1905_e("forge_lldp_TLV_from_structure() failed!\n");
         free(buffer);
         return NULL;
     }

@@ -40,7 +40,8 @@ typedef void (*map_cfg_master_state_cb_t)(bool is_master);
 typedef void (*map_cfg_update_cb_t)(void);
 typedef void (*map_cfg_profile_update_cb_t)(void);
 typedef void (*map_cfg_backhaul_profile_update_cb_t)(int idx);
-typedef void (*map_cfg_allowed_channel_list_update_cb_t)(bool is_5g);
+typedef void (*map_cfg_allowed_channel_list_update_cb_t)(uint8_t freq_band);
+typedef void (*map_cfg_allowed_bandwidth_update_cb_t)(uint8_t freq_band);
 typedef void (*map_cfg_bandlock_5g_cb_t)(bandlock_5g_t type);
 typedef void (*map_cfg_radio_channel_cb_t)(int ale_idx, int radio_idx, int channel);
 typedef void (*map_cfg_radio_bandwidth_cb_t)(int ale_idx, int radio_idx, int bw);
@@ -52,6 +53,7 @@ typedef struct {
     map_cfg_profile_update_cb_t              profile_update_cb;
     map_cfg_backhaul_profile_update_cb_t     backhaul_profile_update_cb;
     map_cfg_allowed_channel_list_update_cb_t allowed_channel_list_update_cb;
+    map_cfg_allowed_bandwidth_update_cb_t    allowed_bandwidth_update_cb;
     map_cfg_bandlock_5g_cb_t                 bandlock_5g_update_cb;
     map_cfg_radio_channel_cb_t               radio_channel_cb;
     map_cfg_radio_bandwidth_cb_t             radio_bandwidth_cb;
@@ -103,6 +105,7 @@ typedef struct map_controller_cfg_s {
     unsigned int        topology_discovery_interval;
     unsigned int        topology_query_interval;
     unsigned int        link_metrics_query_interval;
+    unsigned int        ap_capability_query_interval;
 
     uint8_t             configure_backhaul_station;
     uint8_t             channel_selection_enabled;
@@ -111,10 +114,16 @@ typedef struct map_controller_cfg_s {
     unsigned int        config_renew_max_retry;
     unsigned int        topology_stable_check_interval;
 
-    wifi_channel_set    allowed_channel_set_2g;
-    wifi_channel_set    allowed_channel_set_5g;
-    wifi_channel_set    default_pref_channel_set_2g;
-    wifi_channel_set    default_pref_channel_set_5g;
+    map_channel_set_t   allowed_channel_set_2g;
+    map_channel_set_t   allowed_channel_set_5g;
+    map_channel_set_t   allowed_channel_set_6g;
+    map_channel_set_t   default_pref_channel_set_2g;
+    map_channel_set_t   default_pref_channel_set_5g;
+    map_channel_set_t   default_pref_channel_set_6g;
+    unsigned int        allowed_bandwidth_2g;
+    unsigned int        allowed_bandwidth_5g;
+    unsigned int        allowed_bandwidth_6g;
+    bool                allowed_channel_6g_psc;
 
     bandlock_5g_t       bandlock_5g;
 } map_controller_cfg_t;
@@ -171,14 +180,12 @@ int map_cfg_is_enabled(bool *enabled);
 
 int map_cfg_set_master_state(bool master);
 
-int map_profile_load(bool *changed);
+int map_profile_load(bool *changed, bool dump_profiles);
 
 int map_backhaul_profile_load(uint8_t backhaul_index);
 
 void map_profile_clone(map_profile_cfg_t *dst, map_profile_cfg_t *src);
 
 void map_profile_dump();
-
-int map_ssid_profile_get(const char **data);
 
 #endif /* MAP_CONFIG_H */

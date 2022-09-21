@@ -17,34 +17,12 @@
 #ifndef MAP_INFO_H_
 #define MAP_INFO_H_
 
+#include "map_channel_set.h"
 #include "map_data_model.h"
-
-
-typedef struct _wifi_channel_set {
-    uint8_t ch[MAX_CHANNEL_SET];
-    uint8_t length;
-} wifi_channel_set;
-
-#define MAP_CH_FREQ_2G 0x01
-#define MAP_CH_FREQ_5G 0x02
 
 #define MAP_EXT_CHANNEL_NONE  0x00
 #define MAP_EXT_CHANNEL_ABOVE 0x01
 #define MAP_EXT_CHANNEL_BELOW 0x02
-
-typedef struct _wifi_op_class_table {
-    uint8_t op_class;
-    wifi_channel_set set;
-    uint8_t ch_freq;
-    uint8_t bw;
-    uint8_t ext_channel;
-} wifi_op_class_table;
-
-typedef struct _wifi_op_class_array {
-    uint8_t array[MAX_OP_CLASS];
-    uint8_t length;
-} wifi_op_class_array;
-
 
 #define MAP_RADIO_IB_UNASSOC_MEASUREMENT_SUPPORTED  0x01
 #define MAP_RADIO_OOB_UNASSOC_MEASUREMENT_SUPPORTED 0x02
@@ -67,6 +45,11 @@ typedef enum _map_radio_states {
     MAP_RADIO_CHANNEL_PREFERENCE_QUERY_SENT   = 0x1000,
 } map_radio_states_t;
 
+typedef enum _map_ale_states {
+    MAP_ALE_INITIALIZED                       = 0x0001,
+    MAP_ALE_AP_CAPABILITY_REPORT_RECEIVED     = 0x0002,
+    MAP_ALE_BHSTA_CAPABILITY_REPORT_RECEIVED  = 0x0004,
+} map_ale_states_t;
 
 static inline void set_state_bit(uint16_t *state, uint16_t bit)
 {
@@ -126,7 +109,7 @@ static inline int is_state_bit_set(uint16_t state, uint16_t bit)
 #define set_radio_state_freq_unsupported(radio_state) (reset_state_bit(radio_state,MAP_RADIO_FREQUENCY_SUPPORTED))
 #define set_radio_state_unconfigured(radio_state) {\
                                                     reset_state_bit(radio_state,MAP_RADIO_CONFIGURED);\
-                                                    reset_state_bit(radio_state,MAP_RADIO_M1_SENT);\
+                                                    reset_state_bit(radio_state,MAP_RADIO_M1_RECEIVED);\
                                                   }
 
 #define set_ib_unassoc_measurement_supported(radio_state) (set_state_bit(radio_state,MAP_RADIO_IB_UNASSOC_MEASUREMENT_SUPPORTED))
@@ -169,57 +152,86 @@ static inline int is_state_bit_set(uint16_t state, uint16_t bit)
 #define is_radio_channel_preference_query_sent(radio_state) \
                                  (is_state_bit_set(radio_state, MAP_RADIO_CHANNEL_PREFERENCE_QUERY_SENT))
 
-/* Channel set */
-bool map_is_channel_set(wifi_channel_set *ch_set, uint8_t ch);
+/* ALE state macros */
+#define is_ale_ap_cap_report_received(ale_state) \
+                                 (is_state_bit_set(ale_state, MAP_ALE_AP_CAPABILITY_REPORT_RECEIVED))
+#define set_ale_state_ap_cap_report_received(ale_state) \
+                                 (set_state_bit(ale_state, MAP_ALE_AP_CAPABILITY_REPORT_RECEIVED))
+#define set_ale_state_ap_cap_report_not_received(ale_state) \
+                                 (reset_state_bit(ale_state, MAP_ALE_AP_CAPABILITY_REPORT_RECEIVED))
 
-void map_set_channel(wifi_channel_set *ch_set, uint8_t ch);
-
-void map_unset_channel(wifi_channel_set *ch_set, uint8_t ch);
-
+#define is_ale_bhsta_cap_report_received(ale_state) \
+                                 (is_state_bit_set(ale_state, MAP_ALE_BHSTA_CAPABILITY_REPORT_RECEIVED))
+#define set_ale_state_bhsta_cap_report_received(ale_state) \
+                                 (set_state_bit(ale_state, MAP_ALE_BHSTA_CAPABILITY_REPORT_RECEIVED))
+#define set_ale_state_bhsta_cap_report_not_received(ale_state) \
+                                 (reset_state_bit(ale_state, MAP_ALE_BHSTA_CAPABILITY_REPORT_RECEIVED))
 
 /* Get the frequency type from operating class. */
-int8_t get_frequency_type(uint8_t op_class, uint8_t num_channels,
-                          uint8_t *channels, uint8_t *freq_type, uint16_t *band_type_5G);
+int8_t map_get_frequency_type(uint8_t op_class, map_channel_set_t *channels,
+                              uint8_t *freq_type, uint16_t *band_type_5G);
 
-void get_operating_class_set(wifi_channel_set * set, uint8_t bw, wifi_op_class_array * op_class);
-
-/* Get first found op class for control channel and bw */
-uint8_t get_operating_class(uint8_t channel, uint8_t bw);
+/* Get first found op class for control channel, bw and channel_frequency */
+uint8_t map_get_op_class(uint8_t channel, uint8_t bw, uint8_t ch_freq);
 
 /* Get first found 20MHz op class for control channel */
-uint8_t get_operating_class_20MHz(uint8_t channel);
+uint8_t map_get_op_class_20MHz(uint8_t channel, uint8_t ch_freq);
 
+/* Check if operating class is 5G low band */
 bool map_is_5g_low_op_class(uint8_t op_class);
 
+/* Check if operating class is 5G high band */
 bool map_is_5g_high_op_class(uint8_t op_class);
 
-void get_non_operating_ch(uint8_t op_class, wifi_channel_set * non_op_ch, wifi_channel_set * set );
+/* Check if channel is in operating class */
+bool map_is_channel_in_op_class(uint8_t op_class, uint8_t channel);
 
-void get_operable_channels(uint8_t op_class, wifi_channel_set * oper_ch, wifi_channel_set * set );
+/* Get center channel for 80 and 160MHz (and 40 in 6G) operating classes */
+uint8_t map_get_center_channel(uint8_t op_class, uint8_t channel);
 
-int is_matching_channel_in_opclass(uint8_t op_class, uint8_t channel);
-
-uint8_t get_mid_freq(uint8_t channel, uint8_t opclass, uint8_t bw);
-
-int map_get_ext_channel_type(uint8_t opclass);
+/* Get extension channel type */
+int map_get_ext_channel_type(uint8_t op_class);
 
 /* Get 20MHz subband range (only works for 80 and 160MHz) */
-int map_get_subband_channel_range(uint8_t channel, uint8_t opclass, uint8_t *from, uint8_t *to);
+int map_get_subband_channel_range(uint8_t channel, uint8_t op_class, uint8_t *from, uint8_t *to);
 
-int get_bw_from_operating_class(uint8_t op_class, uint8_t *bw);
+/* Get bandwidth from operating class */
+int map_get_bw_from_op_class(uint8_t op_class, uint8_t *bw);
 
-int get_channel_set_for_rclass(uint8_t rclass, wifi_channel_set *ch_set);
+/* Get band from operating class */
+int map_get_band_from_op_class(uint8_t op_class, uint8_t *band);
 
+/* Get is_center_channel from operating class (80/160 MHz and 40MHz in 6G band) */
+int map_get_is_center_channel_from_op_class(uint8_t op_class, bool *is_center_channel);
+
+/* Get channel set from operating class */
+int map_get_channel_set_from_op_class(uint8_t op_class, map_channel_set_t *ch_set);
 
 /* Control channel utility functions */
-bool map_is_ctl_channel(uint8_t channel);
+bool map_is_ctl_channel(uint8_t channel, uint8_t ch_freq);
 
+/* Check if channel is a 2G control channel */
 bool map_is_2G_ctl_channel(uint8_t channel);
 
+/* Check if channel is a 5G control channel */
 bool map_is_5G_ctl_channel(uint8_t channel);
 
-void map_get_2G_ctl_channel_set(wifi_channel_set *ch_set);
+/* Check if channel is a 6G control channel */
+bool map_is_6G_ctl_channel(uint8_t channel);
 
-void map_get_5G_ctl_channel_set(wifi_channel_set *ch_set);
+/* Get channel set containing all 2G control channels */
+void map_get_2G_ctl_channel_set(map_channel_set_t *ch_set);
+
+/* Get channel set containing all 5G control channels */
+void map_get_5G_ctl_channel_set(map_channel_set_t *ch_set);
+
+/* Get channel set containing all 6G control channels */
+void map_get_6G_ctl_channel_set(map_channel_set_t *ch_set);
+
+/* Get channel set containing all 6G PSC channels */
+void map_get_6G_psc_channel_set(map_channel_set_t *ch_set);
+
+/* Get frequency band as string */
+char *map_get_freq_band_str(uint8_t freq_band);
 
 #endif /* MAP_INFO_H_ */

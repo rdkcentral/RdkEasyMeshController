@@ -24,8 +24,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
-
-#include <libubox/uloop.h>
+#include <limits.h>
 
 #define LOG_TAG "main"
 
@@ -35,10 +34,17 @@
 #include "map_ctrl_config.h"
 #include "map_ctrl_cli.h"
 #include "map_ctrl_topology_tree.h"
+#include "map_ctrl_chan_sel.h"
 
 #include "map_timer_handler.h"
 #include "map_retry_handler.h"
-#include "map_airdata.h"
+#include "map_staging_list.h"
+#include "map_blocklist.h"
+
+/* TODO: create a proper header file */
+int ssp_fini(void);
+int ssp_main(int argc, char *argv[]);
+void ssp_stack_backtrace(void);
 
 /*#######################################################################
 #                       DEFINES                                         #
@@ -48,7 +54,7 @@
 #define MAP_GIT_BRANCH  "HEAD"
 #endif
 #ifndef MAP_GIT_HASH
-#define MAP_GIT_HASH    "b736affc7b65c1a8d5671a76f5896a356558538a"
+#define MAP_GIT_HASH    "300abe0f3933f28fe89f90db41269cd80774a7d0"
 #endif
 #define BUILD_VERSION   MAP_GIT_BRANCH"-"MAP_GIT_HASH
 
@@ -68,7 +74,7 @@ static void signal_stop_handler(UNUSED int signum)
         ssp_stack_backtrace();
     }
     g_signal_stop = true;
-    uloop_end();
+    acu_evloop_end();
 }
 
 static void signal_ignore_handler(UNUSED int signum)
@@ -116,11 +122,6 @@ static void interface_cb(const char *ifname, bool added)
     }
 }
 
-/* TODO: create a proper header file */
-int ssp_fini(void);
-int ssp_main(int argc, char *argv[]);
-void ssp_stack_backtrace(void);
-
 /*#######################################################################
 #                       MAIN                                            #
 ########################################################################*/
@@ -140,6 +141,7 @@ int main(int argc, char *argv[])
         sig_stop_action.sa_handler = signal_stop_handler;
         sigemptyset(&sig_stop_action.sa_mask);
         sig_stop_action.sa_flags = 0;
+
         sigaction(SIGTERM, &sig_stop_action, NULL);
         sigaction(SIGINT, &sig_stop_action, NULL);
         sigaction(SIGSEGV, &sig_stop_action, NULL);
@@ -159,13 +161,7 @@ int main(int argc, char *argv[])
         sigaction(SIGUSR1, &sig_no_reaction, NULL);
         sigaction(SIGUSR2, &sig_no_reaction, NULL);
 
-        uloop_init();
-
-        /* Init airdata */
-        if (map_airdata_init("libairdata.so")) {
-            log_ctrl_e("map_airdata_init failed");
-            break;
-        }
+        acu_evloop_init();
 
         /* Init config */
         if (map_cfg_init()) {
@@ -185,7 +181,7 @@ dormant_loop:
         }
         if (!enabled) {
             /* Uloop run exits when config enabled callback is called */
-            uloop_run();
+            acu_evloop_run();
             if (g_signal_stop) {
                 break; /* exit gracefully */
             }
@@ -227,6 +223,12 @@ dormant_loop:
             break;
         }
 
+        /* CLI */
+        if (map_cli_init()) {
+            log_ctrl_e("map_cli_init failed");
+            break;
+        }
+
         map_cfg_set_running_cbs();
 
         /* Load profiles.
@@ -234,7 +236,7 @@ dormant_loop:
                  in this case profiles are configured by CAPI command
         */
         if (!g_wfa_cert) {
-            if (map_profile_load(NULL)) {
+            if (map_profile_load(NULL, true)) {
                 log_ctrl_e("map_profile_load failed");
                 break;
             }
@@ -258,22 +260,32 @@ dormant_loop:
             break;
         }
 
-        /* CLI */
-        if (map_cli_init()) {
-            log_ctrl_e("map_cli_init failed");
+        /* Channel selection */
+        if (map_ctrl_chan_sel_init()) {
+            log_ctrl_e("map_ctrl_chan_sel_init failed");
             break;
         }
 
+        map_stglist_init();
+
+        map_blocklist_init();
+
         log_ctrl_e("map_controller started");
 
-        uloop_run();
+        acu_evloop_run();
     } while (0);
 
-    map_cli_fini();
+    map_blocklist_fini();
+
+    map_stglist_fini();
+
+    map_ctrl_chan_sel_fini();
 
     map_onboarding_handler_fini();
 
     map_dm_fini();
+
+    map_cli_fini();
 
     i1905_fini();
 
@@ -283,9 +295,7 @@ dormant_loop:
 
     map_cfg_fini();
 
-    map_airdata_fini();
-
-    uloop_done();
+    acu_evloop_fini();
 
     ssp_fini();
 

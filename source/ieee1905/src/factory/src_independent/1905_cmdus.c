@@ -692,7 +692,7 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
     *  free everything and return NULL
     */
     if (0 != error) {
-        log_i1905_w("Parsing error %d", error);
+        log_i1905_e("Parsing error %d", error);
         free_1905_CMDU_structure(ret);
         return NULL;
     }
@@ -890,7 +890,7 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
             } else {
                 memcpy(s, tlv_stream, tlv_stream_size);
             }
-            free(tlv_stream);
+            SFREE(tlv_stream);
 
             s += tlv_stream_size;
         }

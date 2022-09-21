@@ -202,7 +202,7 @@
 #define ATTR_DEV_NAME          (0x1011)
 #define ATTR_RF_BANDS          (0x103c)
     #define WPS_RF_24GHZ           (0x01)
-    #define WPS_RF_50GHZ           (0x02)
+    #define WPS_RF_5GHZ            (0x02)
     #define WPS_RF_60GHZ           (0x04)
 #define ATTR_ASSOC_STATE       (0x1002)
     #define WPS_ASSOC_NOT_ASSOC     (0)
@@ -319,12 +319,12 @@ uint8_t wscBuildM1(char *interface_name, uint8_t **m1, uint16_t *m1_size, void *
     uint32_t              aux32;
 
     if (NULL == interface_name || NULL == m1 || NULL == m1_size || NULL == key) {
-        log_i1905_w("Invalid arguments to wscBuildM1()");
+        log_i1905_e("Invalid arguments to wscBuildM1()");
         return 0;
     }
 
     if (NULL == (x = PLATFORM_GET_1905_INTERFACE_INFO(interface_name))) {
-        log_i1905_w("Could not retrieve info of interface %s", interface_name);
+        log_i1905_e("Could not retrieve info of interface %s", interface_name);
         return 0;
     }
 
@@ -520,7 +520,7 @@ uint8_t wscBuildM1(char *interface_name, uint8_t **m1, uint16_t *m1_size, void *
         } else if (INTERFACE_TYPE_IEEE_802_11A_5_GHZ  ==  x->interface_type ||
                    INTERFACE_TYPE_IEEE_802_11N_5_GHZ  ==  x->interface_type ||
                    INTERFACE_TYPE_IEEE_802_11AC_5_GHZ ==  x->interface_type) {
-            rf_bands = WPS_RF_50GHZ;
+            rf_bands = WPS_RF_5GHZ;
         } else if (INTERFACE_TYPE_IEEE_802_11AD_60_GHZ ==  x->interface_type) {
             rf_bands = WPS_RF_60GHZ;
         }
@@ -634,7 +634,7 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
 #endif
 
     if (NULL == m1) {
-        log_i1905_w("M1 data missing");
+        log_i1905_e("M1 data missing");
         return 0;
     } else {
         k = (struct wscKey *)key;
@@ -659,7 +659,7 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
 
         if (ATTR_REGISTRAR_NONCE == attr_type) {
             if (16 != attr_len) {
-                log_i1905_w("Incorrect length (%d) for ATTR_REGISTRAR_NONCE", attr_len);
+                log_i1905_e("Incorrect length (%d) for ATTR_REGISTRAR_NONCE", attr_len);
                 goto Fail;
             }
             m2_nonce = p;
@@ -680,7 +680,7 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
             m2_encrypted_settings_present = 1;
         } else if (ATTR_AUTHENTICATOR == attr_type) {
             if (8 != attr_len) {
-                log_i1905_w("Incorrect length (%d) for ATTR_AUTHENTICATOR", attr_len);
+                log_i1905_e("Incorrect length (%d) for ATTR_AUTHENTICATOR", attr_len);
                 goto Fail;
             }
             m2_authenticator = p;
@@ -696,7 +696,7 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
         0 == m2_encrypted_settings_present ||
         0 == m2_authenticator_present)
     {
-        log_i1905_w("Missing attributes in the received M2 message");
+        log_i1905_e("Missing attributes in the received M2 message");
         goto Fail;
     }
 
@@ -713,7 +713,7 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
 
         if (ATTR_ENROLLEE_NONCE == attr_type) {
             if (16 != attr_len) {
-                log_i1905_w("Incorrect length (%d) for ATTR_REGISTRAR_NONCE", attr_len);
+                log_i1905_e("Incorrect length (%d) for ATTR_REGISTRAR_NONCE", attr_len);
                 goto Fail;
             }
             m1_nonce = p;
@@ -733,7 +733,7 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
     if (0 == m1_nonce_present   ||
         0 == m1_pubkey_present)
     {
-        log_i1905_w("Missing attributes in the received M1 message");
+        log_i1905_e("Missing attributes in the received M1 message");
         goto Fail;
     }
 
@@ -829,7 +829,7 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
         PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 2, addr, len, hash);
 
         if (memcmp(m2_authenticator, hash, 8) != 0) {
-            log_i1905_w("Message M2 authentication failed");
+            log_i1905_e("Message M2 authentication failed");
             goto Fail;
         }
     }
@@ -920,7 +920,7 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
                 PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 1, addr, len, hash);
 
                 if (memcmp(p, hash, 8) != 0) {
-                    log_i1905_w("Message M2 keywrap failed (%d)", attr_len);
+                    log_i1905_e("Message M2 keywrap failed (%d)", attr_len);
                     return 0;
                 }
 
@@ -935,7 +935,7 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
             0 == encryption_type_present       ||
             0 == network_key_present)
         {
-            log_i1905_w("Missing attributes in the configuration settings received in the M2 message");
+            log_i1905_e("Missing attributes in the configuration settings received in the M2 message");
             return 0;
         }
     }
@@ -1009,7 +1009,7 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
     if (NULL == (registrar_interface_name = recv_iface))
 #endif
     {
-        log_i1905_w("None of this nodes' interfaces matches the registrar MAC address. Ignoring M1 message.");
+        log_i1905_e("None of this nodes' interfaces matches the registrar MAC address. Ignoring M1 message.");
         return 0;
     }
 
@@ -1032,7 +1032,7 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
 
         if (ATTR_MAC_ADDR == attr_type) {
             if (6 != attr_len) {
-                log_i1905_w("Incorrect length (%d) for ATTR_MAC_ADDR", attr_len);
+                log_i1905_e("Incorrect length (%d) for ATTR_MAC_ADDR", attr_len);
                 return 0;
             }
             m1_mac_address = p;
@@ -1041,7 +1041,7 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
             m1_mac_address_present = 1;
         } else if (ATTR_ENROLLEE_NONCE == attr_type) {
             if (16 != attr_len) {
-                log_i1905_w("Incorrect length (%d) for ATTR_ENROLLEE_NONCE", attr_len);
+                log_i1905_e("Incorrect length (%d) for ATTR_ENROLLEE_NONCE", attr_len);
                 return 0;
             }
             m1_nonce = p;
@@ -1071,18 +1071,18 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
         0 == m1_nonce_present       ||
         0 == m1_pubkey_present)
     {
-        log_i1905_w("Imcomplete M1 message received");
+        log_i1905_e("Imcomplete M1 message received");
         return 0;
     }
 
     /* Now we can build "M2" */
     if (NULL == (x = PLATFORM_GET_1905_INTERFACE_INFO(registrar_interface_name))) {
-        log_i1905_w("Could not retrieve info of interface %s", registrar_interface_name );
+        log_i1905_e("Could not retrieve info of interface %s", registrar_interface_name );
         status = 0;
         goto CLEANUP;
     }
 
-    buffer = malloc(sizeof(uint8_t)*1000);
+    buffer = malloc(sizeof(uint8_t)*1280);
     p      = buffer;
 
     /* VERSION */
@@ -1341,7 +1341,7 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
         } else if (INTERFACE_TYPE_IEEE_802_11A_5_GHZ  ==  x->interface_type ||
                    INTERFACE_TYPE_IEEE_802_11N_5_GHZ  ==  x->interface_type ||
                    INTERFACE_TYPE_IEEE_802_11AC_5_GHZ ==  x->interface_type) {
-            rf_bands = WPS_RF_50GHZ;
+            rf_bands = WPS_RF_5GHZ;
         } else if (INTERFACE_TYPE_IEEE_802_11AD_60_GHZ ==  x->interface_type) {
             rf_bands = WPS_RF_60GHZ;
         }
@@ -1632,7 +1632,7 @@ uint8_t wscGetType(uint8_t *m, uint16_t m_size)
 
         if (ATTR_MSG_TYPE == attr_type) {
             if (1 != attr_len) {
-                log_i1905_w("Incorrect length (%d) for ATTR_MSG_TYPE", attr_len);
+                log_i1905_e("Incorrect length (%d) for ATTR_MSG_TYPE", attr_len);
                 return WSC_TYPE_UNKNOWN;
             }
             _E1B(&p, &msg_type);

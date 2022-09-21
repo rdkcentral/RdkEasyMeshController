@@ -84,9 +84,10 @@
 /*#######################################################################
 # Supported service TLV ("Section 17.2.1")                              #
 ########################################################################*/
-static uint8_t* parse_supported_service_tlv(uint8_t *p, UNUSED uint16_t len)
+static uint8_t* parse_supported_service_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_supported_service_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(1)
 
@@ -98,6 +99,7 @@ static uint8_t* parse_supported_service_tlv(uint8_t *p, UNUSED uint16_t len)
     PARSE_LIMIT(ret->services_nr, MAX_SERVICE)
     _EnB(&p, ret->services, ret->services_nr);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -122,9 +124,10 @@ static void free_supported_service_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Searched service TLV ("Section 17.2.2")                               #
 ########################################################################*/
-static uint8_t* parse_searched_service_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_searched_service_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_searched_service_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(1)
 
@@ -136,6 +139,7 @@ static uint8_t* parse_searched_service_tlv(uint8_t *p, uint16_t len)
     PARSE_LIMIT(ret->services_nr, MAX_SERVICE)
     _EnB(&p, ret->services, ret->services_nr);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -160,9 +164,10 @@ static void free_searched_service_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # AP radio identifier TLV ("Section 17.2.3")                            #
 ########################################################################*/
-static uint8_t* parse_ap_radio_identifier_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_radio_identifier_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_radio_identifier_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_EXP_LEN(6)
 
@@ -172,6 +177,7 @@ static uint8_t* parse_ap_radio_identifier_tlv(uint8_t *p, uint16_t len)
 
     _EnB(&p, ret->radio_id, 6);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -195,10 +201,10 @@ static void free_ap_radio_identifier_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # AP operational BSS TLV ("Section 17.2.4")                             #
 ########################################################################*/
-static uint8_t* parse_ap_operational_bss_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_operational_bss_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_operational_bss_tlv_t *ret;
-    uint8_t i, j;
+    uint8_t *p = packet_stream, i, j;
 
     PARSE_CHECK_MIN_LEN(1);
 
@@ -217,11 +223,14 @@ static uint8_t* parse_ap_operational_bss_tlv(uint8_t *p, uint16_t len)
         for (j = 0; j < ret->radios[i].bsss_nr; j++) {
             _EnB(&p, ret->radios[i].bsss[j].bssid, 6);
             _E1B(&p, &ret->radios[i].bsss[j].ssid_len);
+            PARSE_LIMIT_N_DROP(ret->radios[i].bsss[j].ssid_len, (MAX_SSID_LEN - 1))
+
             _EnB(&p, ret->radios[i].bsss[j].ssid, ret->radios[i].bsss[j].ssid_len);
         }
     }
 
-    return (uint8_t *)ret;
+    PARSE_CHECK_INTEGRITY
+    PARSE_RETURN
 }
 
 static uint8_t* forge_ap_operational_bss_tlv(void *memory_structure, uint16_t *len)
@@ -263,10 +272,10 @@ static void free_ap_operational_bss_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Associated clients TLV ("Section 17.2.5")                             #
 ########################################################################*/
-static uint8_t* parse_assoc_clients_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_assoc_clients_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_assoc_clients_tlv_t *ret;
-    uint8_t i, j;
+    uint8_t *p = packet_stream, i, j;
 
     PARSE_CHECK_MIN_LEN(1);
 
@@ -292,6 +301,7 @@ static uint8_t* parse_assoc_clients_tlv(uint8_t *p, uint16_t len)
        }
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -332,16 +342,16 @@ static void free_assoc_clients_tlv(UNUSED void *memory_structure)
     uint8_t i;
 
     for (i = 0; i < m->bsss_nr; i++) {
-        free(m->bsss[i].stas);
+        SFREE(m->bsss[i].stas);
     }
 }
 /*#######################################################################
 # AP capability TLV ("Section 17.2.6")                                  #
 ########################################################################*/
-static uint8_t* parse_ap_capability_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_capability_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_cap_tlv_t *ret;
-    uint8_t byte;
+    uint8_t *p = packet_stream, byte;
 
     PARSE_CHECK_EXP_LEN(1);
 
@@ -355,6 +365,7 @@ static uint8_t* parse_ap_capability_tlv(uint8_t *p, uint16_t len)
     ret->agent_initiated_steering               = (byte & BIT_MASK_5) ? SET_BIT : RESET_BIT;
     ret->reserved                               = byte & (BIT_MASK_4 | BIT_MASK_3 | BIT_MASK_2 | BIT_MASK_1 | BIT_MASK_0);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -382,10 +393,11 @@ static void free_ap_capability_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # AP radio basic capabilities TLV ("Section 17.2.7")                    #
 ########################################################################*/
-static uint8_t* parse_ap_radio_basic_capabilities_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_radio_basic_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_radio_basic_cap_tlv_t *ret;
-    uint8_t i;
+    uint8_t i, j, channels_nr, channel;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(6 + 1); /* radio_id + max_bss */
 
@@ -401,11 +413,16 @@ static uint8_t* parse_ap_radio_basic_capabilities_tlv(uint8_t *p, uint16_t len)
     for (i = 0; i < ret->op_classes_nr; i++) {
         _E1B(&p, &ret->op_classes[i].op_class);
         _E1B(&p, &ret->op_classes[i].eirp);
-        _E1B(&p, &ret->op_classes[i].channels_nr);
-        PARSE_LIMIT(ret->op_classes[i].channels_nr, MAX_CHANNEL_PER_OP_CLASS);
-        _EnB(&p, ret->op_classes[i].channels, ret->op_classes[i].channels_nr);
+        _E1B(&p, &channels_nr);
+        PARSE_LIMIT(channels_nr, MAX_CHANNEL_PER_OP_CLASS);
+
+        for (j = 0; j < channels_nr; j++) {
+            _E1B(&p, &channel);
+            map_cs_set(&ret->op_classes[i].channels, channel);
+        }
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -413,11 +430,11 @@ static uint8_t* forge_ap_radio_basic_capabilities_tlv(void *memory_structure, ui
 {
     map_ap_radio_basic_cap_tlv_t *m = memory_structure;
     uint16_t  tlv_length;
-    uint8_t  *ret, *p, i;
+    uint8_t  *ret, *p, i, channels_nr, channel;
 
     tlv_length = 6 + 1 + 1; /* radio_id + max_bss + op_classes_nr */
     for (i = 0; i < m->op_classes_nr; i++) {
-        tlv_length += 1 + 1 + 1 + m->op_classes[i].channels_nr; /* op_class + eirp + channels_nr + channels */
+        tlv_length += 1 + 1 + 1 + map_cs_nr(&m->op_classes[i].channels); /* op_class + eirp + channels_nr + channels */
     }
 
     FORGE_MALLOC_RET
@@ -429,10 +446,14 @@ static uint8_t* forge_ap_radio_basic_capabilities_tlv(void *memory_structure, ui
     _I1B(&m->op_classes_nr, &p);
 
     for (i=0; i <m->op_classes_nr; i++) {
-        _I1B(&m->op_classes[i].op_class,    &p);
-        _I1B(&m->op_classes[i].eirp,        &p);
-        _I1B(&m->op_classes[i].channels_nr, &p);
-        _InB(m->op_classes[i].channels,     &p, m->op_classes[i].channels_nr);
+        channels_nr = map_cs_nr(&m->op_classes[i].channels);
+
+        _I1B(&m->op_classes[i].op_class, &p);
+        _I1B(&m->op_classes[i].eirp,     &p);
+        _I1B(&channels_nr,               &p);
+        map_cs_foreach(&m->op_classes[i].channels, channel) {
+            _I1B(&channel, &p);
+        }
     }
 
     FORGE_RETURN
@@ -443,10 +464,10 @@ static void free_ap_radio_basic_capabilities_tlv(UNUSED void *memory_structure) 
 /*#######################################################################
 # AP HT capabilities TLV ("Section 17.2.8")                             #
 ########################################################################*/
-static uint8_t* parse_ap_ht_capabilities_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_ht_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_ht_cap_tlv_t *ret;
-    uint8_t byte;
+    uint8_t *p = packet_stream, byte;
 
     PARSE_CHECK_EXP_LEN(7);
 
@@ -464,6 +485,7 @@ static uint8_t* parse_ap_ht_capabilities_tlv(uint8_t *p, uint16_t len)
     ret->ht_support_40mhz         = (byte & BIT_MASK_1) ? SET_BIT : RESET_BIT;
     ret->reserved                 = (byte & BIT_MASK_0) ? SET_BIT : RESET_BIT;
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -496,10 +518,10 @@ static void free_ap_ht_capabilities_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # AP VHT capabilities TLV ("Section 17.2.9")                            #
 ########################################################################*/
-static uint8_t* parse_ap_vht_capabilities_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_vht_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_vht_cap_tlv_t *ret;
-    uint8_t byte;
+    uint8_t *p = packet_stream, byte;
 
     PARSE_CHECK_EXP_LEN(12);
 
@@ -524,6 +546,7 @@ static uint8_t* parse_ap_vht_capabilities_tlv(uint8_t *p, uint16_t len)
     ret->mu_beamformer_capable    = (byte & BIT_MASK_4) ? SET_BIT : RESET_BIT;
     ret->reserved                 = byte & (BIT_MASK_3 | BIT_MASK_2 | BIT_MASK_1 | BIT_MASK_0);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -562,10 +585,10 @@ static void free_ap_vht_capabilities_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # AP HE capabilities TLV ("Section 17.2.10")                            #
 ########################################################################*/
-static uint8_t* parse_ap_he_capabilities_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_he_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_he_cap_tlv_t *ret;
-    uint8_t i, byte;
+    uint8_t *p = packet_stream, i, byte;
 
     PARSE_CHECK_MIN_LEN(9) /* All fields except supported mcs */
 
@@ -597,6 +620,7 @@ static uint8_t* parse_ap_he_capabilities_tlv(uint8_t *p, uint16_t len)
     ret->dl_ofdma_capable      = (byte & BIT_MASK_1) ? SET_BIT : RESET_BIT;
     ret->reserved              = (byte & BIT_MASK_0) ? SET_BIT : RESET_BIT;
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -641,10 +665,10 @@ static void free_ap_he_capabilities_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Steering policy TLV ("Section 17.2.11")                               #
 ########################################################################*/
-static uint8_t* parse_steering_policy_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_steering_policy_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_steering_policy_tlv_t *ret;
-    uint8_t i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CHECK_MIN_LEN(3)
 
@@ -686,6 +710,7 @@ static uint8_t* parse_steering_policy_tlv(uint8_t *p, uint16_t len)
         _E1B(&p, &ret->radios[i].rssi_steering_threshold);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -731,17 +756,17 @@ static void free_steering_policy_tlv(void *memory_structure)
 {
     map_steering_policy_tlv_t *m = memory_structure;
 
-    free(m->local_steering_dis_macs);
-    free(m->btm_steering_dis_macs);
+    SFREE(m->local_steering_dis_macs);
+    SFREE(m->btm_steering_dis_macs);
 }
 
 /*#######################################################################
 # Metric reporting policy TLV ("Section 17.2.12")                       #
 ########################################################################*/
-static uint8_t* parse_metric_reporting_policy_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_metric_reporting_policy_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_metric_reporting_policy_tlv_t *ret;
-    uint8_t i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CHECK_MIN_LEN(2)
 
@@ -761,6 +786,7 @@ static uint8_t* parse_metric_reporting_policy_tlv(uint8_t *p, uint16_t len)
         _E1B(&p, &ret->radios[i].associated_sta_policy);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -793,10 +819,11 @@ static void free_metric_reporting_policy_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Channel preference TLV ("Section 17.2.13")                            #
 ########################################################################*/
-static uint8_t* parse_channel_preference_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_channel_preference_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_channel_preference_tlv_t *ret;
-    uint8_t i, byte;
+    uint8_t i, j, byte, channels_nr, channel;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(7)
 
@@ -810,15 +837,20 @@ static uint8_t* parse_channel_preference_tlv(uint8_t *p, uint16_t len)
 
     for (i = 0; i < ret->op_classes_nr; i++) {
         _E1B(&p, &ret->op_classes[i].op_class);
-        _E1B(&p, &ret->op_classes[i].channels_nr);
-        PARSE_LIMIT(ret->op_classes[i].channels_nr, MAX_CHANNEL_PER_OP_CLASS);
-        _EnB(&p, ret->op_classes[i].channels, ret->op_classes[i].channels_nr);
+        _E1B(&p, &channels_nr);
+        PARSE_LIMIT(channels_nr, MAX_CHANNEL_PER_OP_CLASS);
+
+        for (j = 0; j < channels_nr; j++) {
+            _E1B(&p, &channel);
+            map_cs_set(&ret->op_classes[i].channels, channel);
+        }
 
         _E1B(&p, &byte);
         ret->op_classes[i].pref   = (byte & (BIT_MASK_7 | BIT_MASK_6 | BIT_MASK_5 | BIT_MASK_4)) >> BIT_SHIFT_4;
         ret->op_classes[i].reason = (byte & (BIT_MASK_3 | BIT_MASK_2 | BIT_MASK_1 | BIT_MASK_0));
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -826,12 +858,12 @@ static uint8_t* forge_channel_preference_tlv(void *memory_structure, uint16_t *l
 {
     map_channel_preference_tlv_t *m = memory_structure;
     uint16_t  tlv_length;
-    uint8_t  *ret, *p, i, byte;
+    uint8_t  *ret, *p, i, byte, channels_nr, channel;
 
     /* Calculate TLV length */
     tlv_length = 6 + 1; /* radio_id + op_classes_nr */
     for (i = 0; i < m->op_classes_nr; i++) {
-        tlv_length += 1 + 1 + m->op_classes[i].channels_nr + 1; /* op_class, channels_nr, channels, pref_reason */
+        tlv_length += 1 + 1 + map_cs_nr(&m->op_classes[i].channels) + 1; /* op_class, channels_nr, channels, pref_reason */
     }
 
     FORGE_MALLOC_RET
@@ -842,9 +874,13 @@ static uint8_t* forge_channel_preference_tlv(void *memory_structure, uint16_t *l
     _I1B(&m->op_classes_nr, &p);
 
     for (i = 0; i < m->op_classes_nr; i++) {
-        _I1B(&m->op_classes[i].op_class,    &p);
-        _I1B(&m->op_classes[i].channels_nr, &p);
-        _InB(m->op_classes[i].channels,     &p, m->op_classes[i].channels_nr);
+        channels_nr = map_cs_nr(&m->op_classes[i].channels);
+
+        _I1B(&m->op_classes[i].op_class, &p);
+        _I1B(&channels_nr,               &p);
+        map_cs_foreach(&m->op_classes[i].channels, channel) {
+            _I1B(&channel, &p);
+        }
 
         byte = (m->op_classes[i].pref << BIT_SHIFT_4) | m->op_classes[i].reason;
         _I1B(&byte, &p);
@@ -858,10 +894,10 @@ static void free_channel_preference_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Radio operation restriction TLV ("Section 17.2.14")                   #
 ########################################################################*/
-static uint8_t* parse_radio_operation_restriction_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_radio_operation_restriction_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_radio_operation_restriction_tlv_t *ret;
-    uint8_t i, j;
+    uint8_t *p = packet_stream, i, j;
 
     PARSE_CHECK_MIN_LEN(7)
 
@@ -884,6 +920,7 @@ static uint8_t* parse_radio_operation_restriction_tlv(uint8_t *p, uint16_t len)
         }
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -924,9 +961,10 @@ static void free_radio_operation_restriction_tlv(UNUSED void *memory_structure) 
 /*#######################################################################
 # Transmit power limit TLV ("Section 17.2.15")                          #
 ########################################################################*/
-static uint8_t* parse_transmit_power_limit_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_transmit_power_limit_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_transmit_power_limit_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_EXP_LEN(7)
 
@@ -937,6 +975,7 @@ static uint8_t* parse_transmit_power_limit_tlv(uint8_t *p, uint16_t len)
     _EnB(&p, ret->radio_id, 6);
     _E1B(&p, &ret->transmit_power_eirp);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -961,9 +1000,10 @@ static void free_transmit_power_limit_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Channel selection response TLV ("Section 17.2.16")                    #
 ########################################################################*/
-static uint8_t* parse_channel_selection_response_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_channel_selection_response_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_channel_selection_response_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_EXP_LEN(7)
 
@@ -974,6 +1014,7 @@ static uint8_t* parse_channel_selection_response_tlv(uint8_t *p, uint16_t len)
     _EnB(&p, ret->radio_id, 6);
     _E1B(&p, &ret->channel_selection_response);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -998,10 +1039,10 @@ static void free_channel_selection_response_tlv(UNUSED void *memory_structure) {
 /*#######################################################################
 # Operating channel report TLV ("Section 17.2.17")                      #
 ########################################################################*/
-static uint8_t* parse_operating_channel_report_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_operating_channel_report_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_operating_channel_report_tlv_t *ret;
-    uint8_t i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CHECK_MIN_LEN(7)
 
@@ -1019,6 +1060,7 @@ static uint8_t* parse_operating_channel_report_tlv(uint8_t *p, uint16_t len)
 
     _E1B(&p, &ret->transmit_power_eirp);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1050,9 +1092,10 @@ static void free_operating_channel_report_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Client info TLV ("Section 17.2.18")                                   #
 ########################################################################*/
-static uint8_t* parse_client_info_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_client_info_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_client_info_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(12)
 
@@ -1063,6 +1106,7 @@ static uint8_t* parse_client_info_tlv(uint8_t *p, uint16_t len)
     _EnB(&p, ret->bssid,   6);
     _EnB(&p, ret->sta_mac, 6);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1087,9 +1131,10 @@ static void free_client_info_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Client capability report TLV ("Section 17.2.19")                      #
 ########################################################################*/
-static uint8_t* parse_client_capability_report_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_client_capability_report_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_client_cap_report_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(1)
 
@@ -1102,13 +1147,13 @@ static uint8_t* parse_client_capability_report_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_CLIENT_CAPABILITY_REPORT;
     _E1B(&p, &ret->result_code);
 
-    len--;
-    if (ret->result_code == MAP_CLIENT_CAP_SUCCESS && len > 0) {
-        ret->assoc_frame_body_len = len;
+    if (ret->result_code == MAP_CLIENT_CAP_SUCCESS && len > 1) {
+        ret->assoc_frame_body_len = len - 1;
         ret->assoc_frame_body     = (uint8_t *)(ret + 1);
-        _EnB(&p, ret->assoc_frame_body, len);
+        _EnB(&p, ret->assoc_frame_body, ret->assoc_frame_body_len);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1133,10 +1178,10 @@ static void free_client_capability_report_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Client association event TLV ("Section 17.2.20")                      #
 ########################################################################*/
-static uint8_t* parse_client_association_event_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_client_association_event_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_client_assoc_event_tlv_t *ret;
-    uint8_t byte;
+    uint8_t *p = packet_stream, byte;
 
     PARSE_CHECK_EXP_LEN(13)
 
@@ -1149,6 +1194,7 @@ static uint8_t* parse_client_association_event_tlv(uint8_t *p, uint16_t len)
     _E1B(&p, &byte);
     ret->association_event = (byte & BIT_MASK_7) >> BIT_SHIFT_7;
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1176,10 +1222,10 @@ static void free_client_association_event_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # AP metric query TLV ("Section 17.2.21")                               #
 ########################################################################*/
-static uint8_t* parse_ap_metric_query_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_metric_query_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_metric_query_tlv_t *ret;
-    uint8_t i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CHECK_MIN_LEN(1)
 
@@ -1194,6 +1240,7 @@ static uint8_t* parse_ap_metric_query_tlv(uint8_t *p, uint16_t len)
         _EnB(&p, ret->bssids[i], 6);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1220,10 +1267,10 @@ static void free_ap_metric_query_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # AP metrics TLV ("Section 17.2.22")                                    #
 ########################################################################*/
-static uint8_t* parse_ap_metrics_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_metrics_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_metrics_tlv_t *ret;
-    uint8_t i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CHECK_MIN_LEN(13)
 
@@ -1242,6 +1289,7 @@ static uint8_t* parse_ap_metrics_tlv(uint8_t *p, uint16_t len)
         }
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1282,9 +1330,10 @@ static void free_ap_metrics_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # STA MAC address TLV ("Section 17.2.23")                               #
 ########################################################################*/
-static uint8_t* parse_sta_mac_address_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_sta_mac_address_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_sta_mac_address_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_EXP_LEN(6);
 
@@ -1294,6 +1343,7 @@ static uint8_t* parse_sta_mac_address_tlv(uint8_t *p, uint16_t len)
 
     _EnB(&p, ret->sta_mac, 6);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1317,17 +1367,18 @@ static void free_sta_mac_address_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Associated STA link metrics TLV ("Section 17.2.24")                   #
 ########################################################################*/
-static uint8_t* parse_associated_sta_link_metrics_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_associated_sta_link_metrics_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_assoc_sta_link_metrics_tlv_t *ret;
     mac_addr mac;
-    uint8_t  bsss_nr, i;
+    uint8_t  *p = packet_stream, bsss_nr, i;
 
     PARSE_CHECK_MIN_LEN(7)
 
     /* Get bss count to allocate struct and metrics in one time */
     _EnB(&p, &mac, 6);
     _E1B(&p, &bsss_nr);
+    PARSE_LIMIT(bsss_nr, MAX_BSS_PER_AGENT);
 
     ret = calloc(1, sizeof(*ret) + bsss_nr * sizeof(*ret->bsss));
     if (NULL == ret) {
@@ -1346,6 +1397,7 @@ static uint8_t* parse_associated_sta_link_metrics_tlv(uint8_t *p, uint16_t len)
         _E1B(&p, &ret->bsss[i].uplink_rssi);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1378,10 +1430,10 @@ static void free_associated_sta_link_metrics_tlv(UNUSED void *memory_structure) 
 /*#######################################################################
 # Unassociated STA link metrics query TLV ("Section 17.2.25")           #
 ########################################################################*/
-static uint8_t* parse_unassociated_sta_link_metrics_query_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_unassociated_sta_link_metrics_query_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_unassoc_sta_link_metrics_query_tlv_t *ret;
-    uint8_t i, j;
+    uint8_t *p = packet_stream, i, j;
 
     PARSE_CHECK_MIN_LEN(2)
 
@@ -1404,6 +1456,7 @@ static uint8_t* parse_unassociated_sta_link_metrics_query_tlv(uint8_t *p, uint16
         }
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1444,17 +1497,17 @@ static void free_unassociated_sta_link_metrics_query_tlv(UNUSED void *memory_str
     uint8_t i;
 
     for(i = 0; i < m->channels_nr; i++){
-        free(m->channels[i].sta_macs);
+        SFREE(m->channels[i].sta_macs);
     }
 }
 
 /*#######################################################################
 # Unassociated STA link metrics response TLV ("Section 17.2.26")        #
 ########################################################################*/
-static uint8_t* parse_unassociated_sta_link_metrics_response_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_unassociated_sta_link_metrics_response_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_unassoc_sta_link_metrics_response_tlv_t *ret;
-    uint8_t op_class, stas_nr, i;
+    uint8_t *p = packet_stream, op_class, stas_nr, i;
 
     PARSE_CHECK_MIN_LEN(2)
 
@@ -1478,6 +1531,7 @@ static uint8_t* parse_unassociated_sta_link_metrics_response_tlv(uint8_t *p, uin
         _E1B(&p, &ret->stas[i].rcpi_uplink);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1509,10 +1563,11 @@ static void free_unassociated_sta_link_metrics_response_tlv(UNUSED void *memory_
 /*#######################################################################
 # Beacon metrics query TLV ("Section 17.2.27")                          #
 ########################################################################*/
-static uint8_t* parse_beacon_metrics_query_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_beacon_metrics_query_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_beacon_metrics_query_tlv_t *ret;
-    uint8_t i;
+    uint8_t i, j, op_class_channels_nr, channel;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(18)
 
@@ -1526,21 +1581,30 @@ static uint8_t* parse_beacon_metrics_query_tlv(uint8_t *p, uint16_t len)
     _EnB(&p, ret->bssid, 6);
     _E1B(&p, &ret->reporting_detail);
     _E1B(&p, &ret->ssid_len);
+    PARSE_LIMIT_N_DROP(ret->ssid_len, (MAX_SSID_LEN - 1))
+
     _EnB(&p, ret->ssid, ret->ssid_len);
     _E1B(&p, &ret->ap_channel_reports_nr);
     PARSE_LIMIT(ret->ap_channel_reports_nr, MAX_OP_CLASS);
 
     for(i = 0; i < ret->ap_channel_reports_nr; i++) {
-        _E1B(&p, &ret->ap_channel_reports[i].op_class_channels_nr);
-        PARSE_LIMIT(ret->ap_channel_reports[i].op_class_channels_nr, MAX_CHANNEL_PER_OP_CLASS + 1);
+        _E1B(&p, &op_class_channels_nr);
+        if (op_class_channels_nr == 0) {
+            free(ret);
+            return NULL;
+        }
         _E1B(&p, &ret->ap_channel_reports[i].op_class);
         /* Copy channel list - length includes the operating_class byte */
-        _EnB(&p, ret->ap_channel_reports[i].channels, ret->ap_channel_reports[i].op_class_channels_nr - 1);
+        for (j = 0; j < op_class_channels_nr - 1; j++) {
+            _E1B(&p, &channel);
+            map_cs_set(&ret->ap_channel_reports[i].channels, channel);
+        }
     }
 
     _E1B(&p, &ret->element_ids_nr);
     _EnB(&p, ret->element_ids, ret->element_ids_nr);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1548,12 +1612,12 @@ static uint8_t* forge_beacon_metrics_query_tlv(void *memory_structure, uint16_t 
 {
     map_beacon_metrics_query_tlv_t *m = memory_structure;
     uint16_t  tlv_length;
-    uint8_t  *ret, *p, i;
+    uint8_t  *ret, *p, i, op_class_channels_nr, channel;
 
     /* Calculate tlv length */
     tlv_length = 6 + 1 + 1 + 6 + 1 + 1 + m->ssid_len + 1; /* sta_mac + op_class + channel + bssid + rep_det + ssid_len + ssid + chan_rep_nr */
     for (i = 0; i < m->ap_channel_reports_nr; i++) {
-        tlv_length += 1 + m->ap_channel_reports[i].op_class_channels_nr; /* len + chan_rep (includes op_class and channels) */
+        tlv_length += 1 + 1 + map_cs_nr(&m->ap_channel_reports[i].channels); /* len + op_class + channels */
     }
     tlv_length += 1 + m->element_ids_nr; /* element_id_nr + element_id */
 
@@ -1571,10 +1635,13 @@ static uint8_t* forge_beacon_metrics_query_tlv(void *memory_structure, uint16_t 
     _I1B(&m->ap_channel_reports_nr, &p);
 
     for(i = 0; i < m->ap_channel_reports_nr; i++) {
-        _I1B(&m->ap_channel_reports[i].op_class_channels_nr, &p);
-        _I1B(&m->ap_channel_reports[i].op_class,             &p);
-        /* Copy channel list - length includes the operating_class byte */
-        _InB(m->ap_channel_reports[i].channels, &p, m->ap_channel_reports[i].op_class_channels_nr - 1);
+         op_class_channels_nr = map_cs_nr(&m->ap_channel_reports[i].channels) + 1; /* inculdes op_class byte */
+
+        _I1B(&op_class_channels_nr,              &p);
+        _I1B(&m->ap_channel_reports[i].op_class, &p);
+        map_cs_foreach(&m->ap_channel_reports[i].channels, channel) {
+            _I1B(&channel, &p);
+        }
     }
 
     _I1B(&m->element_ids_nr, &p);
@@ -1588,11 +1655,12 @@ static void free_beacon_metrics_query_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Beacon metrics response TLV ("Section 17.2.28")                       #
 ########################################################################*/
-static uint8_t* parse_beacon_metrics_response_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_beacon_metrics_response_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_beacon_metrics_response_tlv_t *ret;
     mac_addr mac;
     uint8_t  status_code, elements_nr, i;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(8)
 
@@ -1632,6 +1700,7 @@ static uint8_t* parse_beacon_metrics_response_tlv(uint8_t *p, uint16_t len)
         }
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1662,10 +1731,10 @@ static void free_beacon_metrics_response_tlv(UNUSED void *memory_structure) {}
 # Steering request TLV ("Section 17.2.29")                              #
 ########################################################################*/
 /* Functions used for both profile 1 and 2 steering request */
-uint8_t* map_parse_p1_p2_steering_request_tlv(uint8_t *p, uint16_t len, bool profile2)
+uint8_t* map_parse_p1_p2_steering_request_tlv(uint8_t *packet_stream, uint16_t len, bool profile2)
 {
     map_steering_request_tlv_t *ret;
-    uint8_t i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CHECK_MIN_LEN(11)
 
@@ -1696,6 +1765,7 @@ uint8_t* map_parse_p1_p2_steering_request_tlv(uint8_t *p, uint16_t len, bool pro
         }
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1739,9 +1809,9 @@ uint8_t* map_forge_p1_p2_steering_request_tlv(void *memory_structure, uint16_t *
 
 void map_free_p1_p2_steering_request_tlv(UNUSED void *memory_structure, UNUSED bool profile2) {}
 
-static uint8_t* parse_steering_request_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_steering_request_tlv(uint8_t *packet_stream, uint16_t len)
 {
-    return map_parse_p1_p2_steering_request_tlv(p, len, false);
+    return map_parse_p1_p2_steering_request_tlv(packet_stream, len, false);
 }
 
 static uint8_t* forge_steering_request_tlv(void *memory_structure, uint16_t *len)
@@ -1757,9 +1827,10 @@ static void free_steering_request_tlv(void *memory_structure)
 /*#######################################################################
 # Steering BTM report TLV ("Section 17.2.30")                           #
 ########################################################################*/
-static uint8_t* parse_steering_btm_report_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_steering_btm_report_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_steering_btm_report_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(13)
 
@@ -1776,6 +1847,7 @@ static uint8_t* parse_steering_btm_report_tlv(uint8_t *p, uint16_t len)
         _EnB(&p, ret->target_bssid, 6);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1805,10 +1877,10 @@ static void free_steering_btm_report_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Client association control request TLV ("Section 17.2.31")            #
 ########################################################################*/
-static uint8_t* parse_client_association_control_request_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_client_association_control_request_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_client_assoc_control_request_tlv_t *ret;
-    uint8_t i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CHECK_MIN_LEN(10)
 
@@ -1820,11 +1892,13 @@ static uint8_t* parse_client_association_control_request_tlv(uint8_t *p, uint16_
     _E1B(&p, &ret->association_control);
     _E2B(&p, &ret->validity_period);
     _E1B(&p, &ret->sta_macs_nr);
+    PARSE_LIMIT(ret->sta_macs_nr, MAX_STATION_PER_BSS);
 
     for (i = 0; i < ret->sta_macs_nr; i++) {
         _EnB(&p, ret->sta_macs[i], 6);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1855,9 +1929,10 @@ static void free_client_association_control_request_tlv(UNUSED void *memory_stru
 /*#######################################################################
 # Backhaul steering request report TLV ("Section 17.2.32")              #
 ########################################################################*/
-static uint8_t* parse_backhaul_steering_request_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_backhaul_steering_request_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_backhaul_steering_request_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_EXP_LEN(14)
 
@@ -1870,6 +1945,7 @@ static uint8_t* parse_backhaul_steering_request_tlv(uint8_t *p, uint16_t len)
     _E1B(&p, &ret->target_op_class);
     _E1B(&p, &ret->target_channel);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1896,9 +1972,10 @@ static void free_backhaul_steering_request_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Backhaul steering response report TLV ("Section 17.2.33")             #
 ########################################################################*/
-static uint8_t* parse_backhaul_steering_response_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_backhaul_steering_response_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_backhaul_steering_response_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_EXP_LEN(13)
 
@@ -1910,6 +1987,7 @@ static uint8_t* parse_backhaul_steering_response_tlv(uint8_t *p, uint16_t len)
     _EnB(&p, ret->target_bssid, 6);
     _E1B(&p, &ret->result);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1935,9 +2013,10 @@ static void free_backhaul_steering_response_tlv(UNUSED void *memory_structure) {
 /*#######################################################################
 # Higher layer data TLV ("Section 17.2.34")                             #
 ########################################################################*/
-static uint8_t* parse_higher_layer_data_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_higher_layer_data_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_higher_layer_data_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_MIN_LEN(1);
 
@@ -1951,13 +2030,15 @@ static uint8_t* parse_higher_layer_data_tlv(uint8_t *p, uint16_t len)
 
     _E1B(&p, &ret->protocol);
 
-    len--;
-    if (len > 0) {
-        ret->payload_len = len;
+    /* 1 octet protocol field */
+    if (len > 1) {
+        ret->payload_len = len - 1 ;
         ret->payload = (uint8_t*)(ret + 1);
-        _EnB(&p, ret->payload, len);
+        _EnB(&p, ret->payload, ret->payload_len);
     }
 
+
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1982,9 +2063,10 @@ static void free_higher_layer_data_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Associated STA traffic stats TLV ("Section 17.2.35")                  #
 ########################################################################*/
-static uint8_t* parse_associated_sta_traffic_stats_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_associated_sta_traffic_stats_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_assoc_sta_traffic_stats_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_EXP_LEN(34)
 
@@ -2001,6 +2083,7 @@ static uint8_t* parse_associated_sta_traffic_stats_tlv(uint8_t *p, uint16_t len)
     _E4B(&p, &ret->rxpkterrors);
     _E4B(&p, &ret->retransmission_cnt);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -2031,9 +2114,10 @@ static void free_associated_sta_traffic_stats_tlv(UNUSED void *memory_structure)
 /*#######################################################################
 # Error code TLV ("Section 17.2.36")                                    #
 ########################################################################*/
-static uint8_t* parse_error_code_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_error_code_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_error_code_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_EXP_LEN(7)
 
@@ -2044,6 +2128,7 @@ static uint8_t* parse_error_code_tlv(uint8_t *p, uint16_t len)
     _E1B(&p, &ret->reason_code);
     _EnB(&p, ret->sta_mac, 6);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 

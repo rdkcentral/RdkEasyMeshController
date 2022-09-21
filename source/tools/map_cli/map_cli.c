@@ -19,9 +19,8 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
+#include <sys/un.h>
+#include <arpa/inet.h>
 
 #include "map_cli.h"
 
@@ -30,8 +29,6 @@
 ########################################################################*/
 static int fd = -1;
 static struct option options[] = {
-    {"hostname", required_argument, 0, 0x100 },
-    {"port", required_argument, 0, 0x101 },
     {"background", no_argument, 0, 0x102 },
     {"wait", required_argument, 0, 0x103 },
     {"timeout", required_argument, 0, 0x104 },
@@ -60,42 +57,25 @@ static void signal_handler(int sig)
 ########################################################################*/
 int main(int argc, char *argv[])
 {
+    struct sockaddr_un saddr;
+
     int c;
     int option_index;
 
-    const char *hostname;
-    int port;
-    char port_str[6] = {'\0'};
-
-    int wait;
-    int timeout;
+    int wait = 0;
+    int timeout = 10000;
 
     const char *command = NULL;
-    const char *payload;
+    const char *payload = "{}";
 
-    const char *prefix;
-    const char *seperator;
+    const char *prefix = "";;
+    const char *seperator = ":";
 
     int l;
     int s;
-    struct addrinfo hints, *addr_list, *cur;
 
     struct pollfd pfd;
-    long arg;
-    socklen_t len;
-    int rc, val = 1;
-
-    hostname = CLI_SERVER_IP;
-    port = CLI_SERVER_PORT;
-
-    wait = 0;
-    timeout = 10000;
-
-    command = NULL;
-    payload = "{}";
-
-    prefix = "";
-    seperator = ":";
+    int rc;
 
     while (1) {
         c = getopt_long(argc, argv, "h", options, &option_index);
@@ -105,12 +85,6 @@ int main(int argc, char *argv[])
         switch (c) {
         case 'h':
             command = "help";
-            break;
-        case 0x100:
-            hostname = optarg;
-            break;
-        case 0x101:
-            port = atoi(optarg);
             break;
         case 0x102:
             /* background parameter is invalid */
@@ -135,83 +109,37 @@ int main(int argc, char *argv[])
         command = "help";
     }
 
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-
-    snprintf(port_str, sizeof(port_str), "%d", port);
-    if (getaddrinfo(hostname, port_str, &hints, &addr_list) != 0) {
-        fprintf(stderr, "map_cli %s, no such host\n", hostname);
-        return -1;
-    }
-
-    for (cur = addr_list; (cur != NULL) && (fd < 0); cur = cur->ai_next) {
-        fd = socket(cur->ai_family, cur->ai_socktype, cur->ai_protocol);
-        if (fd < 0) {
-            continue;
-        }
-        /* Set non-blocking */
-        arg = fcntl(fd, F_GETFL, NULL);
-        arg |= O_NONBLOCK;
-        if (fcntl(fd, F_SETFL, arg) < 0) {
-            fprintf(stderr, "map_cli fcntl F_SETFD: %s\n", strerror(errno));
-        }
-
-        while (1) {
-            rc = connect(fd, cur->ai_addr, cur->ai_addrlen);
-            if (rc == 0) {
-                break;
-            }
-
-            pfd.fd = fd;
-            pfd.events = POLLIN | POLLOUT;
-            pfd.revents = 0;
-            rc = poll(&pfd, 1, 5000/*5 sec*/);
-            if (rc == 0) {
-                fprintf(stderr, "map_cli connection timeout\n");
-                close(fd);
-                fd = -1;
-                break;
-            }
-
-            len = sizeof(val);
-            rc = getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *)(&val), &len);
-            if (rc < 0 || val != 0) {
-                fprintf(stderr, "map_cli connection timeout\n");
-                close(fd);
-                fd = -1;
-                break;
-            }
-        }
-    }
-
-    freeaddrinfo(addr_list);
+    /* Create and bind socket */
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
-        fprintf(stderr, "map_cli can not open socket! command:%s\n", command);
-        return -1;
+        fprintf(stderr, "map_cli can not open socket\n");
+        goto bail;
     }
 
-    /* Set to blocking mode again... */
-    arg = fcntl(fd, F_GETFL, NULL);
-    arg &= (~O_NONBLOCK);
-    fcntl(fd, F_SETFL, arg);
+    memset(&saddr, 0, sizeof(saddr));
+    saddr.sun_family = AF_UNIX;
+    snprintf(saddr.sun_path + 1, sizeof(saddr.sun_path) - 1, "%s.%d", CLI_SOCK_PATH, getpid());
+    if (bind(fd, (struct sockaddr *)&saddr, sizeof(saddr))) {
+        fprintf(stderr, "map_cli bind failed\n");
+        goto bail;
+    }
 
+    /* Set timeout */
     if (timeout > 0) {
         signal(SIGALRM, signal_handler);
         alarm(timeout / 1000);
     }
 
-    val = 1;
-    setsockopt(fd, SOL_TCP, TCP_NODELAY, &val, sizeof(val));
-    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val));
-    /* After 10 secs of inactivity, probe 5 times in intervals of 10 secs. Max closure time is 60 secs. */
-    val = 5;
-    setsockopt(fd, SOL_TCP, TCP_KEEPCNT, &val, sizeof(val));
-    val = 10;
-    setsockopt(fd, SOL_TCP, TCP_KEEPIDLE, &val, sizeof(val));
-    val = 10;
-    setsockopt(fd, SOL_TCP, TCP_KEEPINTVL, &val, sizeof(val));
+    /* Connect to server */
+    memset(&saddr, 0, sizeof(saddr));
+    saddr.sun_family = AF_UNIX;
+    sprintf(saddr.sun_path + 1, "%s", CLI_SOCK_PATH);
+    if (connect(fd, (struct sockaddr*)&saddr, sizeof(struct sockaddr_un))) {
+        fprintf(stderr, "map_cli connect failed\n");
+        goto bail;
+    }
+
+    /* Wait if needed */
     if (wait > 0) {
         usleep(wait * 1000);
     }

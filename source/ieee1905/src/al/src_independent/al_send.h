@@ -105,7 +105,7 @@
 *
 *  Return '0' if there was a problem, '1' otherwise.
 */
-uint8_t forward1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dst_mac_address, i1905_cmdu_t *cmdu, int get_src_mac_frm_stream);
+uint8_t forward1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dest_mac, i1905_cmdu_t *cmdu, int get_src_mac_frm_stream);
 
 
 /*#######################################################################
@@ -150,7 +150,7 @@ uint8_t send1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dest_mac,
 *
 *  Return "0" if a problem was found. "1" otherwise.
 */
-uint8_t sendLLDPBridgeDiscoveryPacket(char *interface_name, uint8_t* dest_mac, i1905_lldp_payload_t *payload);
+uint8_t sendLLDPBridgeDiscoveryPacket(char *interface_name, uint8_t* src_mac, i1905_lldp_payload_t *payload);
 
 
 /*#######################################################################

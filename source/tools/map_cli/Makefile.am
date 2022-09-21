@@ -7,7 +7,9 @@
 AM_CFLAGS = -D_ANSC_LINUX
 AM_CFLAGS += -D_ANSC_USER
 
-AM_CPPFLAGS = -Wall -Werror
+AM_CFLAGS += -D_GNU_SOURCE
+AM_CFLAGS += -Wall -Wextra -Werror
+
 ACLOCAL_AMFLAGS = -I m4
 
 bin_PROGRAMS = map_cli

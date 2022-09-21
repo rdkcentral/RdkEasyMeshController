@@ -365,6 +365,9 @@ int map_dm_remove_ale(map_ale_info_t *ale)
     /* Free non 1905 neighbors */
     map_dm_free_non_1905_neighbor_list(ale);
 
+    /* Remove bachaul sta interface list */
+    free(ale->backhaul_sta_iface_list);
+
     /* Call remove callbacks before removing radios to avoid that they need
        to be remove one by one.  This is ok for current use cases.
     */
@@ -421,7 +424,7 @@ int map_dm_remove_ale(map_ale_info_t *ale)
 ########################################################################*/
 map_radio_info_t *map_dm_create_radio(map_ale_info_t *ale, mac_addr radio_id)
 {
-    map_radio_info_t *radio;
+    map_radio_info_t        *radio;
 
     if ((radio = map_dm_get_radio(ale, radio_id))) {
         return radio;
@@ -834,6 +837,7 @@ void map_dm_ale_set_device_info(map_ale_info_t *ale, map_device_info_t *new_d)
     bool update = false;
 
     if (old_d->os_version != new_d->os_version                     ||
+        strcmp(old_d->os_version_str,    new_d->os_version_str)    ||
         strcmp(old_d->manufacturer_name, new_d->manufacturer_name) ||
         strcmp(old_d->model_name,        new_d->model_name)        ||
         strcmp(old_d->model_number,      new_d->model_number)      ||
@@ -917,10 +921,12 @@ void map_dm_radio_set_channel(map_radio_info_t *radio, uint8_t op_class, uint8_t
 
     if (radio->current_bw != bw) {
         radio->current_bw = bw;
+        update = true;
     }
 
     if (radio->current_tx_pwr != tx_pwr) {
         radio->current_tx_pwr = tx_pwr;
+        update = true;
     }
 
     if (update) {
@@ -928,17 +934,28 @@ void map_dm_radio_set_channel(map_radio_info_t *radio, uint8_t op_class, uint8_t
     }
 }
 
-void map_dm_radio_set_configured_channel(map_radio_info_t *radio, uint8_t channel, uint8_t bw)
+void map_dm_radio_set_chan_sel(map_radio_info_t *radio, bool acs_enable, map_channel_set_t *acs_channels, uint8_t channel, uint8_t bw)
 {
-    bool update = false;
+    map_radio_chan_sel_t *chan_sel = &radio->chan_sel;
+    bool                  update   = false;
 
-    if (radio->configured_channel != channel) {
-        radio->configured_channel = channel;
+    if (map_cs_compare(&chan_sel->acs_channels, acs_channels)) {
+        map_cs_copy(&chan_sel->acs_channels, acs_channels);
         update = true;
     }
 
-    if (radio->configured_bw != bw) {
-        radio->configured_bw = bw;
+    if (chan_sel->acs_enable != acs_enable) {
+        chan_sel->acs_enable = acs_enable;
+        update = true;
+    }
+
+    if (chan_sel->channel != channel) {
+        chan_sel->channel = channel;
+        update = true;
+    }
+
+    if (chan_sel->bandwidth != bw) {
+        chan_sel->bandwidth = bw;
         update = true;
     }
 
@@ -1017,13 +1034,54 @@ void map_dm_get_sta_timer_id(timer_id_t id, map_sta_info_t *sta, const char *typ
     snprintf(id, sizeof(timer_id_t), "STA-%s_%s-%s", sta->bss->bssid_str, sta->mac_str, type);
 }
 
+void map_dm_mark_stas(map_ale_info_t *ale)
+{
+    map_radio_info_t *radio;
+    map_bss_info_t   *bss;
+    map_sta_info_t   *sta;
+
+    map_dm_foreach_radio(ale, radio) {
+        map_dm_foreach_bss(radio, bss) {
+            map_dm_foreach_sta(bss, sta) {
+                map_dm_mark_sta(sta);
+            }
+        }
+    }
+}
+
+void map_dm_remove_marked_stas(map_ale_info_t *ale, unsigned int min_assoc_time)
+{
+    map_radio_info_t *radio;
+    map_bss_info_t   *bss;
+    map_sta_info_t   *sta, *next;
+    uint64_t          ts_sec = acu_get_timestamp_sec();
+
+    map_dm_foreach_radio(ale, radio) {
+        map_dm_foreach_bss(radio, bss) {
+            map_dm_foreach_sta_safe(bss, sta, next) {
+                if (map_dm_is_marked_sta(sta)) {
+                    uint64_t assoc_time = map_dm_get_sta_assoc_ts_delta2(ts_sec, sta->assoc_ts);
+                    if (assoc_time > min_assoc_time) {
+                        map_dm_remove_sta(sta);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /*#######################################################################
 #                       INIT                                            #
 ########################################################################*/
 int map_dm_init(void)
 {
+    /* Re-init list heads to avoid problems with not properly terminated unit tests */
+    INIT_LIST_HEAD(&g_ale_list);
+    INIT_LIST_HEAD(&g_dm_cbs_list);
+
     map_dm_airdata_init();
     inactive_sta_list_init();
+
     return 0;
 }
 
@@ -1052,7 +1110,7 @@ void map_dm_register_cbs(map_dm_cbs_t *cbs)
 {
     INIT_LIST_HEAD(&cbs->list);
 
-    list_add(&cbs->list, &g_dm_cbs_list);
+    list_add_tail(&cbs->list, &g_dm_cbs_list);
 
     cbs->registered = true;
 }
@@ -1065,4 +1123,3 @@ void map_dm_unregister_cbs(map_dm_cbs_t *cbs)
         cbs->registered = false;
     }
 }
-

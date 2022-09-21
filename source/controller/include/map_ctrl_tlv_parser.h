@@ -116,6 +116,9 @@ int map_parse_ap_ext_metrics_response_tlv(map_ale_info_t *ale, map_ap_ext_metric
 /* MAP_R2 17.2.62 */
 int map_parse_assoc_sta_ext_link_metrics_tlv(map_ale_info_t *ale, map_assoc_sta_ext_link_metrics_tlv_t* tlv);
 
+/* MAP_R2 17.2.65 */
+int map_parse_backhaul_sta_radio_capability_tlv(map_ale_info_t *ale, map_backhaul_sta_radio_cap_tlv_t **tlvs, size_t tlvs_nr);
+
 /*#######################################################################
 #                       MAP R3 TLV HANDLERS                             #
 ########################################################################*/
@@ -127,5 +130,7 @@ int map_parse_device_inventory_tlv(map_ale_info_t *ale, map_device_inventory_tlv
 int map_parse_1905_encap_dpp_tlv(map_ale_info_t *ale, map_1905_encap_dpp_tlv_t *tlv);
 /* MAP_R3 17.2.83 */
 int map_parse_dpp_chirp_value_tlv(map_ale_info_t *ale, map_dpp_chirp_value_tlv_t *tlv);
+/* MAP_R3 17.2.86 */
+int map_parse_dpp_message_tlv(map_ale_info_t *ale, map_dpp_message_tlv_t *tlv);
 
 #endif /* MAP_CTRL_TLV_PARSER_H_ */

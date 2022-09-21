@@ -20,6 +20,7 @@
 #include "arraylist.h"
 #include "kwaytree.h"
 #include "map_common_defines.h"
+#include "map_channel_set.h"
 #include "map_timer_handler.h"
 #include "map_utils.h"
 
@@ -103,6 +104,8 @@ typedef struct map_sta_info_s {
     list_head_t                 list;
     list_head_t                 hlist;
 
+    bool                        marked;
+
     char                        if_name[MAX_IFACE_NAME_LEN]; /* BSTA interface name */
     map_sta_capability_t        sta_caps;
     uint64_t                    assoc_ts; /* Association timestamp in seconds (acu_get_timestamp_sec() + MAP_ASSOC_TS_DELTA) */
@@ -130,13 +133,15 @@ typedef union map_esp_info_s {  /* esp = estimated service parameters */
 } map_esp_info_t;
 
 typedef struct map_ap_metric_s {
-    uint32_t        channel_utilization;
-    uint8_t         stas_nr;     /* as per the metrics parameter */
-    uint8_t         esp_present; /* BIT7->AC_BE, BIT6->AC_BK, BIT5->VO, BIT4->VI */
-    map_esp_info_t  esp[MAX_ACCESS_CATEGORY];
+    bool           valid;
+    uint32_t       channel_utilization;
+    uint8_t        stas_nr;     /* as per the metrics parameter */
+    uint8_t        esp_present; /* BIT7->AC_BE, BIT6->AC_BK, BIT5->VO, BIT4->VI */
+    map_esp_info_t esp[MAX_ACCESS_CATEGORY];
 } map_ap_metric_t;
 
 typedef struct map_ap_extended_metrics_s {
+    bool     valid;
     uint64_t ucast_bytes_tx;
     uint64_t ucast_bytes_rx;
     uint64_t mcast_bytes_tx;
@@ -185,15 +190,14 @@ typedef struct map_bss_info_s {
    Fields eirp, pref, reason for some
 */
 typedef struct map_op_class_s {
-    uint8_t op_class;
-    uint8_t eirp;      /* Radio basic capabilities */
-    uint8_t pref;      /* Agent and controller channel preference */
-    uint8_t reason;    /* Agent and controller channel preference */
-    uint8_t channel_count;
-    uint8_t channel_list[MAX_CHANNEL_PER_OP_CLASS];
+    uint8_t           op_class;
+    uint8_t           eirp;      /* Radio basic capabilities */
+    uint8_t           pref;      /* Agent and controller channel preference */
+    uint8_t           reason;    /* Agent and controller channel preference */
+    map_channel_set_t channels;
 } map_op_class_t;
 
-typedef struct map_op_class_list_t {
+typedef struct map_op_class_list_s {
     uint8_t         op_classes_nr;
     map_op_class_t *op_classes;
 } map_op_class_list_t;
@@ -286,6 +290,7 @@ typedef struct map_agent_capablity_s {
 } map_agent_capability_t;
 
 typedef struct map_radio_metrics_s {
+    bool    valid;
     uint8_t noise;
     uint8_t transmit;
     uint8_t receive_self;
@@ -389,6 +394,16 @@ typedef struct map_radio_wifi6_capabilities_s {
     map_radio_wifi6_cap_data_t cap_data[MAP_AP_ROLE_MAX];
 } map_radio_wifi6_caps_t;
 
+typedef struct {
+    bool              acs_enable;        /* ACS enabled or not */
+    map_channel_set_t acs_channels;      /* List of channels ACS may use */
+    uint8_t           channel;           /* Fixed channel to be used when acs_enable = false */
+    uint8_t           bandwidth;         /* Maximum bandwidth to be used */
+
+    map_channel_set_t def_pref_channels;
+    map_channel_set_t pref_channels;
+} map_radio_chan_sel_t;
+
 /*#######################################################################
 #                       RADIO INFO                                      #
 ########################################################################*/
@@ -405,8 +420,6 @@ typedef struct map_radio_info_s {
     uint8_t                      supported_freq;
     uint16_t                     band_type_5G;
     uint8_t                      max_bss;
-    uint8_t                      configured_channel;
-    uint8_t                      configured_bw;
     uint8_t                      current_op_class;
     uint8_t                      current_op_channel;
     uint8_t                      current_bw;
@@ -429,11 +442,15 @@ typedef struct map_radio_info_s {
     map_op_class_list_t          ctrl_pref_op_class_list; /* Controller preference to be setn in channel selection request */
     map_op_restriction_list_t    op_restriction_list;     /* Radio operating restriction */
 
+    map_channel_set_t            ctl_channels;            /* Set of all possible 20MHz channels */
+    map_channel_bw_set_t         channels_with_bandwidth;  /* Set of all possible channels with bandwidth information*/
+
     void                        *unassoc_metrics;
     map_scan_info_t              last_scan_info;
     array_list_t                *scanned_bssid_list;
     map_cac_completion_info_t    cac_completion_info;
     uint8_t                      ongoing_cac_request;     /* 1: cac request is made and still not finished, 0: there is no cac request */
+    map_radio_chan_sel_t         chan_sel;
 } map_radio_info_t;
 
 /*#######################################################################
@@ -491,12 +508,19 @@ typedef struct map_non_1905_neighbor_s {
     mac_addr *macs;
 } map_non_1905_neighbor_t;
 
+typedef struct map_backhaul_sta_iface_s {
+    mac_addr  mac_address;
+    mac_addr  radio_id;
+    bool      active;
+} map_backhaul_sta_iface_t;
+
 typedef struct map_device_info_s {
     char     manufacturer_name[MAX_MANUFACTURER_NAME_LEN];
     char     model_name[MAX_MODEL_NAME_LEN];
     char     model_number[MAX_MODEL_NUMBER_LEN];
     char     serial_number[MAX_SERIAL_NUM_LEN];
     uint32_t os_version;
+    char     os_version_str[sizeof("123.123.123.123")];  /* os_version as string with format a.b.c.d */
 } map_device_info_t;
 
 typedef struct  {
@@ -619,10 +643,16 @@ typedef struct map_dpp_chirp_s {
     uint8_t *hash;
 } map_dpp_chirp_t;
 
+typedef struct map_dpp_message_s {
+    uint16_t frame_len;
+    uint8_t *frame;
+} map_dpp_message_t;
+
 typedef struct map_dpp_info_s {
     bool cce_advertised;
     map_dpp_chirp_t chirp;
     map_dpp_encap_msg_t encap_msg;
+    map_dpp_message_t message;
 } map_dpp_info_t;
 
 /*#######################################################################
@@ -654,17 +684,19 @@ typedef struct map_ale_info_s {
                                                                    - AP Operational BSS TLV present in topology response
                                                                    - AP Radio Capabilities TLV present in autoconfig M1 message
                                                                 */
+    uint16_t                    state;
     uint8_t                     ale_bcu_status;
     map_onboard_status_t        ale_onboard_status;             /* onboarding status: holds flags to define different onboarding  state */
     struct timespec             ale_onboarding_time;            /* The time that ALE onboarded */
     struct timespec             keep_alive_time;
     uint8_t                     first_chan_sel_req_done;
     struct timespec             last_chan_sel_req_time;
-    mac_addr                    iface_mac;                      /* Remove it once agent dependency is removed */
     uint8_t                     local_iface_count;
     map_local_iface_t          *local_iface_list;
     uint8_t                     non_1905_neighbor_count;
     map_non_1905_neighbor_t    *non_1905_neighbor_list;
+    uint8_t                     backhaul_sta_iface_count;
+    map_backhaul_sta_iface_t   *backhaul_sta_iface_list;
     map_device_info_t           device_info;
     char                        iface_name[MAX_IFACE_NAME_LEN]; /* Receiving interface in controller */
     mac_addr                    upstream_al_mac;                /* AL mac of upstream device. For ease of use as this can also be retreived via the k_tree */
@@ -781,6 +813,17 @@ bool map_dm_is_inactive_sta(mac_addr mac);
 #define map_dm_get_sta_assoc_ts_delta(assoc_ts)      (acu_get_timestamp_sec() + MAP_ASSOC_TS_DELTA - assoc_ts)
 #define map_dm_get_sta_assoc_ts_delta2(ts, assoc_ts) (ts                      + MAP_ASSOC_TS_DELTA - assoc_ts)
 
+
+#define map_dm_mark_sta(sta)      do { sta->marked = true; } while(0)
+#define map_dm_unmark_sta(sta)    do { sta->marked = false; } while(0)
+#define map_dm_is_marked_sta(sta) (sta->marked)
+
+/* Mark all sta of an ale */
+void map_dm_mark_stas(map_ale_info_t *ale);
+
+/* Remove sta that are marked and where associated longer than "min_assoc_time */
+void map_dm_remove_marked_stas(map_ale_info_t *ale, unsigned int min_assoc_time);
+
 /*#######################################################################
 #                       ITERATORS                                       #
 ########################################################################*/
@@ -858,8 +901,8 @@ void map_dm_radio_set_capabilities(map_radio_info_t *radio);
 /* Update channel related parameters */
 void map_dm_radio_set_channel(map_radio_info_t *radio, uint8_t op_class, uint8_t channel, uint8_t bw, uint8_t tx_pwr);
 
-/* Update configured channel */
-void map_dm_radio_set_configured_channel(map_radio_info_t *radio, uint8_t channel, uint8_t bw);
+/* Update channel selection data */
+void map_dm_radio_set_chan_sel(map_radio_info_t *radio, bool acs_enable, map_channel_set_t *acs_channels, uint8_t channel, uint8_t bw);
 
 /* Update ssid and bss type */
 void map_dm_bss_set_ssid(map_bss_info_t *bss, size_t ssid_len, uint8_t *ssid, int bss_type);

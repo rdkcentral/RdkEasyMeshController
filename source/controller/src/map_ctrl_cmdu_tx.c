@@ -42,17 +42,20 @@
 static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio, uint8_t *config_count,
                            map_profile_cfg_t *m2_config, map_traffic_separation_policy_tlv_t *tsp_tlv)
 {
-    map_controller_cfg_t *cfg        = get_controller_cfg();
-    uint16_t              freq_bands = map_get_freq_bands(radio);
-    bool                  is_gateway = map_is_local_agent(ale); /* Note: at this moment, the controller is expected to run on a gateway */
-    int                   prim_vid   = map_cfg_get()->primary_vlan_id;
+    map_controller_cfg_t *cfg         = get_controller_cfg();
+    uint16_t              freq_bands  = map_get_freq_bands(radio);
+    bool                  is_gateway  = map_is_local_agent(ale); /* Note: at this moment, the controller is expected to run on a gateway */
+    bool                  is_extender = !is_gateway;
+    int                   prim_vid    = map_cfg_get()->primary_vlan_id;
     unsigned int          i, j;
 
-    log_ctrl_i("[get_m2_profiles] Configure ale[%s] radio[%s] max_bss[%d] max_vid[%d] band[%s%s%s]",
-               ale->al_mac_str, radio->radio_id_str, radio->max_bss, ale->agent_capability.max_vid_count,
+    log_ctrl_i("[get_m2_profiles] configure ale[%s] gw[%d] ext[%d] radio[%s] max_bss[%d] max_vid[%d] band[%s%s%s%s]",
+               ale->al_mac_str, is_gateway ? 1 : 0, is_extender ? 1 : 0,
+               radio->radio_id_str, radio->max_bss, ale->agent_capability.max_vid_count,
                freq_bands & MAP_M2_BSS_RADIO2G  ? "2G "  : "",
                freq_bands & MAP_M2_BSS_RADIO5GL ? "5GL " : "",
-               freq_bands & MAP_M2_BSS_RADIO5GU ? "5GH" : "");
+               freq_bands & MAP_M2_BSS_RADIO5GU ? "5GH " : "",
+               freq_bands & MAP_M2_BSS_RADIO6G  ? "6G"  : "");
 
     for (i = 0; (i < cfg->num_profiles) && (*config_count < radio->max_bss) && (*config_count < MAX_BSS_PER_RADIO); i++) {
         map_profile_cfg_t *profile = &cfg->profiles[i];
@@ -86,7 +89,7 @@ static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio, uint8_t
 
         /* Skip if for device type does not match */
         if ((is_gateway  && !profile->gateway) ||
-            (!is_gateway && !profile->extender)) {
+            (is_extender && !profile->extender)) {
             continue;
         }
 
@@ -117,7 +120,7 @@ static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio, uint8_t
     */
     if (*config_count == 0) {
         /* Setting the SSID to NULL will build a WSC TLV with TEAR-DOWN bit set. */
-        log_ctrl_i("[get_m2_profiles] No bss configured -> tear down");
+        log_ctrl_i("[get_m2_profiles] teardown radio (no bss configured)");
         m2_config->bss_ssid[0] = '\0';
         *config_count = 1;
     }
@@ -320,6 +323,29 @@ int map_send_topology_discovery(i1905_interface_info_t *interface, uint16_t *mid
 }
 
 /* 1905.1 6.3.2 (type 0x0001) */
+int map_send_topology_query_with_al_mac(mac_addr al_mac_addr, char *iface, uint16_t *mid)
+{
+    i1905_cmdu_t               cmdu            = {0};
+    uint8_t                   *tlvs[2]         = {0};
+    map_multiap_profile_tlv_t  map_profile_tlv = {0};
+
+    /* MAP Profile TLV */
+    map_profile_tlv.tlv_type        = TLV_TYPE_MULTIAP_PROFILE;
+    map_profile_tlv.map_profile     = get_controller_cfg()->map_profile;
+    tlvs[0] = (uint8_t *)&map_profile_tlv;
+
+    /* Create CMDU */
+    cmdu.message_version  =  CMDU_MESSAGE_VERSION_1905_1_2013;
+    cmdu.message_type     =  CMDU_TYPE_TOPOLOGY_QUERY;
+    cmdu.message_id       =  0;
+    cmdu.relay_indicator  =  RELAY_INDICATOR_OFF;
+    cmdu.list_of_TLVs     =  tlvs;
+    map_strlcpy(cmdu.interface_name, iface, sizeof(cmdu.interface_name));
+
+    return map_send_cmdu(al_mac_addr, &cmdu, mid);
+}
+
+/* 1905.1 6.3.2 (type 0x0001) */
 int map_send_topology_query(void *args, uint16_t *mid)
 {
     map_ale_info_t            *ale             = args;
@@ -394,9 +420,9 @@ int map_send_topology_response(i1905_cmdu_t *recv_cmdu)
 	supported_service_tlv.services_nr = 1;
 	supported_service_tlv.services[0] = MAP_SERVICE_CONTROLLER;
 
-	/* AP Operational BSS TLV */
-	ap_operational_bss_tlv.tlv_type  = TLV_TYPE_AP_OPERATIONAL_BSS;
-	ap_operational_bss_tlv.radios_nr = 0;
+        /* AP Operational BSS TLV */
+        ap_operational_bss_tlv.tlv_type  = TLV_TYPE_AP_OPERATIONAL_BSS;
+        ap_operational_bss_tlv.radios_nr = 0;
 
         /* MAP Profile TLV */
         map_profile_tlv.tlv_type    = TLV_TYPE_MULTIAP_PROFILE;
@@ -437,7 +463,7 @@ int map_send_topology_response(i1905_cmdu_t *recv_cmdu)
         cmdu.list_of_TLVs[tlv_count++] = NULL;
 
         if (tlv_count != tlvs_nr) {
-            platform_log(MAP_CONTROLLER,LOG_ERR,"[%s] TLV count mismatch", __FUNCTION__);
+            log_ctrl_e("[%s] TLV count mismatch", __FUNCTION__);
             break;
         }
 
@@ -534,7 +560,7 @@ int map_send_autoconfig_response(i1905_cmdu_t *recv_cmdu, bool ale_is_agent)
     i1905_al_mac_address_tlv_t       *al_mac_tlv;
     i1905_autoconfig_freq_band_tlv_t *autoconfig_freq_band_tlv;
     i1905_cmdu_t                      cmdu                     = {0};
-    uint8_t                          *tlvs[6]                  = {0}; /* supp_role, supp_freq_band, supp_service, map_profile,  NULL */
+    uint8_t                          *tlvs[5]                  = {0}; /* supp_role, supp_freq_band, supp_service, map_profile,  NULL */
     i1905_supported_role_tlv_t        supported_role_tlv       = {0};
     i1905_supported_freq_band_data_t  supp_freq_band_data      = {0};
     i1905_supported_freq_band_tlv_t   supported_freq_band_tlv  = {0};
@@ -667,7 +693,9 @@ int map_send_autoconfig_wsc_m2(map_ale_info_t *ale, map_radio_info_t *radio, i19
         }
 
         /* Get total number of TLVs required and allocate memory accordingly */
-        tlvs_nr = wsc_tlv_count + /* radio_id */ 1 + /* eom */ 1 + (add_ts_tlv ? 2 : 0);
+        tlvs_nr = wsc_tlv_count + /* radio_id */ 1 + /* eom */ 1 +
+                  (add_ts_tlv ? 1 : 0) + (add_def_8021q_tlv ? 1 : 0);
+
         if (!(cmdu.list_of_TLVs = calloc(tlvs_nr, sizeof(uint8_t *)))) {
             log_ctrl_e("calloc failed");
             ERROR_EXIT(status)
@@ -1383,8 +1411,10 @@ int map_send_cac_termination(map_ale_info_t *ale, map_cac_termination_tlv_t *tlv
 }
 
 /* MAP_R2 17.1.42 (type 0x8027) */
-int map_send_backhaul_sta_capability_query(map_ale_info_t *ale, uint16_t *mid)
+int map_send_backhaul_sta_capability_query(void *args, uint16_t *mid)
 {
+    map_ale_info_t *ale = args;
+
     return send_cmdu_zero_tlv(ale, CMDU_TYPE_MAP_BACKHAUL_STA_CAPABILITY_QUERY, mid);
 }
 
@@ -1428,4 +1458,44 @@ int map_send_dpp_cce_indication(map_ale_info_t *ale, uint8_t advertise, uint16_t
     tlv.advertise = advertise;
 
     return send_cmdu_one_tlv(ale, CMDU_TYPE_MAP_DPP_CCE_INDICATION, TLV_TYPE_DPP_CCE_INDICATION, &tlv, mid);
+}
+
+/* MAP_R3 17.1.52 (type 0x802F) */
+int map_send_dpp_chirp_notification(map_dpp_chirp_value_tlv_t *chirp_value_tlv_list, int num_chirp_tlv, uint16_t *mid)
+{
+    int i, ret;
+    i1905_cmdu_t  cmdu = {0};
+    mac_addr mcast_mac;
+    uint8_t **tlvs = NULL;
+
+    if (!(tlvs = calloc(num_chirp_tlv + 1, sizeof(uint8_t *)))) {
+        return -1;
+    }
+
+    i1905_get_mcast_mac(mcast_mac);
+
+    for (i = 0; i < num_chirp_tlv; i++) {
+        chirp_value_tlv_list[i].tlv_type = TLV_TYPE_DPP_CHIRP_VALUE;
+        tlvs[i] = (uint8_t *)&chirp_value_tlv_list[i];
+    }
+
+    cmdu.message_version = CMDU_MESSAGE_VERSION_1905_1_2013;
+    cmdu.message_type    = CMDU_TYPE_MAP_CHIRP_NOTIFICATION;
+    cmdu.message_id      = 0;
+    cmdu.relay_indicator = RELAY_INDICATOR_ON;
+    cmdu.list_of_TLVs    = tlvs;
+    map_strlcpy(cmdu.interface_name, "all", sizeof(cmdu.interface_name));
+
+    ret = map_send_cmdu(mcast_mac, &cmdu, mid);
+
+    free(tlvs);
+    return ret;
+}
+
+/*#######################################################################
+#                       RAW                                             #
+########################################################################*/
+int map_send_raw(char *ifname, mac_addr dmac, mac_addr smac, uint16_t eth_type, uint8_t *data, uint16_t data_len)
+{
+    return i1905_send_raw(ifname, dmac, smac, eth_type, data, data_len);
 }

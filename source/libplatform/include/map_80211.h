@@ -26,13 +26,13 @@
  *  @param caps Pointer where to store the resulting capabilities
  *  @param body Assoc or re-assoc body (starting from fixed parameters or from IE)
  *  @param body_len Length of body
- *  @param is_5g Indicate if station is connected to 5G or not
+ *  @param is_2g Indicate if station is connected to 2G or not
  *  @param match_ssid SSID used to validate body
  *  @param match_ssid_len Length of SSID used to validate body
  *  @return The status code 0-success, -ve for failure
  */
 
-int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int body_len, bool is_5g, uint8_t *match_ssid, int match_ssid_len);
+int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int body_len, int supported_freq, uint8_t *match_ssid, int match_ssid_len);
 
 
 /** @brief This function derives max phy rate in kbps from capabilities

@@ -30,10 +30,10 @@
 #                       TYPEDEF                                         #
 ########################################################################*/
 typedef struct timer_cb_data_s {
-    timer_id_t    timer_id;
-    map_timer_t  *map_timer;
-    timer_cb_t    cb;
-    void         *args;
+    timer_id_t           timer_id;
+    acu_evloop_timer_t  *evloop_timer;
+    timer_cb_t           cb;
+    void                *args;
 } timer_cb_data_t;
 
 /*#######################################################################
@@ -46,8 +46,8 @@ static array_list_t *g_registered_callbacks;
 ########################################################################*/
 static void free_timer_data(timer_cb_data_t *timer_data)
 {
-    if (timer_data->map_timer) {
-        map_timer_delete(timer_data->map_timer);
+    if (timer_data->evloop_timer) {
+        acu_evloop_timer_delete(timer_data->evloop_timer);
     }
     free(timer_data);
 }
@@ -107,7 +107,7 @@ int map_timer_register_callback(uint16_t    frequency_sec,
     timer_cb_data_t *timer_data = NULL;
 
     do {
-        if (cb == NULL || frequency_sec == 0 || timer_id == NULL) {
+        if (cb == NULL || timer_id == NULL) {
             ERROR_EXIT(status)
         }
 
@@ -130,8 +130,8 @@ int map_timer_register_callback(uint16_t    frequency_sec,
         timer_data->cb   = cb;
         timer_data->args = args;
 
-        timer_data->map_timer = map_timer_add(SEC_TO_MSEC(frequency_sec), SEC_TO_MSEC(frequency_sec), timer_callback, timer_data);
-        if (timer_data->map_timer == NULL) {
+        timer_data->evloop_timer = acu_evloop_timer_add(SEC_TO_MSEC(frequency_sec), SEC_TO_MSEC(frequency_sec), timer_callback, timer_data);
+        if (timer_data->evloop_timer == NULL) {
             log_lib_e("failed to add timer");
             free_timer_data(timer_data);
             ERROR_EXIT(status)
@@ -208,7 +208,7 @@ int map_timer_restart_callback(const char* timer_id)
             log_lib_e("timer [%s] isn't registered yet", timer_id);
             ERROR_EXIT(status)
         } else {
-            map_timer_restart(timer_data->map_timer);
+            acu_evloop_timer_restart(timer_data->evloop_timer);
         }
     } while (0);
 
@@ -229,7 +229,7 @@ int map_timer_change_callback(const char *timer_id, uint16_t frequency_sec, void
             log_lib_e("timer [%s] isn't registered yet", timer_id);
             ERROR_EXIT(status)
         } else {
-            map_timer_change_period(timer_data->map_timer, SEC_TO_MSEC(frequency_sec));
+            acu_evloop_timer_change_period(timer_data->evloop_timer, SEC_TO_MSEC(frequency_sec));
             timer_data->args = args;
         }
     } while (0);

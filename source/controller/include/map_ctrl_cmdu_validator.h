@@ -30,7 +30,7 @@ int map_validate_topology_discovery(i1905_cmdu_t *cmdu);
 int map_validate_topology_query(i1905_cmdu_t *cmdu);
 
 /* 1905.1 6.3.3 (type 0x0002) */
-int map_validate_topology_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+int map_validate_topology_response(i1905_cmdu_t *cmdu);
 
 /* 1905.1 6.3.4 (type 0x0003) */
 int map_validate_topology_notification(i1905_cmdu_t *cmdu);
@@ -43,9 +43,6 @@ int map_validate_link_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 
 /* 1905.1 6.3.7 (type 0x0007) */
 int map_validate_ap_autoconfig_search(i1905_cmdu_t *cmdu);
-
-/* 1905.1 6.3.8 (type 0x0008) */
-int map_validate_ap_autoconfig_response(i1905_cmdu_t *cmdu);
 
 /* 1905.1 6.3.9 (type 0x0009) */
 int map_validate_ap_autoconfig_wsc(i1905_cmdu_t *cmdu);
@@ -113,6 +110,9 @@ int map_validate_tunneled_msg(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 /* MAP_R2 17.1.41 (type 0x8022) */
 int map_validate_client_disassoc_stats(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 
+/* MAP_R2 17.1.43 (type 0x8028) */
+int map_validate_backhaul_sta_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
 /* MAP_R2 17.1.44 (type 0x8033) */
 int map_validate_failed_connection(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 
@@ -123,17 +123,6 @@ int map_validate_failed_connection(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 int map_validate_proxied_encap_dpp(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 /* MAP_R3 17.1.52 (type 0x802f) */
 int map_validate_chirp_notification(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
-
-/*#######################################################################
-#                 MONITOR MODE CMDU VALIDATORS                          #
-########################################################################*/
-/* 1905.1 6.3.1 (type 0x0000) */
-int map_monitor_validate_topology_discovery(i1905_cmdu_t *cmdu);
-/* 1905.1 6.3.3 (type 0x0002) */
-int map_monitor_validate_topology_response(i1905_cmdu_t *cmdu);
-/* 1905.1 6.3.7 (type 0x0007) */
-int map_monitor_validate_ap_autoconfig_search(i1905_cmdu_t *cmdu);
-/* 1905.1 6.3.8 (type 0x0008) */
-int map_monitor_validate_ap_autoconfig_response(i1905_cmdu_t *cmdu);
-
+/* MAP_R3 17.1.56 (type 0x802a) */
+int map_validate_direct_encap_dpp(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 #endif /* MAP_CTRL_CMDU_VALIDATOR_H_ */

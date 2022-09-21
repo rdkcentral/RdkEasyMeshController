@@ -39,11 +39,11 @@ void map_onboarding_handler_fini(void);
  *      Intiate a topology query
  *
  *  @param
- *      al_mac      - AL MAC address of the agent
- *      recv_ifname - Receiving interface Name
+ *      al_mac          - AL MAC address of the agent
+ *      recv_iface      - Receiving interface Name
  *  @return The reference to map_ale_info_t on success otherwise NULL.
  */
-map_ale_info_t* map_handle_new_agent_onboarding(uint8_t *al_mac, char* recv_ifname);
+map_ale_info_t* map_handle_new_agent_onboarding(uint8_t *al_mac, char* recv_iface);
 
 /** @brief This API prepares the controller for new radio onboarding
  *
@@ -52,11 +52,12 @@ map_ale_info_t* map_handle_new_agent_onboarding(uint8_t *al_mac, char* recv_ifna
  *      Intiates Policy configuration request message
  *
  *  @param
- *      al_mac      - AL MAC address of the agent
- *      recv_ifname - Receiving interface Name
+ *      al_mac              - AL MAC address of the agent
+ *      recv_ifname         - Receiving interface Name
+ *      do_policy_config    - policy config request decision
  *  @return The reference to map_ale_info_t on success otherwise NULL.
  */
-map_radio_info_t* map_handle_new_radio_onboarding(map_ale_info_t *ale, uint8_t *radio_id);
+map_radio_info_t* map_handle_new_radio_onboarding(map_ale_info_t *ale, uint8_t *radio_id, bool do_policy_config);
 
 /** @brief Check if agent is onboarded
  *

@@ -179,15 +179,10 @@ static void print_bss_in_radio(map_radio_info_t *radio, map_printf_cb_t print_cb
 
 static void print_op_class_channel_list(map_op_class_t *op_class, map_printf_cb_t print_cb)
 {
-#define CHANNEL_BUF_SIZE 256
-    char buf[CHANNEL_BUF_SIZE];
-    int  pos = 0;
-    int  i;
+    map_channel_set_t *s = &op_class->channels;
+    char buf[MAP_CS_BUF_LEN];
 
-    for (i = 0; i < op_class->channel_count && pos < CHANNEL_BUF_SIZE; i++) {
-        pos += snprintf(buf + pos, CHANNEL_BUF_SIZE - pos, "%d, ", op_class->channel_list[i]);
-    }
-    print_cb("     -Channels : %s\n", pos ? buf : "all");
+    print_cb("     -Channels : %s\n", map_cs_nr(s) > 0 ? map_cs_to_string(s, ',', buf, sizeof(buf)) : "all");
 }
 
 static void print_cap_op_class_list(map_radio_info_t *radio, map_printf_cb_t print_cb)
@@ -229,7 +224,7 @@ static void print_pref_op_class_list(map_radio_info_t *radio, map_printf_cb_t pr
 
 static void print_op_restriction_in_radio(map_radio_info_t *radio, map_printf_cb_t print_cb)
 {
-    char buf[CHANNEL_BUF_SIZE];
+    char buf[MAP_CS_BUF_LEN];
     int  pos = 0;
     uint8_t i, j;
 
@@ -242,8 +237,8 @@ static void print_op_restriction_in_radio(map_radio_info_t *radio, map_printf_cb
         print_cb("     |\n");
         print_cb("     -OP Class : %d\n", op_class->op_class);
 
-        for (j = 0; j < op_class->channel_count && pos < CHANNEL_BUF_SIZE; j++) {
-            pos += snprintf(buf + pos, CHANNEL_BUF_SIZE - pos, "%d, ", op_class->channel_list[j].channel);
+        for (j = 0; j < op_class->channel_count && pos < MAP_CS_BUF_LEN; j++) {
+            pos += snprintf(buf + pos, MAP_CS_BUF_LEN - pos, "%d, ", op_class->channel_list[j].channel);
         }
         print_cb("     -Channels : %s\n", buf);
     }
@@ -328,13 +323,7 @@ static void print_radios_in_agent(map_ale_info_t *ale, map_printf_cb_t print_cb)
         print_cb("  |\n");
         print_cb("  Radio MAC      : %s\n", radio->radio_id_str);
 
-        if (radio->supported_freq == IEEE80211_FREQUENCY_BAND_2_4_GHZ) {
-            print_cb("  Radio Type     : 2.4GHz\n");
-        } else if (radio->supported_freq == IEEE80211_FREQUENCY_BAND_5_GHZ) {
-            print_cb("  Radio Type     : 5GHz\n");
-        } else {
-            print_cb("  Radio Type     : Unknown\n");
-        }
+        print_cb("  Radio Type     : %s\n", map_get_freq_band_str(radio->supported_freq));
 
         print_cb("  Radio State    : %sCONFIGURED\n", is_radio_configured(radio->state) ? "" : "UN");
 
@@ -379,6 +368,30 @@ static void print_local_interfaces(map_ale_info_t *ale, map_printf_cb_t print_cb
             }
         }
     }
+    print_cb("----------------------------------------------\n");
+
+}
+
+static void print_backhaul_sta_interfaces(map_ale_info_t *ale, map_printf_cb_t print_cb)
+{
+    uint8_t i;
+    map_radio_info_t *radio;
+
+    if (ale->backhaul_sta_iface_count == 0) {
+        return;
+    }
+
+    for (i = 0; i < ale->backhaul_sta_iface_count; i++) {
+        map_backhaul_sta_iface_t *bhsta_iface = &ale->backhaul_sta_iface_list[i];
+
+        radio = map_dm_get_radio(ale, bhsta_iface->radio_id);
+
+        print_cb("BHSTA Interface[%u]\n", i);
+        print_cb("  STA MAC      : %s\n", mac_string(bhsta_iface->mac_address));
+        print_cb("  Radio MAC    : %s\n", radio->radio_id_str);
+        print_cb("  Radio Band   : %s\n", map_get_freq_band_str(radio->supported_freq));
+        print_cb("  Active       : %s\n", bhsta_iface->active ? "true" : "false");
+    }
 }
 
 static void print_agent_info(map_ale_info_t *ale, map_printf_cb_t print_cb)
@@ -407,6 +420,9 @@ static void print_agent_info(map_ale_info_t *ale, map_printf_cb_t print_cb)
     print_radios_in_agent(ale, print_cb);
 
     print_local_interfaces(ale, print_cb);
+
+    print_backhaul_sta_interfaces(ale, print_cb);
+
     print_cb("----------------------------------------------\n");
 }
 
