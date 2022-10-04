@@ -109,6 +109,18 @@ static uint8_t map_periodic_topology_query_timer_cb(UNUSED char* timer_id, UNUSE
     return 0;
 }
 
+/* Send ap capability query to all known ALE */
+static uint8_t map_periodic_ap_capability_query_timer_cb(UNUSED char* timer_id, UNUSED void *arg)
+{
+    map_ale_info_t *ale;
+
+    map_dm_foreach_agent_ale(ale) {
+        map_send_ap_capability_query(ale, MID_NA);
+    }
+
+    return 0;
+}
+
 /* Send config renew */
 static uint8_t map_config_renew_timer_cb(UNUSED char* timer_id, UNUSED void *arg)
 {
@@ -141,6 +153,7 @@ int map_onboarding_handler_init()
 {
     int16_t link_interval        = get_controller_cfg()->link_metrics_query_interval;
     int16_t topquery_interval    = get_controller_cfg()->topology_query_interval;
+    int16_t apcapquery_interval  = get_controller_cfg()->ap_capability_query_interval;
     int16_t topo_dis_interval    = get_controller_cfg()->topology_discovery_interval;
     int16_t lldp_br_dis_interval = get_controller_cfg()->lldp_interval;
     int     status = 0;
@@ -167,7 +180,7 @@ int map_onboarding_handler_init()
         }
 
         /* Registering a timer for topology query */
-        if(topquery_interval > 0) {
+        if (topquery_interval > 0) {
             if (topquery_interval > 60) {
                 topquery_interval = 60;
             }
@@ -184,6 +197,14 @@ int map_onboarding_handler_init()
             }
             if (map_timer_register_callback(link_interval, LINK_METRIC_QUERY_TIMER_ID, NULL, map_periodic_link_metric_query_timer_cb)) {
                 log_ctrl_e("failed to register LINK_METRIC_QUERY_TIMER");
+                ERROR_EXIT(status)
+            }
+        }
+
+        /* Registering a timer for ap capability query */
+        if (apcapquery_interval > 0) {
+            if (map_timer_register_callback(apcapquery_interval, AP_CAPABILITY_QUERY_TIMER_ID, NULL, map_periodic_ap_capability_query_timer_cb)) {
+                log_ctrl_e("failed to register AP_CAPABILITY_QUERY_TIMER_ID");
                 ERROR_EXIT(status)
             }
         }
@@ -218,6 +239,10 @@ void map_onboarding_handler_fini(void)
 
     if (map_is_timer_registered(LINK_METRIC_QUERY_TIMER_ID)) {
         map_timer_unregister_callback(LINK_METRIC_QUERY_TIMER_ID);
+    }
+
+    if (map_is_timer_registered(AP_CAPABILITY_QUERY_TIMER_ID)) {
+        map_timer_unregister_callback(AP_CAPABILITY_QUERY_TIMER_ID);
     }
 
     if (map_is_timer_registered(CONFIG_RENEW_TIMER_ID)) {
@@ -284,7 +309,7 @@ map_ale_info_t* map_handle_new_agent_onboarding(uint8_t *al_mac, char *recv_ifac
     return ale;
 }
 
-map_radio_info_t* map_handle_new_radio_onboarding(map_ale_info_t *ale, uint8_t *radio_id)
+map_radio_info_t* map_handle_new_radio_onboarding(map_ale_info_t *ale, uint8_t *radio_id, bool do_policy_config)
 {
     map_radio_info_t *radio;
     timer_id_t        retry_id;
@@ -297,11 +322,15 @@ map_radio_info_t* map_handle_new_radio_onboarding(map_ale_info_t *ale, uint8_t *
         return NULL;
     }
 
-    /* Send policy config request */
-    map_dm_get_radio_timer_id(retry_id, radio, POLICY_CONFIG_RETRY_ID);
-    if (map_register_retry(retry_id, 10, 10,
-                                 ale, map_handle_policy_config_sent, map_build_and_send_policy_config)) {
-        log_ctrl_e("Failed registering retry timer[%s] ", retry_id);
+    if (do_policy_config) {
+        /* Send policy config request */
+        map_dm_get_radio_timer_id(retry_id, radio, POLICY_CONFIG_RETRY_ID);
+        if (!map_is_timer_registered(retry_id)) {
+            if (map_register_retry(retry_id, 10, 10,
+                                        ale, map_handle_policy_config_sent, map_build_and_send_policy_config)) {
+                log_ctrl_e("Failed registering retry timer[%s] ", retry_id);
+            }
+        }
     }
 
     /* Send initial channel scan request when needed */
@@ -311,9 +340,11 @@ map_radio_info_t* map_handle_new_radio_onboarding(map_ale_info_t *ale, uint8_t *
            onboarding we must try long enough to get successfull initial scan.
            -> Start retry 6 times with 30 second timeout.
         */
-        if (map_register_retry(retry_id, INITIAL_SCAN_RETRY_PERIOD, MAX_INITIAL_SCAN_RETRY,
-                               radio, map_handle_initial_channel_scan_request_sent, map_build_and_send_initial_channel_scan_req)) {
-            log_ctrl_e("Failed Registering retry timer : %s ", retry_id);
+        if (!map_is_timer_registered(retry_id)) {
+            if (map_register_retry(retry_id, INITIAL_SCAN_RETRY_PERIOD, MAX_INITIAL_SCAN_RETRY,
+                                radio, map_handle_initial_channel_scan_request_sent, map_build_and_send_initial_channel_scan_req)) {
+                log_ctrl_e("Failed Registering retry timer : %s ", retry_id);
+            }
         }
     }
 
@@ -322,18 +353,11 @@ map_radio_info_t* map_handle_new_radio_onboarding(map_ale_info_t *ale, uint8_t *
 
 bool map_is_agent_onboarded(map_ale_info_t *ale)
 {
-    map_radio_info_t *radio;
-    bool              ale_onboarded = false;
-
     if (!ale) {
         return 0;
     }
 
-    map_dm_foreach_radio(ale, radio) {
-        /* Mark the agent as onboarded if at least one radio is in configured state */
-        ale_onboarded |= is_radio_configured(radio->state);
-    }
-    return ale_onboarded;
+    return (ale->ale_onboard_status == ALE_NODE_ONBOARDED);
 }
 
 bool map_is_all_radio_M1_received(map_ale_info_t* ale)
@@ -346,7 +370,7 @@ bool map_is_all_radio_M1_received(map_ale_info_t* ale)
     }
 
     map_dm_foreach_radio(ale, radio) {
-        /* Mark the agent as M1 received if at least one radio is in configured state */
+        /* Mark the agent as M1 received if all radios are in M1 received state */
         if (!is_radio_M1_received(radio->state)) {
             all_M1_received = false;
             break;

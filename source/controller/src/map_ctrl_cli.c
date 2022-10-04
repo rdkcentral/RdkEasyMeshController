@@ -21,11 +21,11 @@
 #include "map_ctrl_utils.h"
 #include "map_ctrl_cmdu_tx.h"
 #include "map_ctrl_wfa_capi.h"
+#include "map_ctrl_chan_sel.h"
 
 #include "map_cli.h"
 #include "map_data_model_dumper.h"
 #include "map_utils.h"
-#include "map_topology_tree.h"
 
 /*#######################################################################
 #                       DEFINES                                         #
@@ -64,8 +64,8 @@ typedef struct map_subscription_s {
 /*#######################################################################
 #                       GLOBALS                                         #
 ########################################################################*/
-static cli_t    *g_cli;
-static map_fd_t *g_cli_fd;
+static cli_t           *g_cli;
+static acu_evloop_fd_t *g_cli_fd;
 
 /*#######################################################################
 #                       COMMAND HELP                                    #
@@ -77,10 +77,11 @@ static const char *g_help =
 /* DUMP/GET */
     "map_cli --command help\n"
     "map_cli --command version\n"
-    "map_cli --command dumpctrlinfo\n"
+    "map_cli --command dumpCtrlInfo\n"
     "map_cli --command dumpInterfaces\n"
+    "map_cli --command dumpChanSel --payload '{\"extended\": false}'\n"
     "map_cli --command dumpTunneledMessage --payload '{\"mac\": \"AA:BB:CC:DD:EE:FF\",\"msgtype\":\"assoc|reassoc|btm|wnm|anqp\"}'\n"
-    "map_cli --command dumpAPmetrics --payload '{\"bssid\":\"AA:BB:CC:DD:EE:FF\"}'\n"
+    "map_cli --command dumpAPMetrics --payload '{\"bssid\":\"AA:BB:CC:DD:EE:FF\"}'\n"
     "map_cli --command dumpRadioMetrics --payload '{\"almac\":\"AA:BB:CC:DD:EE:FF\", \"radio_id\":\"AA:BB:CC:DD:EE:FF\"}'\n"
     "map_cli --command dumpStaMetrics "PAYLOAD_HELP"\n"
     "map_cli --command getChannelScanResults "PAYLOAD_HELP"\n"
@@ -113,11 +114,7 @@ static const char *g_help =
     "map_cli --command sendRawMessage --payload '$ifname|MSB raw message bytes in hex separated by ws (network byte order) LSB'\n"
 
 /* VARIOUS */
-    "map_cli --command msg_lib "PAYLOAD_HELP"\n"
-    "map_cli --command profile "PAYLOAD_HELP"\n"
-    "map_cli --command command --payload '{\"ap_id\":\"AP_ID\",\"cmd\":{...}}}'\n"
     "map_cli --command sendWFACAPI "PAYLOAD_HELP"\n";
-
 
 /* Command specific help */
 static const char *g_help_dump_sta_metrics =
@@ -142,6 +139,18 @@ static const char *g_help_get_scan_results =
     "   }\n\n"
     "-Example-\n"
     "map_cli --command getChannelScanResults --payload '{\"almac\": \"AA:BB:CC:DD:EE:FF\", \"radio_id\": \"AA:BB:CC:DD:EE:FF\", \"type\": \"all|lastRequest\"}'\n";
+
+static const char *g_help_set_channel =
+    "~Set Channel Help~\n"
+    "-Payload format-\n"
+    "   {\n"
+    "       \"almac\": \"AA:BB:CC:DD:EE:FF\",\n"
+    "       \"radio_id\": \"AA:BB:CC:DD:EE:FF\",\n"
+    "       \"channel\": channel|0 (auto)\n"
+    "       \"bandwidth\": bw|0(auto) (optional)\n"
+    "   }\n\n"
+    "-Example-\n"
+    "map_cli --command setChannel --payload '{\"almac\": \"AA:BB:CC:DD:EE:FF\", \"radio_id\": \"AA:BB:CC:DD:EE:FF\", \"channel\": 11}'\n";
 
 static const char *g_help_send_link_metric_query =
     "~Link Metric Query Help~\n"
@@ -425,16 +434,16 @@ static const char *g_help_send_proxied_encap_dpp =
     "       \"almac\": \"AA:BB:CC:DD:EE:FF\",\n"
     "       \"encap\":\n"
     "           {\n"
-    "               \"frame_indicator\": 0 (Action Frame) | 1 (GAS)"
+    "               \"frame_indicator\": 0 (Action Frame) | 1 (GAS),\n"
     "               \"stamac\": \"AA:BB:CC:DD:EE:FF\",\n"
-    "               \"frame_type\": 0-255"
-    "               \"frame\": Frame body to be sent."
+    "               \"frame_type\": 0-255,\n"
+    "               \"frame\": Frame body to be sent.,\n"
     "           }\n"
     "       \"chirp\":\n"
     "           {\n"
-    "               \"hash_calidity\": 0 (Establish) | 1 (Purge)"
+    "               \"hash_calidity\": 0 (Establish) | 1 (Purge),\n"
     "               \"stamac\": \"AA:BB:CC:DD:EE:FF\",\n"
-    "               \"hash\": Hash data."
+    "               \"hash\": Hash data.,\n"
     "           }\n"
     "   }\n\n"
     "-Example-\n"
@@ -518,6 +527,40 @@ static void cli_dump_info(UNUSED const char *event, UNUSED const char *payload, 
 static void cli_dump_interfaces(UNUSED const char *event, UNUSED const char *payload, UNUSED void *context)
 {
     i1905_dump_interfaces(map_cli_printf);
+}
+
+static void cli_dump_chan_sel(UNUSED const char *event, UNUSED const char *payload, UNUSED void *context)
+{
+    /*
+     * payload:
+     *   {
+     *      "extended": false|true
+     *   }
+     */
+
+    bool extended = false;
+    bool args_ok = false;
+
+    struct {
+        struct json_object *object;
+        struct json_object *extended;
+    } json;
+
+    JSON_PARSE
+
+    /* extended is optional  */
+    if (json_object_object_get_ex(json.object, "extended", &json.extended)) {
+        if (!json_object_is_type(json.extended, json_type_boolean)) {
+           goto out;
+        }
+        extended = json_object_get_boolean(json.extended);
+    }
+
+    args_ok = true;
+    map_ctrl_chan_sel_dump(map_cli_printf, extended);
+
+out:
+    JSON_PUT_CHECK_ARGS_OK
 }
 
 static void cli_dump_tunneled_msg(UNUSED const char *event, const char *payload, UNUSED void *context)
@@ -865,6 +908,75 @@ out:
 }
 
 /*#######################################################################
+#                       CLI HANDLERS: SET                               #
+########################################################################*/
+static void cli_set_channel(UNUSED const char *event, const char *payload, UNUSED void *context)
+{
+    /*
+     * payload:
+     *   {
+     *      "almac": "AA:BB:CC:DD:EE:FF",
+     *      "radio_id": "AA:BB:CC:DD:EE:FF",
+     *      "channel": 36,
+     *      "bandwidth": 20 (optional)
+     *   }
+     */
+
+    map_ale_info_t   *ale;
+    map_radio_info_t *radio;
+    mac_addr          radio_id;
+    int               channel = -1, bw = -1; /* -1: do not update */
+    bool              args_ok = false;
+
+    struct {
+        struct json_object *object;
+        struct json_object *channel;
+        struct json_object *bandwidth;
+    } json;
+
+    JSON_PARSE
+
+    CHECK_PRINT_HELP(g_help_set_channel);
+
+    if (!(ale = json_get_ale(json.object, "almac"))) {
+        map_cli_printf("ALE not found");
+        goto out;
+    }
+
+    if (json_get_mac(json.object, "radio_id", radio_id)) {
+        goto out;
+    }
+
+    if (NULL == (radio = map_dm_get_radio(ale, radio_id))) {
+        map_cli_printf("Radio not found!");
+        goto out;
+    }
+
+    /* channel */
+    if (!json_object_object_get_ex(json.object, "channel", &json.channel) ||
+        !json_object_is_type(json.channel, json_type_int)) {
+        goto out;
+    }
+    channel = json_object_get_int(json.channel);
+
+    /* Optional bw */
+    if (json_object_object_get_ex(json.object, "bandwidth", &json.bandwidth)) {
+        if (!json_object_is_type(json.bandwidth, json_type_int)) {
+            goto out;
+        }
+        bw = json_object_get_int(json.bandwidth);
+    }
+    args_ok = true;
+
+    map_ctrl_chan_sel_set(radio, NULL, NULL, channel >= 0 ? &channel : NULL, bw >= 0 ? &bw : NULL);
+
+    map_cli_printf("OK\n");
+
+out:
+    JSON_PUT_CHECK_ARGS_OK
+}
+
+/*#######################################################################
 #                       CLI HANDLERS: SEND MESSAGES                     #
 ########################################################################*/
 static void cli_send_topology_query(UNUSED const char *event, const char *payload, UNUSED void *context)
@@ -1153,7 +1265,7 @@ static void cli_send_unassoc_sta_link_metrics_query(UNUSED const char *event, co
     map_unassoc_sta_link_metrics_query_tlv_t  tlv          = { 0 };
     mac_addr                                  sta_macs[64]; /* array over all channels */
     size_t                                    sta_macs_idx = 0;
-    int                                       i, j;
+    unsigned int                              i, j;
     bool                                      args_ok      = false;
 
     struct {
@@ -1264,7 +1376,7 @@ static void cli_send_beacon_metrics_query(UNUSED const char *event, const char *
     map_ale_info_t                 *ale          = NULL;
     map_beacon_metrics_query_tlv_t  tlv = { 0 };
     const char                     *rep_det, *ssid;
-    int                             i, j;
+    unsigned int                    i, j;
     bool                            args_ok      = false;
 
     struct {
@@ -1367,15 +1479,14 @@ static void cli_send_beacon_metrics_query(UNUSED const char *event, const char *
             goto out;
         }
 
-        for (j = 0; j < json_object_array_length(json.ap_channel_reports.channels) && j < MAX_CHANNEL_PER_OP_CLASS; j++) {
+        for (j = 0; j < json_object_array_length(json.ap_channel_reports.channels); j++) {
             struct json_object *obj2 = json_object_array_get_idx(json.ap_channel_reports.channels, j);
 
             if (!obj2 || !json_object_is_type(obj2, json_type_int)) {
                 goto out;
             }
-            tlv.ap_channel_reports[i].channels[j] = json_object_get_int(obj2);
+            map_cs_set(&tlv.ap_channel_reports[i].channels, json_object_get_int(obj2));
         }
-        tlv.ap_channel_reports[i].op_class_channels_nr = 1 + j; /* +1: op_class */
     }
     tlv.ap_channel_reports_nr = i;
 
@@ -1451,7 +1562,7 @@ static void cli_send_client_steering_request(UNUSED const char *event, const cha
     map_steer_t    *steer   = (map_steer_t *)steer_buf;
     const char*     mode;
     bool            args_ok = false;
-    int             i;
+    unsigned int    i;
 
     struct {
         struct json_object *object;
@@ -1605,7 +1716,7 @@ static void cli_send_client_assoc_control_request(UNUSED const char *event, cons
     map_client_assoc_control_request_tlv_t  tlv = {0};
     bool                                    block;
     bool                                    args_ok = false;
-    int                                     i;
+    unsigned int                            i;
 
     struct {
         struct json_object *object;
@@ -1797,8 +1908,8 @@ static void cli_send_unsuccess_assoc_policy_config(UNUSED const char *event, con
      *   }
      */
 
-    map_policy_config_tlvs_t             tlvs = {0};
-    map_unsuccessful_assoc_policy_tlv_t  unsuccess_assoc_policy_tlv;
+    map_policy_config_tlvs_t             tlvs                       = {0};
+    map_unsuccessful_assoc_policy_tlv_t  unsuccess_assoc_policy_tlv = {0};
     map_ale_info_t                      *ale;
     int8_t                               report = -1;
     int32_t                              max_reporting_rate = -1;
@@ -1836,7 +1947,7 @@ static void cli_send_unsuccess_assoc_policy_config(UNUSED const char *event, con
     }
     args_ok = true;
 
-    unsuccess_assoc_policy_tlv.report_flag = report;
+    unsuccess_assoc_policy_tlv.report_flag = report ? MAP_UNSUCCESSFUL_ASSOC_REPORT : MAP_UNSUCCESSFUL_ASSOC_NO_REPORT;
     unsuccess_assoc_policy_tlv.max_reporting_rate = max_reporting_rate;
 
     tlvs.unsuccess_assoc_policy_tlv = &unsuccess_assoc_policy_tlv;
@@ -1932,13 +2043,13 @@ static void cli_send_bh_bss_policy_config(UNUSED const char *event, const char *
             !json_object_is_type(json.bssid_list.p1_bsta_disallowed, json_type_boolean)) {
             goto out;
         }
-        tlvs.bh_bss_config_tlvs[i].p1_bsta_disallowed = json_object_get_boolean(json.bssid_list.p1_bsta_disallowed);
+        tlvs.bh_bss_config_tlvs[i].p1_bsta_disallowed = json_object_get_boolean(json.bssid_list.p1_bsta_disallowed) ? 1 : 0;
 
         if (!json_object_object_get_ex(bssid_obj, "p2_bsta_disallowed", &json.bssid_list.p2_bsta_disallowed) ||
             !json_object_is_type(json.bssid_list.p2_bsta_disallowed, json_type_boolean)) {
             goto out;
         }
-        tlvs.bh_bss_config_tlvs[i].p2_bsta_disallowed = json_object_get_boolean(json.bssid_list.p2_bsta_disallowed);
+        tlvs.bh_bss_config_tlvs[i].p2_bsta_disallowed = json_object_get_boolean(json.bssid_list.p2_bsta_disallowed) ? 1 : 0;
 
         bss = map_dm_get_bss_gbl(tlvs.bh_bss_config_tlvs[i].bssid);
         if (NULL == bss || NULL == bss->radio->ale) {
@@ -2009,9 +2120,9 @@ static void cli_send_channel_scan_request(UNUSED const char *event, const char *
     * }
     */
 
-    map_channel_scan_request_tlv_t  channel_scan_req_tlv;
+    map_channel_scan_request_tlv_t  channel_scan_req_tlv = {0};
     map_ale_info_t                 *ale;
-    int                             l, i, j, chl_len, k;
+    int                             l, i, j, channel_nr, channel_len, k, channel;
     bool                            args_ok = false;
 
     struct {
@@ -2045,7 +2156,7 @@ static void cli_send_channel_scan_request(UNUSED const char *event, const char *
         !json_object_is_type(json.fresh_scan, json_type_boolean)) {
         goto out;
     }
-    channel_scan_req_tlv.fresh_scan_performed = json_object_get_boolean(json.fresh_scan);
+    channel_scan_req_tlv.fresh_scan_performed = json_object_get_boolean(json.fresh_scan) ? 1 : 0;
 
     /* get number of radios */
     if (!json_object_object_get_ex(json.object, "no_of_radios", &json.no_of_radios) ||
@@ -2126,8 +2237,8 @@ static void cli_send_channel_scan_request(UNUSED const char *event, const char *
                 goto out;
             }
 
-            channel_scan_req_tlv.radios[i].op_classes[j].channels_nr = json_object_get_int(json.radio_list.opclass_list.no_of_channels);
-            if (errno == EINVAL || (int8_t)channel_scan_req_tlv.radios[i].op_classes[j].channels_nr < 0) {
+            channel_nr = json_object_get_int(json.radio_list.opclass_list.no_of_channels);
+            if (errno == EINVAL || channel_nr < 0) {
                 goto out;
             }
 
@@ -2137,22 +2248,23 @@ static void cli_send_channel_scan_request(UNUSED const char *event, const char *
                 goto out;
             }
 
-            chl_len = json_object_array_length(json.radio_list.opclass_list.channel_list);
-            if (chl_len != channel_scan_req_tlv.radios[i].op_classes[j].channels_nr) {
+            channel_len = json_object_array_length(json.radio_list.opclass_list.channel_list);
+            if (channel_len != channel_nr) {
                 map_cli_printf("no_of_channels and channel_list length do not match.\n");
                 goto out;
             }
 
-            for (k = 0; k < chl_len; k++) {
+            for (k = 0; k < channel_len; k++) {
                 struct json_object *channel_obj = json_object_array_get_idx(json.radio_list.opclass_list.channel_list, k);
                 if (NULL == channel_obj) {
                     goto out;
                 }
 
-                channel_scan_req_tlv.radios[i].op_classes[j].channels[k] = json_object_get_int(channel_obj);
-                if (errno == EINVAL || channel_scan_req_tlv.radios[i].op_classes[j].channels[k] <= 0) {
+                channel = json_object_get_int(channel_obj);
+                if (errno == EINVAL || channel <= 0) {
                     goto out;
                 }
+                map_cs_set(&channel_scan_req_tlv.radios[i].op_classes[j].channels, channel);
             }
         }
     }
@@ -2194,7 +2306,7 @@ static void cli_send_cac_request(UNUSED const char *event, const char *payload, 
     * }
     */
 
-    map_cac_request_tlv_t  cac_request_tlv;
+    map_cac_request_tlv_t  cac_request_tlv = {0};
     map_ale_info_t        *ale;
     int                    l, i, ret;
     const char            *cac_method;
@@ -2361,7 +2473,7 @@ static void cli_send_cac_termination(UNUSED const char *event, const char *paylo
     * }
     */
 
-    map_cac_termination_tlv_t  cac_termination_tlv;
+    map_cac_termination_tlv_t  cac_termination_tlv = {0};
     map_ale_info_t            *ale;
     int                        l, i;
     bool                       args_ok = false;
@@ -2463,8 +2575,8 @@ static void cli_send_ch_scan_reporting_policy_config(UNUSED const char *event, c
      *   }
      */
 
-    map_policy_config_tlvs_t                 tlvs = {0};
-    map_channel_scan_reporting_policy_tlv_t  channel_scan_report_policy_tlv;
+    map_policy_config_tlvs_t                 tlvs                           = {0};
+    map_channel_scan_reporting_policy_tlv_t  channel_scan_report_policy_tlv = {0};
     map_ale_info_t                          *ale;
     bool                                     args_ok = false;
 
@@ -2488,7 +2600,7 @@ static void cli_send_ch_scan_reporting_policy_config(UNUSED const char *event, c
     }
     args_ok = true;
 
-    channel_scan_report_policy_tlv.report_independent_ch_scans = json_object_get_boolean(json.report);
+    channel_scan_report_policy_tlv.report_independent_ch_scans = json_object_get_boolean(json.report) ? 1 : 0;
 
     tlvs.channel_scan_report_policy_tlv = &channel_scan_report_policy_tlv;
     if (map_send_policy_config_request(ale, &tlvs, MID_NA)) {
@@ -2570,8 +2682,9 @@ static void cli_send_proxied_encap_dpp(UNUSED const char *event, const char *pay
      */
 
     map_ale_info_t            *ale;
-    map_1905_encap_dpp_tlv_t   encap_tlv;
-    map_dpp_chirp_value_tlv_t  chirp_tlv;
+    map_1905_encap_dpp_tlv_t   encap_tlv = {0};
+    map_dpp_chirp_value_tlv_t  chirp_tlv = {0};
+    bool                       add_chirp_tlv = false;
     bool                       args_ok = false;
     const char *frame_body = NULL, *hash_body = NULL;
 
@@ -2637,7 +2750,7 @@ static void cli_send_proxied_encap_dpp(UNUSED const char *event, const char *pay
     /* Allocate strlen / 2 for byte array demonstration. */
     encap_tlv.frame = calloc(strlen(frame_body) / 2, sizeof(uint8_t));
     /* Convert string to byte array for transmission. */
-    if (acu_hex_string_to_buf(frame_body, encap_tlv.frame, strlen(frame_body) / 2) != 0) {
+    if (acu_hex_string_to_buf(frame_body, encap_tlv.frame, strlen(frame_body) / 2) != ACU_OK) {
         goto out;
     }
 
@@ -2671,15 +2784,16 @@ static void cli_send_proxied_encap_dpp(UNUSED const char *event, const char *pay
         /* Allocate strlen / 2 for byte array demonstration. */
         chirp_tlv.hash = calloc(strlen(hash_body) / 2, sizeof(uint8_t));
         /* Convert string to byte array for transmission. */
-        if (acu_hex_string_to_buf(hash_body, chirp_tlv.hash, strlen(hash_body) / 2) != 0) {
+        if (acu_hex_string_to_buf(hash_body, chirp_tlv.hash, strlen(hash_body) / 2) != ACU_OK) {
             goto out;
         }
         chirp_tlv.hash_len = strlen(hash_body) / 2;
 
+        add_chirp_tlv = true;
         args_ok = true;
     }
 
-    if (map_send_proxied_encap_dpp(ale, &encap_tlv, &chirp_tlv, MID_NA)) {
+    if (map_send_proxied_encap_dpp(ale, &encap_tlv, add_chirp_tlv ? &chirp_tlv : NULL, MID_NA)) {
         map_cli_printf("failed to send 1905 Encap DPP message to ale[%s]\n", ale->al_mac_str);
         goto out;
     }
@@ -2719,7 +2833,8 @@ static inline int skip_ws(const char *str)
 static int parse_payload(const char *str, char **ifname, unsigned char **data, int *datalen)
 {
 #define ETHERNET_MIN_PKT_LEN    60
-    unsigned char buf[1500];
+#define ETHERNET_MAX_PKT_LEN  1514
+    unsigned char buf[ETHERNET_MAX_PKT_LEN];
     const char *errstr;
     const char *nptr;
     char *endptr;
@@ -2767,6 +2882,10 @@ static int parse_payload(const char *str, char **ifname, unsigned char **data, i
         clen = endptr - nptr;
         if (clen > 2)
             goto fail_ifname_free;
+        if (fidx >= ETHERNET_MAX_PKT_LEN) {
+            errstr = "data too long.";
+            goto fail_ifname_free;
+        }
         buf[fidx++] = (unsigned char)hex_byte;
         nptr += clen;
         idx += clen;
@@ -2812,7 +2931,7 @@ static void cli_send_raw_message(UNUSED const char *event, const char *payload, 
     dmac = data;
     smac = &data[6];
     eth_type = ntohs(*(unsigned short *)(&data[12]));
-    rc = i1905_send_raw(ifname, dmac, smac, eth_type, data + 14, data_len - 14);
+    rc = map_send_raw(ifname, dmac, smac, eth_type, data + 14, data_len - 14);
     if (rc == 0) {
         map_cli_printf("[%s-%d] Managed to send raw message\n", __func__, __LINE__);
     } else {
@@ -2858,7 +2977,7 @@ static void cli_send_wfa_capi(UNUSED const char *event, const char *payload, UNU
         goto out;
     }
 
-    multiap_controller_wfa_capi(args, map_cli_printf);
+    map_ctrl_wfa_capi(args, map_cli_printf);
 
     args_ok = true;
 
@@ -2874,13 +2993,17 @@ static map_subscription_t g_cli_subscriptions[] = {
     /* DUMP /GET */
     { "help",                              cli_help },
     { "version",                           cli_version },
-    { "dumpctrlinfo",                      cli_dump_info },
+    { "dumpCtrlInfo",                      cli_dump_info },
     { "dumpInterfaces",                    cli_dump_interfaces },
+    { "dumpChanSel",                       cli_dump_chan_sel },
     { "dumpTunneledMessage",               cli_dump_tunneled_msg },
     { "dumpAPMetrics",                     cli_dump_ap_metrics },
     { "dumpRadioMetrics",                  cli_dump_radio_metrics },
     { "dumpStaMetrics",                    cli_dump_sta_metrics },
     { "getChannelScanResults",             cli_get_scan_results },
+
+    /* SET */
+    { "setChannel",                        cli_set_channel },
 
     /* SEND */
     { "sendTopologyQuery",                 cli_send_topology_query },
@@ -2932,8 +3055,8 @@ int map_cli_init(void)
     size_t        i;
 
     /* Create cli and subscriptions */
-    map_strlcpy(cli_options.bindip, CLI_SERVER_IP, sizeof(cli_options.bindip));
-    cli_options.port = CLI_SERVER_PORT;
+    memset(&cli_options, 0, sizeof(cli_options_t));
+    map_strlcpy(cli_options.sock_path, CLI_SOCK_PATH, sizeof(cli_options.sock_path));
 
     if (NULL == (g_cli = cli_create(&cli_options))) {
         log_ctrl_e("can not create cli");
@@ -2948,8 +3071,8 @@ int map_cli_init(void)
         }
     }
 
-    if (NULL == (g_cli_fd = map_fd_add(cli_fd(g_cli), map_cli_fd_cb, g_cli))) {
-        platform_log(MAP_CONTROLLER, LOG_ERR, "Failed register cli socket");
+    if (NULL == (g_cli_fd = acu_evloop_fd_add(cli_fd(g_cli), map_cli_fd_cb, g_cli))) {
+        log_ctrl_e("failed register cli socket");
         goto fail;
     }
 
@@ -2961,7 +3084,7 @@ fail:
 void map_cli_fini(void)
 {
     if (g_cli_fd != NULL) {
-        map_fd_delete(g_cli_fd);
+        acu_evloop_fd_delete(g_cli_fd);
     }
     if (g_cli != NULL) {
         cli_destroy(g_cli);

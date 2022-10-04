@@ -121,6 +121,7 @@ int map_send_topology_discovery(i1905_interface_info_t *interface, uint16_t *mid
 
 /* 1905.1 6.3.2 (type 0x0001) - args is of type map_ale_info_t */
 int map_send_topology_query(void *args, uint16_t *mid);
+int map_send_topology_query_with_al_mac(mac_addr al_mac_addr, char *iface, uint16_t *mid);
 
 /* 1905.1 6.3.3 (type 0x0002) */
 int map_send_topology_response(i1905_cmdu_t *recv_cmdu);
@@ -216,8 +217,8 @@ int map_send_cac_request(map_ale_info_t *ale, map_cac_request_tlv_t *tlv, uint16
 /* MAP_R2 17.1.36 (type 0x8021) */
 int map_send_cac_termination(map_ale_info_t *ale, map_cac_termination_tlv_t *tlv, uint16_t *mid);
 
-/* MAP_R2 17.1.42 (type 0x8027) */
-int map_send_backhaul_sta_capability_query(map_ale_info_t *ale, uint16_t *mid);
+/* MAP_R2 17.1.42 (type 0x8027) - args is of type map_ale_info_t */
+int map_send_backhaul_sta_capability_query(void *args, uint16_t *mid);
 
 /*#######################################################################
 #                       MAP R3 CMDU                                     #
@@ -227,5 +228,13 @@ int map_send_proxied_encap_dpp(map_ale_info_t *ale, map_1905_encap_dpp_tlv_t *en
 
 /* MAP_R3 17.1.51 (type 0x801D) */
 int map_send_dpp_cce_indication(map_ale_info_t *ale, uint8_t advertise, uint16_t *mid);
+
+/* MAP_R3 17.1.52 (type 0x802F) */
+int map_send_dpp_chirp_notification(map_dpp_chirp_value_tlv_t *chirp_value_tlv_list, int num_chirp_tlv, uint16_t *mid);
+
+/*#######################################################################
+#                       RAW                                             #
+########################################################################*/
+int map_send_raw(char *ifname, mac_addr dmac, mac_addr smac, uint16_t eth_type, uint8_t *data, uint16_t data_len);
 
 #endif /* MAP_CTRL_CMDU_TX_H_ */

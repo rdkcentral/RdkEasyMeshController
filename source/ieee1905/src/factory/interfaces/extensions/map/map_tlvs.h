@@ -159,8 +159,17 @@
 #define TLV_TYPE_BSSID                                    0xB8
 #define TLV_TYPE_DPP_CCE_INDICATION                       0xD2
 #define TLV_TYPE_1905_ENCAP_DPP                           0xCD
+#define TLV_TYPE_DPP_MESSAGE                              0xD1
 #define TLV_TYPE_DPP_CHIRP_VALUE                          0xD3
 #define TLV_TYPE_DEVICE_INVENTORY                         0xD4
+
+/*#######################################################################
+# Types used in other TLV                                               #
+########################################################################*/
+typedef struct  {
+    uint8_t           op_class;
+    map_channel_set_t channels;
+} map_tlv_op_class_t;
 
 /*#######################################################################
 # Supported service TLV associated structures ("Section 17.2.1")        #
@@ -248,10 +257,9 @@ typedef struct mapAPCapabilityTLV {
 # AP radio basic capabilities TLV associated structures ("Section 17.2.7") #
 ###########################################################################*/
 typedef struct {
-    uint8_t op_class;
-    uint8_t eirp;
-    uint8_t channels_nr;
-    uint8_t channels[MAX_CHANNEL_PER_OP_CLASS];
+    uint8_t           op_class;
+    uint8_t           eirp;
+    map_channel_set_t channels;
 } map_ap_radio_basic_cap_tlv_op_class_t;
 
 typedef struct mapApRadioBasicCapabilitiesTLV {
@@ -368,11 +376,10 @@ typedef struct mapMetricPolicyTLV {
 #define PREF_REASON_BIT_MASK                0x0F
 
 typedef struct {
-    uint8_t op_class;
-    uint8_t channels_nr;
-    uint8_t channels[MAX_CHANNEL_PER_OP_CLASS];
-    uint8_t pref:   4;
-    uint8_t reason: 4;
+    uint8_t           op_class;
+    map_channel_set_t channels;
+    uint8_t           pref:   4;
+    uint8_t           reason: 4;
 } map_channel_preference_tlv_op_class_t;
 
 typedef struct mapChannelPreferenceTLV {
@@ -573,25 +580,19 @@ typedef struct mapUnassocStaMetricsResponseTLV {
 #define MAP_BEACON_REPORT_DETAIL_REQUESTED 1
 #define MAP_BEACON_REPORT_DETAIL_ALL       2
 
-typedef struct {
-    uint8_t op_class_channels_nr; /* 1 (op_class) + channels_nr */
-    uint8_t op_class;
-    uint8_t channels[MAX_CHANNEL_PER_OP_CLASS];
-} map_beacon_metrics_query_tlv_ap_channel_report_t;
-
 typedef struct mapBeaconMetricsQueryTLV {
-    uint8_t                                          tlv_type;
-    mac_addr                                         sta_mac;
-    uint8_t                                          op_class;
-    uint8_t                                          channel;
-    mac_addr                                         bssid;
-    uint8_t                                          reporting_detail;
-    uint8_t                                          ssid_len;
-    uint8_t                                          ssid[MAX_SSID_LEN];
-    uint8_t                                          element_ids_nr;
-    uint8_t                                          element_ids[255];
-    uint8_t                                          ap_channel_reports_nr;
-    map_beacon_metrics_query_tlv_ap_channel_report_t ap_channel_reports[MAX_OP_CLASS];
+    uint8_t            tlv_type;
+    mac_addr           sta_mac;
+    uint8_t            op_class;
+    uint8_t            channel;
+    mac_addr           bssid;
+    uint8_t            reporting_detail;
+    uint8_t            ssid_len;
+    uint8_t            ssid[MAX_SSID_LEN];
+    uint8_t            element_ids_nr;
+    uint8_t            element_ids[255];
+    uint8_t            ap_channel_reports_nr;
+    map_tlv_op_class_t ap_channel_reports[MAX_OP_CLASS];
 } map_beacon_metrics_query_tlv_t;
 
 /*#######################################################################
@@ -613,7 +614,7 @@ typedef struct {
     uint8_t  measurement_token;
     uint8_t  measurement_report_mode;
     uint8_t  measurement_type;
-    uint8_t  operating_class;
+    uint8_t  op_class;
     uint8_t  channel;
     uint8_t  measurement_time[8];
     uint16_t measurement_duration;
@@ -768,13 +769,6 @@ typedef struct mapChannelScanReportPolicyTLV {
 #define MAP_SCAN_IMPACT_REDUCED_NSS       0x01 /* Reduced number of spatial streaming */
 #define MAP_SCAN_IMPACT_TIME_SLICING      0x02 /* Time slicing impairment */
 #define MAP_SCAN_IMPACT_RADIO_UNAVAILABLE 0x03 /* Radio unavailable for >=2 seconds */
-
-/* Structure used in several TLV */
-typedef struct  {
-    uint8_t op_class;
-    uint8_t channels_nr;
-    uint8_t channels[MAX_CHANNEL_PER_OP_CLASS];
-} map_tlv_op_class_t;
 
 typedef struct {
     mac_addr           radio_id;
@@ -1219,6 +1213,15 @@ typedef struct mapDPPChirpValueTLV {
 } map_dpp_chirp_value_tlv_t;
 
 /*#######################################################################
+# DPP Message TLV ("Section 17.2.86")                                   #
+########################################################################*/
+typedef struct mapDPPMessageTLV {
+    uint8_t   tlv_type;
+    uint16_t  frame_len;
+    uint8_t  *frame;
+} map_dpp_message_tlv_t;
+
+/*#######################################################################
 # Device Inventory TLV ("Section 17.2.76")                              #
 ########################################################################*/
 typedef struct {
@@ -1242,7 +1245,7 @@ typedef struct mapDeviceInventoryTLV {
 # PUBLIC FUNCTIONS                                                      #
 ########################################################################*/
 /* Common handlers for profile 1 and 2 steering request */
-uint8_t* map_parse_p1_p2_steering_request_tlv(uint8_t *p, uint16_t len, bool profile2);
+uint8_t* map_parse_p1_p2_steering_request_tlv(uint8_t *packet_stream, uint16_t len, bool profile2);
 uint8_t* map_forge_p1_p2_steering_request_tlv(void *memory_structure, uint16_t *len, bool profile2);
 void map_free_p1_p2_steering_request_tlv(void *memory_structure, bool profile2);
 

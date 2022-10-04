@@ -111,7 +111,7 @@ uint8_t PLATFORM_GET_RANDOM_BYTES(uint8_t *p, uint16_t len)
 
     fd = fopen("/dev/urandom", "rb");
     if (NULL == fd) {
-        log_i1905_w("cannot open /dev/urandom");
+        log_i1905_e("cannot open /dev/urandom");
         return 0;
     }
 
@@ -120,7 +120,7 @@ uint8_t PLATFORM_GET_RANDOM_BYTES(uint8_t *p, uint16_t len)
     fclose(fd);
 
     if (len != rc) {
-        log_i1905_w("could not obtain enough random bytes");
+        log_i1905_e("could not obtain enough random bytes");
         return 0;
     } else {
         return 1;

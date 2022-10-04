@@ -27,6 +27,7 @@
 #include "map_ctrl_cmdu_tx.h"
 #include "map_ctrl_utils.h"
 #include "map_ctrl_defines.h"
+#include "map_ctrl_chan_sel.h"
 
 #include "map_info.h"
 #include "map_topology_tree.h"
@@ -169,12 +170,20 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
     map_bss_info_t   *bss     = map_dm_get_bss_from_ale(ale, iface->mac_address);
     map_radio_info_t *radio;
     int               channel = iface->ieee80211_ap_channel_center_freq_1;
-    uint8_t           current_op_class, current_bw = 0, bw = 0;
+    uint8_t           current_op_class, supported_freq, current_bw = 0, bw = 0;
+    bool              is_center_channel = false;
 
     if (!bss || !(radio = bss->radio)) {
         return;
     }
+
+    supported_freq   = radio->supported_freq;
     current_op_class = radio->current_op_class;
+
+    /* Frequency band must be known */
+    if (supported_freq == IEEE80211_FREQUENCY_BAND_UNKNOWN) {
+        return;
+    }
 
     /* Validate BW (80P80 not supported) */
     switch (iface->ieee80211_ap_channel_band) {
@@ -195,13 +204,17 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
           Also return if channel + bw combination does not have a valid op class
 
     */
-    if (!map_is_ctl_channel(channel) || (map_is_2G_ctl_channel(channel) && bw == 40) || get_operating_class(channel, bw) == 0) {
+    if (!map_is_ctl_channel(channel, supported_freq) || (map_is_2G_ctl_channel(channel) && bw == 40) || map_get_op_class(channel, bw, supported_freq) == 0) {
         return;
     }
 
-    /* Get current bw */
-    if (current_op_class == 0 || get_bw_from_operating_class(current_op_class, &current_bw)) {
-        current_bw = 0;
+    /* Get current bw and is_center_channel */
+    if (current_op_class) {
+        if (map_get_bw_from_op_class(current_op_class, &current_bw) ||
+            map_get_is_center_channel_from_op_class(current_op_class, &is_center_channel)) {
+            current_op_class = 0; /* Must be invalid */
+            current_bw = 0;
+        }
     }
 
     /* Update if something changed */
@@ -213,8 +226,8 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
             if (current_bw != bw) {
                 current_op_class = 0;
             } else {
-                int check_channel = (20 == bw || 40 == bw) ? channel : get_mid_freq(channel, current_op_class, bw);
-                if (!is_matching_channel_in_opclass(current_op_class, check_channel)) {
+                int check_channel = is_center_channel ? map_get_center_channel(current_op_class, channel) : channel;
+                if (!map_is_channel_in_op_class(current_op_class, check_channel)) {
                     current_op_class = 0;
                 }
             }
@@ -222,7 +235,7 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
 
         /* Set op_class and channel in dm (keep current tx_pwr) */
         map_dm_radio_set_channel(radio,
-                                 current_op_class > 0 ? current_op_class : get_operating_class(channel, bw),
+                                 current_op_class > 0 ? current_op_class : map_get_op_class(channel, bw, supported_freq),
                                  channel, bw, radio->current_tx_pwr);
 
         log_ctrl_i("updated channel/bw for radio[%s] op_class[%d] channel[%d] bw[%d] from %s",
@@ -231,7 +244,7 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
     }
 }
 
-static int update_radio_op_classes(map_radio_info_t *radio, map_ap_radio_basic_cap_tlv_t* tlv)
+static int update_radio_op_classes(map_radio_info_t *radio, map_ap_radio_basic_cap_tlv_t *tlv)
 {
     int i;
 
@@ -247,82 +260,21 @@ static int update_radio_op_classes(map_radio_info_t *radio, map_ap_radio_basic_c
     radio->cap_op_class_list.op_classes_nr = tlv->op_classes_nr;
 
     for (i = 0; i<tlv->op_classes_nr; i++) {
-        map_op_class_t *op_class = & radio->cap_op_class_list.op_classes[i];
+        map_op_class_t *op_class = &radio->cap_op_class_list.op_classes[i];
 
-        op_class->op_class      = tlv->op_classes[i].op_class;
-        op_class->eirp          = tlv->op_classes[i].eirp;
-        op_class->channel_count = tlv->op_classes[i].channels_nr;
-        memcpy(op_class->channel_list, tlv->op_classes[i].channels, op_class->channel_count);
+        op_class->op_class = tlv->op_classes[i].op_class;
+        op_class->eirp     = tlv->op_classes[i].eirp;
+        map_cs_copy(&op_class->channels, &tlv->op_classes[i].channels);
     }
 
-   return 0;
+    /* Update allowed channels based on config and cap_op_class_list */
+    map_update_radio_channels(radio);
+    map_ctrl_chan_sel_update(radio);
+
+    return 0;
 }
 
-static void update_radio_caps(map_radio_info_t *radio)
-{
-    /* Use HT and VHT cap to fill in global caps */
-    map_radio_capability_t     *caps     = &radio->radio_caps;
-    map_radio_vht_capability_t *vht_caps = radio->vht_caps;
-    map_radio_ht_capability_t  *ht_caps  = radio->ht_caps;
-    map_radio_he_capability_t  *he_caps  = radio->he_caps;
-    bool                        is_5g    = radio->supported_freq == IEEE80211_FREQUENCY_BAND_5_GHZ;
-
-    /* Note: only use vht_caps for 5G (and not for proprietary VHT support on 2.4G) */
-
-    /* Standard (forget about 11B) */
-    caps->supported_standard = (is_5g && he_caps && vht_caps && ht_caps) ? STD_80211_ANACAX:
-                               (is_5g && he_caps && vht_caps) ? STD_80211_ACAX:
-                               (is_5g && he_caps && ht_caps) ? STD_80211_ANAX:
-                               (is_5g && vht_caps) ? STD_80211_AC :
-                               (!is_5g && he_caps) ? STD_80211_NAX :
-                               ht_caps             ? STD_80211_N  :
-                               is_5g               ? STD_80211_A  : STD_80211_G;
-
-    /* Defaults */
-    caps->max_tx_spatial_streams = 1;
-    caps->max_rx_spatial_streams = 1;
-    caps->max_bandwidth          = 20;
-    caps->sgi_support            = 0;
-    caps->su_beamformer_capable  = 0;
-    caps->mu_beamformer_capable  = 0;
-    caps->dl_ofdma               = 0;
-    caps->ul_ofdma               = 0;
-
-    /* Caps: use most advanced info */
-    if (he_caps) {
-        caps->max_tx_spatial_streams = he_caps->max_supported_tx_streams;
-        caps->max_rx_spatial_streams = he_caps->max_supported_rx_streams;
-        if (is_5g) {
-            caps->max_bandwidth      = (he_caps->support_80_80_mhz || he_caps->support_160mhz) ||
-                                       (vht_caps && (vht_caps->support_80_80_mhz || vht_caps->support_160mhz)) ? 160 : 80;
-        } else {
-            caps->max_bandwidth      = (ht_caps && ht_caps->ht_support_40mhz) ? 40 : 20;
-        }
-        caps->su_beamformer_capable  = he_caps->su_beamformer_capable;
-        caps->mu_beamformer_capable  = he_caps->mu_beamformer_capable;
-        caps->dl_ofdma               = he_caps->dl_ofdma_capable;
-        caps->ul_ofdma               = he_caps->ul_ofdma_capable;
-    } else if (is_5g && vht_caps) {
-        caps->max_tx_spatial_streams = vht_caps->max_supported_tx_streams;
-        caps->max_rx_spatial_streams = vht_caps->max_supported_rx_streams;
-        caps->max_bandwidth          = vht_caps->support_80_80_mhz || vht_caps->support_160mhz ? 160 : 80;
-        caps->su_beamformer_capable  = vht_caps->su_beamformer_capable;
-        caps->mu_beamformer_capable  = vht_caps->mu_beamformer_capable;
-    } else if (ht_caps) {
-        caps->max_tx_spatial_streams = ht_caps->max_supported_tx_streams;
-        caps->max_rx_spatial_streams = ht_caps->max_supported_rx_streams;
-        caps->max_bandwidth          = ht_caps->ht_support_40mhz ? 40 : 20;
-    }
-
-    /* Set SGI from VHT/HT */
-    if (is_5g && vht_caps) {
-        caps->sgi_support = vht_caps->gi_support_160mhz || vht_caps->gi_support_80mhz;
-    } else if (ht_caps) {
-        caps->sgi_support = ht_caps->gi_support_40mhz || ht_caps->gi_support_20mhz;
-    }
-}
-
-static void handle_sta_connect(map_bss_info_t *bss, mac_addr mac, uint16_t assoc_time)
+static map_sta_info_t *handle_sta_connect(map_bss_info_t *bss, mac_addr mac, uint16_t assoc_time)
 {
     map_sta_info_t *sta;
     bool            do_cap_query = false;
@@ -331,7 +283,7 @@ static void handle_sta_connect(map_bss_info_t *bss, mac_addr mac, uint16_t assoc
     if (!(sta = map_dm_get_sta_gbl(mac))) {
         if (!(sta = map_dm_create_sta(bss, mac))) {
             log_ctrl_e("failed creating sta[%s]", mac_string(mac));
-            return;
+            return NULL;
         }
         sta->assoc_ts = map_dm_get_sta_assoc_ts(assoc_time);
         do_cap_query  = true;
@@ -346,15 +298,25 @@ static void handle_sta_connect(map_bss_info_t *bss, mac_addr mac, uint16_t assoc
         }
     }
 
+    /* Change active state of backhaul sta iface */
+    map_backhaul_sta_iface_t *bhsta_iface = map_find_bhsta_iface_gbl(mac);
+    if (bhsta_iface) {
+        bhsta_iface->active = true;
+    }
+
     if (do_cap_query) {
         /* Do new client capability query */
         timer_id_t retry_id;
 
         map_dm_get_sta_timer_id(retry_id, sta, CLIENT_CAPS_QUERY_RETRY_ID);
-        if (map_register_retry(retry_id, 15, 20, sta, NULL, map_send_client_capability_query)) {
-            log_ctrl_e("failed Registering retry timer[%s]", retry_id);
+        if (!map_is_timer_registered(retry_id)) {
+            if (map_register_retry(retry_id, 15, 20, sta, NULL, map_send_client_capability_query)) {
+                log_ctrl_e("failed Registering retry timer[%s]", retry_id);
+            }
         }
     }
+
+    return sta;
 }
 
 static void handle_sta_disconnect(map_bss_info_t *bss, mac_addr mac)
@@ -363,6 +325,12 @@ static void handle_sta_disconnect(map_bss_info_t *bss, mac_addr mac)
 
     if (sta) {
         log_ctrl_d("%s: sta[%s] has left bss[%s]", __FUNCTION__, sta->mac_str, bss->bssid_str);
+
+        /* Change active state of backhaul sta iface */
+        map_backhaul_sta_iface_t *bhsta_iface = map_find_bhsta_iface_gbl(mac);
+        if (bhsta_iface) {
+            bhsta_iface->active = false;
+        }
 
         map_dm_remove_sta(sta);
     } else {
@@ -483,6 +451,9 @@ int map_parse_non_1905_neighbor_device_list_tlv(map_ale_info_t *ale, i1905_non_1
         for (j = 0; j < n->macs_nr; j++) {
             maccpy(n->macs[j], tlv->non_1905_neighbors[j].mac_address);
         }
+
+        /* Sort list */
+        acu_sort_mac_array(n->macs, n->macs_nr);
     }
 
     return 0;
@@ -511,6 +482,7 @@ int map_parse_ap_operational_bss_tlv(map_ale_info_t *ale, map_ap_operational_bss
 {
     bool              do_ap_cap_query     = false;
     bool              do_policy_config    = false;
+    bool              do_bhsta_cap_query  = false;
     map_radio_info_t *radio;
     map_radio_info_t *policy_config_radio = NULL;
     timer_id_t        timer_id;
@@ -526,7 +498,7 @@ int map_parse_ap_operational_bss_tlv(map_ale_info_t *ale, map_ap_operational_bss
         map_ap_operational_bss_tlv_radio_t *tlv_radio = &tlv->radios[i];
 
         if (!(radio = map_dm_get_radio(ale, tlv_radio->radio_id))) {
-            if (!(radio = map_handle_new_radio_onboarding(ale, tlv_radio->radio_id))) {
+            if (!(radio = map_handle_new_radio_onboarding(ale, tlv_radio->radio_id, false))) {
                 log_ctrl_e("%s: radio[%s] onboarding failed", __FUNCTION__, mac_string(tlv_radio->radio_id));
                 continue;
             }
@@ -534,7 +506,7 @@ int map_parse_ap_operational_bss_tlv(map_ale_info_t *ale, map_ap_operational_bss
         }
 
         /* Check if any actions need to be performened */
-        if (!is_radio_policy_config_ack_received(radio->state)) {
+        if (is_radio_M1_received(radio->state) && !is_radio_policy_config_ack_received(radio->state)) {
             do_policy_config = true;
             policy_config_radio = radio;
         }
@@ -548,6 +520,10 @@ int map_parse_ap_operational_bss_tlv(map_ale_info_t *ale, map_ap_operational_bss
             log_ctrl_e("failed to update bsss of radio[%s]", mac_string(radio->radio_id));
             continue;
         }
+    }
+
+    if (!is_ale_bhsta_cap_report_received(ale->state) && ale->map_profile >= MAP_PROFILE_2) {
+        do_bhsta_cap_query = true;
     }
 
     /* Perform any required actions */
@@ -565,6 +541,16 @@ int map_parse_ap_operational_bss_tlv(map_ale_info_t *ale, map_ap_operational_bss
         map_dm_get_ale_timer_id(timer_id, ale, AP_CAPS_QUERY_RETRY_ID);
         if (!map_is_timer_registered(timer_id)) {
             if (map_register_retry(timer_id, 10, 10, ale, NULL, map_send_ap_capability_query)) {
+                log_ctrl_e("%s: failed Registering retry timer[%s]", __FUNCTION__, timer_id);
+            }
+        }
+    }
+
+    /* Send Backhaul Sta Capability query */
+    if (do_bhsta_cap_query) {
+        map_dm_get_ale_timer_id(timer_id, ale, BHSTA_CAP_QUERY_RETRY_ID);
+        if (!map_is_timer_registered(timer_id)) {
+            if (map_register_retry(timer_id, 10, 10, ale, NULL, map_send_backhaul_sta_capability_query)) {
                 log_ctrl_e("%s: failed Registering retry timer[%s]", __FUNCTION__, timer_id);
             }
         }
@@ -621,12 +607,15 @@ int map_parse_assoc_clients_tlv(map_ale_info_t *ale, map_assoc_clients_tlv_t* tl
 
         for (j = 0; j < tlv_bss->stas_nr; j++) {
             map_assoc_clients_tlv_sta_t *tlv_sta = &tlv_bss->stas[j];
+            map_sta_info_t              *sta;
 
-            handle_sta_connect(bss, tlv_sta->mac, tlv_sta->assoc_time);
+            if ((sta = handle_sta_connect(bss, tlv_sta->mac, tlv_sta->assoc_time))) {
+                /* Unmark so sta is not removed */
+                map_dm_unmark_sta(sta);
+            }
         }
-
-        /* TODO: remnove sta that are no longer present */
     }
+
     return 0;
 }
 
@@ -658,10 +647,9 @@ int map_parse_ap_radio_basic_cap_tlv(map_ale_info_t *ale, map_ap_radio_basic_cap
 
     /* Get the frequency type from the operating class list */
     for (i = 0; i < tlv->op_classes_nr; i++) {
-        get_frequency_type(tlv->op_classes[i].op_class,
-                           tlv->op_classes[i].channels_nr,
-                           tlv->op_classes[i].channels,
-                           &radio_freq_type, &band_type_5G);
+        map_get_frequency_type(tlv->op_classes[i].op_class,
+                               &tlv->op_classes[i].channels,
+                               &radio_freq_type, &band_type_5G);
     }
 
     if (radio_freq_type == NUM_FREQ_BANDS) {
@@ -677,8 +665,6 @@ int map_parse_ap_radio_basic_cap_tlv(map_ale_info_t *ale, map_ap_radio_basic_cap
     radio->supported_freq = radio_freq_type;
     radio->band_type_5G   = band_type_5G;
     radio->max_bss        = tlv->max_bss;
-
-    update_radio_caps(radio);
 
     return update_radio_op_classes(radio, tlv);
 }
@@ -703,8 +689,6 @@ int map_parse_ap_ht_caps_tlv(map_ale_info_t *ale, map_ap_ht_cap_tlv_t *tlv)
     radio->ht_caps->gi_support_20mhz         = tlv->gi_support_20mhz;
     radio->ht_caps->gi_support_40mhz         = tlv->gi_support_40mhz;
     radio->ht_caps->ht_support_40mhz         = tlv->ht_support_40mhz;
-
-    update_radio_caps(radio);
 
     return 0;
 }
@@ -734,8 +718,6 @@ int map_parse_ap_vht_caps_tlv(map_ale_info_t *ale, map_ap_vht_cap_tlv_t* tlv)
     radio->vht_caps->support_160mhz           = tlv->support_160mhz;
     radio->vht_caps->su_beamformer_capable    = tlv->su_beamformer_capable;
     radio->vht_caps->mu_beamformer_capable    = tlv->mu_beamformer_capable;
-
-    update_radio_caps(radio);
 
     return 0;
 }
@@ -774,8 +756,6 @@ int map_parse_ap_he_caps_tlv(map_ale_info_t *ale, map_ap_he_cap_tlv_t *tlv)
     radio->he_caps->ul_ofdma_capable         = tlv->ul_ofdma_capable;
     radio->he_caps->dl_ofdma_capable         = tlv->dl_ofdma_capable;
 
-    update_radio_caps(radio);
-
     return 0;
 }
 
@@ -790,6 +770,7 @@ int map_parse_ap_metrics_tlv(map_ale_info_t *ale, map_ap_metrics_tlv_t* tlv)
         return -1;
     }
 
+    bss->metrics.valid               = true;
     bss->metrics.channel_utilization = tlv->channel_util;
     bss->metrics.stas_nr             = tlv->stas_nr;
     bss->metrics.esp_present         = tlv->esp_present;
@@ -806,7 +787,7 @@ int map_parse_ap_metrics_tlv(map_ale_info_t *ale, map_ap_metrics_tlv_t* tlv)
 int map_parse_channel_preference_tlv(map_ale_info_t *ale, map_channel_preference_tlv_t *tlv)
 {
     map_radio_info_t *radio = map_dm_get_radio(ale, tlv->radio_id);
-    int               i, j;
+    int               i;
 
     if (!radio) {
         log_ctrl_e("%s: radio[%s] not found", __FUNCTION__, mac_string(tlv->radio_id));
@@ -830,19 +811,10 @@ int map_parse_channel_preference_tlv(map_ale_info_t *ale, map_channel_preference
         map_channel_preference_tlv_op_class_t *tlv_op_class = &tlv->op_classes[i];
         map_op_class_t                        *op_class     = &radio->pref_op_class_list.op_classes[i];
 
-        if (tlv_op_class->channels_nr > MAX_CHANNEL_PER_OP_CLASS) {
-            log_ctrl_w("%s: too many channels[%d] in op_class for radio[%s]", __FUNCTION__,
-                       tlv_op_class->channels_nr, mac_string(tlv->radio_id));
-        }
-
-        op_class->op_class      = tlv_op_class->op_class;
-        op_class->pref          = tlv_op_class->pref;
-        op_class->reason        = tlv_op_class->reason;
-        op_class->channel_count = min(tlv_op_class->channels_nr, MAX_CHANNEL_PER_OP_CLASS);
-
-        for (j = 0; j < op_class->channel_count; j++) {
-            op_class->channel_list[j] = tlv_op_class->channels[j];
-        }
+        op_class->op_class = tlv_op_class->op_class;
+        op_class->pref     = tlv_op_class->pref;
+        op_class->reason   = tlv_op_class->reason;
+        map_cs_copy(&op_class->channels, &tlv_op_class->channels);
     }
 
     radio->pref_op_class_list.op_classes_nr = tlv->op_classes_nr;
@@ -989,7 +961,7 @@ int map_parse_assoc_sta_traffic_stats_tlv(map_ale_info_t *ale, map_assoc_sta_tra
 /* MAP_R2 17.2.36 */
 int map_parse_channel_scan_cap_tlv(map_ale_info_t *ale, map_channel_scan_cap_tlv_t* tlv)
 {
-    size_t i, j, k;
+    size_t i, j;
 
     log_ctrl_d( "SCAN CAPABILITIES:");
     log_ctrl_d("*****************************");
@@ -1019,13 +991,8 @@ int map_parse_channel_scan_cap_tlv(map_ale_info_t *ale, map_channel_scan_cap_tlv
         for (j = 0; j < radio->scan_caps.op_class_list.op_classes_nr; j++) {
             map_op_class_t *op_class = &radio->scan_caps.op_class_list.op_classes[j];
 
-            op_class->op_class      = tlv->radios[i].op_classes[j].op_class;
-            op_class->channel_count = tlv->radios[i].op_classes[j].channels_nr;
-
-            if (op_class->channel_count) {
-                memcpy(op_class->channel_list, tlv->radios[i].op_classes[j].channels,
-                       op_class->channel_count);
-            }
+            op_class->op_class = tlv->radios[i].op_classes[j].op_class;
+            map_cs_copy(&op_class->channels, &tlv->radios[i].op_classes[j].channels);
         }
 
         log_ctrl_d("Radio[%s]",              mac_string(radio->radio_id));
@@ -1036,18 +1003,11 @@ int map_parse_channel_scan_cap_tlv(map_ale_info_t *ale, map_channel_scan_cap_tlv
 
         for (j = 0; j < radio->scan_caps.op_class_list.op_classes_nr; j++) {
             map_op_class_t *op_class = &radio->scan_caps.op_class_list.op_classes[j];
+            char buf[MAP_CS_BUF_LEN];
 
             log_ctrl_d("  op_class:%d",        op_class->op_class);
-            log_ctrl_d("    channel_count:%d", op_class->channel_count);
-            log_ctrl_d("    channel_list:");
-
-            if (op_class->channel_count) {
-                for (k = 0; k < op_class->channel_count; k++) {
-                    log_ctrl_d("      %d", op_class->channel_list[k]);
-                }
-            } else {
-                log_ctrl_d("      all");
-            }
+            log_ctrl_d("    channel_count:%d", map_cs_nr(&op_class->channels));
+            log_ctrl_d("    channel_list:%s",  map_cs_nr(&op_class->channels) > 0 ? map_cs_to_string(&op_class->channels, ' ', buf, sizeof(buf)) : "all");
         }
         log_ctrl_d("*****************************");
     }
@@ -1337,7 +1297,7 @@ fail:
 /* MAP_R2 17.2.46 */
 int map_parse_cac_cap_tlv(map_ale_info_t *ale, map_cac_cap_tlv_t* tlv)
 {
-    size_t i, j, k, l;
+    size_t i, j, k;
 
     log_ctrl_d("CAC CAPABILITIES:");
     log_ctrl_d("*****************************");
@@ -1372,9 +1332,8 @@ int map_parse_cac_cap_tlv(map_ale_info_t *ale, map_cac_cap_tlv_t* tlv)
             for (k = 0; k < cac_method_tmp[j].op_class_list.op_classes_nr; k++) {
                 map_op_class_t *op_class = &cac_method_tmp[j].op_class_list.op_classes[k];
 
-                op_class->op_class      = tlv_radio->cac_methods[j].op_classes[k].op_class;
-                op_class->channel_count = tlv_radio->cac_methods[j].op_classes[k].channels_nr;
-                memcpy(op_class->channel_list, tlv_radio->cac_methods[j].op_classes[k].channels, op_class->channel_count);
+                op_class->op_class = tlv_radio->cac_methods[j].op_classes[k].op_class;
+                map_cs_copy(&op_class->channels, &tlv_radio->cac_methods[j].op_classes[k].channels);
             }
         }
 
@@ -1395,14 +1354,11 @@ int map_parse_cac_cap_tlv(map_ale_info_t *ale, map_cac_cap_tlv_t* tlv)
 
             for (k = 0; k < method->op_class_list.op_classes_nr; k++) {
                 map_op_class_t *op_class = &method->op_class_list.op_classes[k];
+                char buf[MAP_CS_BUF_LEN];
 
                 log_ctrl_d("  op_class:%d",        op_class->op_class);
-                log_ctrl_d("    channel_count:%d", op_class->channel_count);
-                log_ctrl_d("    channel_list:");
-
-                for (l = 0; l < op_class->channel_count; l++) {
-                    log_ctrl_d("      %d", op_class->channel_list[l]);
-                }
+                log_ctrl_d("    channel_count:%d", map_cs_nr(&op_class->channels));
+                log_ctrl_d("    channel_list:%s",  map_cs_to_string(&op_class->channels, ' ', buf, sizeof(buf)));
             }
         }
         log_ctrl_d("*****************************");
@@ -1472,6 +1428,7 @@ int map_parse_radio_metrics_tlv(map_ale_info_t *ale, map_radio_metrics_tlv_t* tl
         return -1;
     }
 
+    radio->radio_metrics.valid         = true;
     radio->radio_metrics.noise         = tlv->noise;
     radio->radio_metrics.transmit      = tlv->transmit;
     radio->radio_metrics.receive_self  = tlv->receive_self;
@@ -1499,6 +1456,7 @@ int map_parse_ap_ext_metrics_response_tlv(map_ale_info_t *ale, map_ap_ext_metric
         return -1;
     }
 
+    bss->extended_metrics.valid          = true;
     bss->extended_metrics.ucast_bytes_tx = map_convert_mapunits_to_bytes(tlv->ucast_bytes_tx, byte_counter_unit);
     bss->extended_metrics.ucast_bytes_rx = map_convert_mapunits_to_bytes(tlv->ucast_bytes_rx, byte_counter_unit);
     bss->extended_metrics.mcast_bytes_tx = map_convert_mapunits_to_bytes(tlv->mcast_bytes_tx, byte_counter_unit);
@@ -1551,6 +1509,42 @@ int map_parse_assoc_sta_ext_link_metrics_tlv(map_ale_info_t *ale, map_assoc_sta_
     return 0;
 }
 
+/* MAP_R2 17.2.65 */
+int map_parse_backhaul_sta_radio_capability_tlv(map_ale_info_t *ale, map_backhaul_sta_radio_cap_tlv_t **tlvs, size_t tlvs_nr)
+{
+    uint8_t i;
+
+    /* Remove old backhaul sta interfaces */
+    SFREE(ale->backhaul_sta_iface_list);
+
+    ale->backhaul_sta_iface_count = 0;
+
+    if (tlvs_nr == 0) {
+        return 0;
+    }
+
+    if (!ale->backhaul_sta_iface_list && !(ale->backhaul_sta_iface_list = calloc(tlvs_nr, sizeof(*ale->backhaul_sta_iface_list)))) {
+        log_ctrl_e("%s: calloc failed", __FUNCTION__);
+        return -1;
+    }
+
+    ale->backhaul_sta_iface_count = tlvs_nr;
+
+    for (i = 0; i < tlvs_nr; i++) {
+        map_backhaul_sta_radio_cap_tlv_t    *tlv          = tlvs[i];
+        map_backhaul_sta_iface_t            *bhsta_iface  = &ale->backhaul_sta_iface_list[i];
+
+        maccpy(bhsta_iface->radio_id, tlv->radio_id);
+        if (tlv->bsta_mac_present) {
+            maccpy(bhsta_iface->mac_address, tlv->bsta_mac);
+            /* Check if it is connected(active) */
+            bhsta_iface->active = !!map_dm_get_sta_gbl(bhsta_iface->mac_address);
+        }
+    }
+
+    return 0;
+}
+
 /*#######################################################################
 #                       MAP R3 TLV HANDLERS                             #
 ########################################################################*/
@@ -1584,8 +1578,6 @@ int map_parse_ap_wifi6_cap_tlv(map_ale_info_t *ale, map_ap_wifi6_cap_tlv_t *tlv)
         }
         radio->wifi6_caps->cap_data[i] = tlv->cap_data[i];
     }
-
-    update_radio_caps(radio);
 
     return 0;
 }
@@ -1632,6 +1624,25 @@ int map_parse_dpp_chirp_value_tlv(map_ale_info_t *ale, map_dpp_chirp_value_tlv_t
             return ret;
         }
         memcpy(ale->dpp_info.chirp.hash, tlv->hash, tlv->hash_len);
+        ret = 0;
+    }
+
+    return ret;
+}
+
+/* MAP_R3 17.2.86 */
+int map_parse_dpp_message_tlv(map_ale_info_t *ale, map_dpp_message_tlv_t *tlv)
+{
+    int ret = -1;
+
+    if (tlv->frame_len && tlv->frame) {
+        free(ale->dpp_info.message.frame);
+        ale->dpp_info.message.frame_len = tlv->frame_len;
+        ale->dpp_info.message.frame = calloc(tlv->frame_len, sizeof(uint8_t));
+        if (ale->dpp_info.message.frame == NULL) {
+            return ret;
+        }
+        memcpy(ale->dpp_info.message.frame, tlv->frame, tlv->frame_len);
         ret = 0;
     }
 

@@ -292,10 +292,10 @@ static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t
             *  ...but first check for errors
             */
             if (fragment_id > MAX_FRAGMENTS_PER_MID - 1) {
-                log_i1905_e("Too many fragments (%d) for one same CMDU (max supported is %d)", fragment_id, MAX_FRAGMENTS_PER_MID);
-                log_i1905_e("  mid      = %d", mid);
-                log_i1905_e("  src_addr = %s", acu_mac_string(src_addr));
-                log_i1905_e("  dst_addr = %s", acu_mac_string(dst_addr));
+                log_i1905_w("Too many fragments (%d) for one same CMDU (max supported is %d)", fragment_id, MAX_FRAGMENTS_PER_MID);
+                log_i1905_w("  mid      = %d", mid);
+                log_i1905_w("  src_addr = %s", acu_mac_string(src_addr));
+                log_i1905_w("  dst_addr = %s", acu_mac_string(dst_addr));
                 return NULL;
             }
 
@@ -430,7 +430,7 @@ static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t
         c = parse_1905_CMDU_from_packets(g_reassemble.mids_in_flight[i].streams, g_reassemble.mids_in_flight[i].lengths);
 
         if (NULL == c) {
-            log_i1905_w("parse_1905_CMDU_header_from_packet() failed");
+            log_i1905_e("parse_1905_CMDU_header_from_packet() failed");
         } else {
             log_i1905_d("All fragments belonging to this CMDU have already been received and the CMDU structure is ready");
             maccpy(c->cmdu_stream.src_mac_addr, src_addr);
@@ -699,7 +699,7 @@ static void packet_cb(char *if_name, uint8_t *packet, uint16_t packet_len)
 
     x = PLATFORM_GET_1905_INTERFACE_INFO(if_name);
     if (NULL == x) {
-        log_i1905_w("Could not retrieve info of interface %s", if_name);
+        log_i1905_e("Could not retrieve info of interface %s", if_name);
         return;
     }
 

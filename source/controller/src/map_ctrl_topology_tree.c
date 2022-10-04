@@ -25,6 +25,7 @@
 #include "map_ctrl_cmdu_tx.h"
 #include "map_ctrl_utils.h"
 #include "map_topology_tree.h"
+#include "map_staging_list.h"
 
 /*#######################################################################
 #                       LOCAL FUNCTIONS                                 #
@@ -55,7 +56,7 @@ static int detect_dead_agent_timer_cb(int status, void *ale_object, UNUSED void 
 
     uint64_t no_update_since = get_clock_diff_secs(get_current_time(), ale->keep_alive_time);
     if (map_get_dead_agent_detection_interval() < no_update_since) {
-        map_cleanup_dead_agent(ale);
+        map_cleanup_agent(ale);
     }
 
 done:
@@ -110,8 +111,16 @@ void map_build_topology_tree(map_ale_info_t *ale, i1905_neighbor_device_list_tlv
             map_ale_info_t         *parent_of_neighbor_ale = NULL;
 
             if (!(neighbor_ale = map_dm_get_ale(neighbor->mac_address))) {
-                /* This new neighbor may be a parent of current node. Skip proccessing it. */
-                neighbor_ale = map_handle_new_agent_onboarding(neighbor->mac_address, ale->iface_name);
+                map_1905_dev_info_t        *dev;
+
+                /* This new neighbor category is not clear yet? EM or good non-EM or bad non-EM */
+                map_send_topology_query_with_al_mac(neighbor->mac_address, ale->iface_name, MID_NA);
+                if (NULL != (dev = map_stglist_get_1905_dev(neighbor->mac_address))) {
+                    continue; /* ALE is in the staging list */
+                }
+                if (!(dev = map_stglist_create_1905_dev(neighbor->mac_address, g_zero_mac, false))) {
+                    log_ctrl_e("%s: Failed to create 1905 dev info", __FUNCTION__);
+                }
                 continue;
             }
 
@@ -224,7 +233,7 @@ void map_register_topology_query_retry(map_ale_info_t *ale)
     }
 }
 
-int8_t map_cleanup_dead_agent(map_ale_info_t *ale) {
+int8_t map_cleanup_agent(map_ale_info_t *ale) {
 
     map_ale_info_t *child_ale;
 

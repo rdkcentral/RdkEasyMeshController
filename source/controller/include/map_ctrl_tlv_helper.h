@@ -36,8 +36,11 @@ void map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radi
 
 void map_fill_transmit_power_tlv(map_transmit_power_limit_tlv_t *tlv, map_radio_info_t *radio);
 
-/* Fill scan request tlv with all 20MHz operating class received in scan capability tlv */
-void map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_radio_info_t *radio, bool fresh_scan);
+/* Fill scan request tlv with all 20MHz operating class received in scan capability tlv.
+   Optionally set channels != NULL to add only those.
+*/
+void map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_radio_info_t *radio,
+                                       bool fresh_scan, map_channel_set_t *channels);
 
 void map_fill_default_8021q_settings_tlv(map_cfg_t *cfg, map_default_8021q_settings_tlv_t *tlv);
 

@@ -17,9 +17,8 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
+#include <sys/un.h>
 #include <arpa/inet.h>
-#include <netinet/tcp.h>
 
 #define LOG_TAG "cli"
 
@@ -66,7 +65,7 @@ void cli_run(cli_t *cli)
 {
     int rc;
 
-    struct sockaddr_in cli_addr;
+    struct sockaddr_un cli_addr;
     socklen_t cli_len = sizeof(cli_addr);
 
     int fd = -1;
@@ -93,17 +92,6 @@ void cli_run(cli_t *cli)
         goto bail;
     }
     cli->session_fp = fp;  /* We can only have one session active at a time, so one fp */
-
-    int val = 1;
-    setsockopt(fd, SOL_TCP, TCP_NODELAY, &val, sizeof(val));
-    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val));
-    /* After 10 secs of inactivity, probe 5 times in intervals of 10 secs. Max closure time is 60 secs. */
-    val = 5;
-    setsockopt(fd, SOL_TCP, TCP_KEEPCNT, &val, sizeof(val));
-    val = 10;
-    setsockopt(fd, SOL_TCP, TCP_KEEPIDLE, &val, sizeof(val));
-    val = 10;
-    setsockopt(fd, SOL_TCP, TCP_KEEPINTVL, &val, sizeof(val));
 
     rc = recv(fd, &len, sizeof(len), MSG_NOSIGNAL);
     len = ntohl(len);
@@ -173,12 +161,11 @@ bail:
 cli_t *cli_create(cli_options_t *options)
 {
     int rc;
-    int yes = 1;
-    struct sockaddr_in serv_addr;
+    struct sockaddr_un saddr;
 
     cli_t *cli;
 
-    log_lib_d("creating cli ip[%s] port[%d]", options->bindip, options->port);
+    log_lib_d("creating cli sock_path[%s]", options->sock_path);
 
     cli = malloc(sizeof(cli_t));
     if (cli == NULL) {
@@ -195,28 +182,17 @@ cli_t *cli_create(cli_options_t *options)
         goto bail;
     }
 
-    cli->fd = socket(AF_INET, SOCK_STREAM, 0);
+    cli->fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (cli->fd < 0) {
         log_lib_e("can not open socket");
         goto bail;
     }
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    if (strlen(options->bindip) == 0) {
-        serv_addr.sin_addr.s_addr = INADDR_ANY;
-    } else {
-        if (!inet_aton(options->bindip, &serv_addr.sin_addr)) {
-            log_lib_e("can not convert IP address: %s", options->bindip);
-            goto bail;
-        }
-    }
-    serv_addr.sin_port = htons(options->port);
 
-    setsockopt(cli->fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-
-    rc = bind(cli->fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-    if (rc < 0) {
-        log_lib_e("can not bind cli");
+    memset(&saddr, 0, sizeof(saddr));
+    saddr.sun_family = AF_UNIX;
+    map_strlcpy(saddr.sun_path + 1, options->sock_path, sizeof(saddr.sun_path) - 1);
+    if (bind(cli->fd, (struct sockaddr *)&saddr, sizeof(saddr))) {
+        log_lib_e("can not bind to %s", saddr.sun_path + 1);
         goto bail;
     }
 

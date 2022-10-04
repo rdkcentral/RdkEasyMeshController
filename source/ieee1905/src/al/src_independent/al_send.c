@@ -95,7 +95,7 @@
 /*#######################################################################
 #                       LOCAL FUNCTIONS                                 #
 ########################################################################*/
-static void _obtainLocalDeviceInfoTLV(struct deviceInformationTypeTLV *device_info)
+static void _obtainLocalDeviceInfoTLV(i1905_device_information_tlv_t *device_info)
 {
     uint8_t   al_mac_address[6];
 
@@ -198,7 +198,7 @@ static void _obtainLocalDeviceInfoTLV(struct deviceInformationTypeTLV *device_in
 /* Given a pointer to a preallocated "alMacAddressTypeTLV" structure, fill it
 *  with all the pertaining information retrieved from the local device.
 */
-static void _obtainLocalAlMacAddressTLV(struct alMacAddressTypeTLV *al_mac_addr)
+static void _obtainLocalAlMacAddressTLV(i1905_al_mac_address_tlv_t *al_mac_addr)
 {
     uint8_t al_mac_address[6];
 
@@ -216,7 +216,7 @@ static void _obtainLocalAlMacAddressTLV(struct alMacAddressTypeTLV *al_mac_addr)
 /* Given a pointer to a preallocated "searchedRoleTLV" structure, fill it
 *  with all the pertaining information retrieved from the local device.
 */
-static void _obtainSearchedRoleTLV(struct searchedRoleTLV *searched_role_tlv)
+static void _obtainSearchedRoleTLV(i1905_searched_role_tlv_t *searched_role_tlv)
 {
     searched_role_tlv->tlv_type = TLV_TYPE_SEARCHED_ROLE;
     searched_role_tlv->role     = IEEE80211_ROLE_AP;
@@ -225,13 +225,13 @@ static void _obtainSearchedRoleTLV(struct searchedRoleTLV *searched_role_tlv)
 /* Given a pointer to a preallocated "supportedRoleTLV" structure, fill it
 *  with all the pertaining information retrieved from the local device.
 */
-static void _obtainSupportedRoleTLV(struct supportedRoleTLV *supported_role_tlv)
+static void _obtainSupportedRoleTLV(i1905_supported_role_tlv_t *supported_role_tlv)
 {
     supported_role_tlv->tlv_type = TLV_TYPE_SUPPORTED_ROLE;
     supported_role_tlv->role     = IEEE80211_ROLE_AP;
 }
 
-static void _obtainSupportedFrequencyBandTLV(struct supportedFreqBandTLV *supported_freq_band_tlv, uint8_t freq_band)
+static void _obtainSupportedFrequencyBandTLV(i1905_supported_freq_band_tlv_t *supported_freq_band_tlv, uint8_t freq_band)
 {
     supported_freq_band_tlv->tlv_type  = TLV_TYPE_SUPPORTED_FREQ_BAND;
     supported_freq_band_tlv->freq_band = freq_band;
@@ -240,7 +240,7 @@ static void _obtainSupportedFrequencyBandTLV(struct supportedFreqBandTLV *suppor
 /* Given a pointer to a preallocated "autoconfigFreqBandTLV" structure, fill it
 *  with all the pertaining information retrieved from the local device.
 */
-static void _obtainAutoconfigFreqBandTLV(struct autoconfigFreqBandTLV *ac_freq_band_tlv, uint8_t freq_band, char *interface)
+static void _obtainAutoconfigFreqBandTLV(i1905_autoconfig_freq_band_tlv_t *ac_freq_band_tlv, uint8_t freq_band, char *interface)
 {
     ac_freq_band_tlv->tlv_type = TLV_TYPE_AUTOCONFIG_FREQ_BAND;
 
@@ -260,7 +260,7 @@ static void _obtainAutoconfigFreqBandTLV(struct autoconfigFreqBandTLV *ac_freq_b
                 x = PLATFORM_GET_1905_INTERFACE_INFO(ifs_names[i]);
 
                 if (NULL == x) {
-                    log_i1905_w("Could not retrieve info of interface %s", ifs_names[i]);
+                    log_i1905_e("Could not retrieve info of interface %s", ifs_names[i]);
                     continue;
                 }
 
@@ -324,11 +324,11 @@ static void _obtainAutoconfigFreqBandTLV(struct autoconfigFreqBandTLV *ac_freq_b
 /*#######################################################################
 #                       GLOBAL FUNCTIONS                                #
 ########################################################################*/
-uint8_t forward1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dst_mac_address, i1905_cmdu_t *cmdu, int get_src_mac_frm_stream)
+uint8_t forward1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dest_mac, i1905_cmdu_t *cmdu, int get_src_mac_frm_stream)
 {
     uint8_t  **streams;
     uint16_t  *streams_lens;
-    uint8_t   *src_mac_address;
+    uint8_t   *src_mac;
     uint8_t    total_streams, x;
 
     log_i1905_d("Contents of CMDU to send:0x%x",cmdu->message_type);
@@ -336,7 +336,7 @@ uint8_t forward1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dst_ma
     streams = forge_1905_CMDU_from_structure(cmdu, &streams_lens);
     if (NULL == streams) {
         /* Could not forge the packet. Error? */
-        log_i1905_w("forge_1905_CMDU_from_structure() failed!");
+        log_i1905_e("forge_1905_CMDU_from_structure() failed!");
         return 0;
     }
 
@@ -358,14 +358,14 @@ uint8_t forward1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dst_ma
     while(streams[x]) {
         log_i1905_d("Sending 1905 message on interface %s, MID %d, fragment %d/%d", interface_name, mid, x+1, total_streams);
 	if (get_src_mac_frm_stream) {
-            src_mac_address = cmdu->cmdu_stream.src_mac_addr;
+            src_mac = cmdu->cmdu_stream.src_mac_addr;
         } else {
-            src_mac_address = DMalMacGet();
+            src_mac = DMalMacGet();
         }
 
         if (0 == PLATFORM_SEND_RAW_PACKET(interface_name,
-                                          dst_mac_address,
-                                          src_mac_address,
+                                          dest_mac,
+                                          src_mac,
                                           ETHERTYPE_1905,
                                           streams[x],
                                           streams_lens[x]))
@@ -387,7 +387,7 @@ uint8_t send1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dest_mac,
     return forward1905RawPacket(interface_name, mid, dest_mac, cmdu, GET_NATIVE_AL_SRC_MAC);
 }
 
-uint8_t sendLLDPBridgeDiscoveryPacket(char *interface_name, uint8_t* dest_mac, i1905_lldp_payload_t *payload)
+uint8_t sendLLDPBridgeDiscoveryPacket(char *interface_name, uint8_t* src_mac, i1905_lldp_payload_t *payload)
 {
     uint8_t  *stream;
     uint16_t  stream_len;
@@ -401,7 +401,7 @@ uint8_t sendLLDPBridgeDiscoveryPacket(char *interface_name, uint8_t* dest_mac, i
     }
 
     log_i1905_d("Sending LLDP bridge discovery message on interface %s", interface_name);
-    if (0 == PLATFORM_SEND_RAW_PACKET(interface_name, mcast_address, dest_mac,
+    if (0 == PLATFORM_SEND_RAW_PACKET(interface_name, mcast_address, src_mac,
                                       ETHERTYPE_LLDP, stream, stream_len)) {
         log_i1905_e("%s: Packet could not be sent!", __func__);
     }

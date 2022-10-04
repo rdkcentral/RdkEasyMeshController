@@ -44,9 +44,9 @@
  */
 
 typedef struct {
-   struct wscKey     *wsc_key;
-   struct wscTLV      m1;
-   struct wscTLV      m2;
+   i1905_wsc_key_t   *wsc_key;
+   i1905_wsc_tlv_t    m1;
+   i1905_wsc_tlv_t    m2;
    map_profile_cfg_t *m2_config;
 } i1905_wsc_data_t;
 
@@ -60,7 +60,7 @@ typedef struct {
  */
 typedef struct {
    uint8_t freq_band;
-   struct supportedFreqBandTLV *supported_freq_band_tlv;
+   i1905_supported_freq_band_tlv_t *supported_freq_band_tlv;
 } i1905_supported_freq_band_data_t;
 
 

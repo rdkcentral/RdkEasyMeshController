@@ -441,6 +441,7 @@ uint32_t map_get_max_phy_rate(map_sta_capability_t *caps)
         case STD_80211_ACAX:
         case STD_80211_ANAX:
         case STD_80211_NAX:
+        case STD_80211_AX:
             return pr_11ax[bw][ss];
         break;
         case STD_80211_ANAC:
@@ -470,7 +471,7 @@ uint32_t map_get_max_phy_rate(map_sta_capability_t *caps)
 /*#######################################################################
 #                       PARSE ASSOC BODY                                #
 ########################################################################*/
-int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int body_len, bool is_5g, uint8_t *match_ssid, int match_ssid_len)
+int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int body_len, int supported_freq, uint8_t *match_ssid, int match_ssid_len)
 {
     ieee802_11_elems  elems     = {0};
     uint16_t          fixed_cap = 0;
@@ -546,21 +547,23 @@ int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int bo
     caps->max_bandwidth          = 20;
 
     /* Standard */
-    if (he_cap) {
-        if (is_5g) {
+    if (supported_freq == IEEE80211_FREQUENCY_BAND_6_GHZ) {
+        caps->supported_standard = STD_80211_AX;
+    } else if (he_cap) {
+        if (supported_freq != IEEE80211_FREQUENCY_BAND_2_4_GHZ) {
             caps->supported_standard = (vht_cap && ht_cap)? STD_80211_ANACAX:
                                        (vht_cap)? STD_80211_ACAX:STD_80211_ANAX;
         } else {
            caps->supported_standard = STD_80211_NAX;
         }
-    } else if (is_5g && vht_cap) {
+    } else if (supported_freq != IEEE80211_FREQUENCY_BAND_2_4_GHZ && vht_cap) {
         caps->supported_standard = STD_80211_AC;
     } else if (ht_cap) {
         caps->supported_standard = STD_80211_N;
-    } else if (is_5g) {
-        caps->supported_standard = STD_80211_A;
-    } else {
+    } else if (supported_freq == IEEE80211_FREQUENCY_BAND_2_4_GHZ) {
         caps->supported_standard = is_erp ? STD_80211_G : STD_80211_B;
+    } else {
+        caps->supported_standard = STD_80211_A;
     }
 
     caps->he_support  = he_cap  ? 1 : 0;
@@ -570,7 +573,7 @@ int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int bo
 
     /* HE, VHT (5G only) and HT CAP - see dapi_fill_bssinfo_from_ie in hostapd */
     if (he_cap) {
-        if (is_5g) {
+        if (supported_freq != IEEE80211_FREQUENCY_BAND_2_4_GHZ) {
             caps->max_bandwidth = (he_cap->phy_cap_info[0] & (IEEE80211_HE_CAP_PHY_CAP_160MHZ_5G_6G | IEEE80211_HE_CAP_PHY_CAP_8080MHZ_5G_6G)) ? 160 :
                                   (he_cap->phy_cap_info[0] & IEEE80211_HE_CAP_PHY_CAP_40MHZ_80MGHZ_5G_6G) ? 80 : 20;   /* 80 vs 40 not possible??? */
         } else {
@@ -578,7 +581,7 @@ int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int bo
         }
         caps->max_tx_spatial_streams = vht_he_mcs_map_to_ss(map_le_to_host16(he_cap->tx_mcs_map_80));
         caps->max_rx_spatial_streams = vht_he_mcs_map_to_ss(map_le_to_host16(he_cap->rx_mcs_map_80));
-    } else if (is_5g && vht_cap) {
+    } else if (supported_freq != IEEE80211_FREQUENCY_BAND_2_4_GHZ && vht_cap) {
         caps->max_bandwidth          = vht_cap_info & (IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160MHZ | IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ) ? 160 : 80;
         caps->max_tx_spatial_streams = vht_he_mcs_map_to_ss(map_le_to_host16(vht_cap->vht_supported_mcs_set.tx_map));
         caps->max_rx_spatial_streams = vht_he_mcs_map_to_ss(map_le_to_host16(vht_cap->vht_supported_mcs_set.rx_map));
@@ -588,8 +591,11 @@ int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int bo
         caps->max_rx_spatial_streams = ht_mcs_set_to_ss(ht_cap->supported_mcs_set);
     }
 
-    /* SGI from VHT and HT */
-    if (is_5g && vht_cap) {
+    /* SGI from HE, VHT and HT */
+    if (he_cap) {
+        /* 11ax sgi field must be marked as False */
+        caps->sgi_support = false;
+    } else if (supported_freq != IEEE80211_FREQUENCY_BAND_2_4_GHZ && vht_cap) {
         caps->sgi_support = vht_cap_info & (IEEE80211_VHT_CAP_SHORT_GI_80 | IEEE80211_VHT_CAP_SHORT_GI_160) ? 1 : 0;
     } else if (ht_cap) {
         caps->sgi_support = ht_cap_info & (IEEE80211_HT_CAP_INFO_SHORT_GI20MHZ | IEEE80211_HT_CAP_INFO_SHORT_GI40MHZ) ? 1 : 0;

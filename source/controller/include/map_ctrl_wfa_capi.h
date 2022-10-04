@@ -9,6 +9,6 @@
 
 #include "map_utils.h"
 
-int multiap_controller_wfa_capi(char *line, map_printf_cb_t print_cb);
+int map_ctrl_wfa_capi(char *line, map_printf_cb_t print_cb);
 
 #endif /* MAP_CTRL_WFA_CAPI_H_ */

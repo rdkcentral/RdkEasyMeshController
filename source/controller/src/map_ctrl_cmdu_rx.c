@@ -57,8 +57,8 @@ static cmdu_cbs_t g_cmdu_cbs[]={
     },
     {
         .cmdu_type       = CMDU_TYPE_TOPOLOGY_RESPONSE,                          /* 1905.1 6.3.3 (type 0x0002) */
-        .validate_ale_cb = map_validate_topology_response,
-        .handle_ale_cb   = map_handle_topology_response,
+        .validate_cb     = map_validate_topology_response,
+        .handle_cb       = map_handle_topology_response,
     },
     {
         .cmdu_type       = CMDU_TYPE_TOPOLOGY_NOTIFICATION,                      /* 1905.1 6.3.4 (type 0x0003) */
@@ -187,6 +187,11 @@ static cmdu_cbs_t g_cmdu_cbs[]={
         .handle_ale_cb   = map_handle_client_disassoc_stats,
     },
     {
+        .cmdu_type       = CMDU_TYPE_MAP_BACKHAUL_STA_CAPABILITY_REPORT,         /* MAP_R2 17.1.43 (type 0x8028) */
+        .validate_ale_cb = map_validate_backhaul_sta_capability_report,
+        .handle_ale_cb   = map_handle_backhaul_sta_capability_report,
+    },
+    {
         .cmdu_type       = CMDU_TYPE_MAP_FAILED_CONNECTION,                      /* MAP_R2 17.1.44 (type 0x8033) */
         .validate_ale_cb = map_validate_failed_connection,
         .handle_ale_cb   = map_handle_failed_connection,
@@ -197,6 +202,11 @@ static cmdu_cbs_t g_cmdu_cbs[]={
         .cmdu_type       = CMDU_TYPE_MAP_PROXIED_ENCAP_DPP,                     /* MAP_R3 17.1.48 (type 0x8029) */
         .validate_ale_cb = map_validate_proxied_encap_dpp,
         .handle_ale_cb   = map_handle_proxied_encap_dpp,
+    },
+    {
+        .cmdu_type       = CMDU_TYPE_MAP_DIRECT_ENCAP_DPP,                      /* MAP_R3 17.1.56 (type 0x802a) */
+        .validate_ale_cb = map_validate_direct_encap_dpp,
+        .handle_ale_cb   = map_handle_direct_encap_dpp,
     },
     {
         .cmdu_type       = CMDU_TYPE_MAP_CHIRP_NOTIFICATION,                    /* MAP_R3 17.1.52 (type 0x802f) */

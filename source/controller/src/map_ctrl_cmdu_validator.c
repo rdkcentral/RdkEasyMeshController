@@ -301,14 +301,16 @@ int map_validate_topology_query(i1905_cmdu_t *cmdu)
 }
 
 /* 1905.1 6.3.3 (type 0x0002) */
-int map_validate_topology_response(map_ale_info_t* ale, i1905_cmdu_t *cmdu)
+int map_validate_topology_response(i1905_cmdu_t *cmdu)
 {
-    uint8_t *tlv;
-    size_t   idx;
-    int      dev_info_tlv_nr      = 0;
-    int      supp_service_tlv_nr  = 0;
-    int      ap_op_bss_nr         = 0;
-    int      assoc_clients_tlv_nr = 0;
+    uint8_t        *src_mac              = cmdu->cmdu_stream.src_mac_addr;
+    uint8_t        *tlv                  = NULL;
+    map_ale_info_t *ale                  = NULL;
+    size_t          idx;
+    int             dev_info_tlv_nr      = 0;
+    int             supp_service_tlv_nr  = 0;
+    int             ap_op_bss_nr         = 0;
+    int             assoc_clients_tlv_nr = 0;
 
     i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
         switch (*tlv) {
@@ -316,12 +318,14 @@ int map_validate_topology_response(map_ale_info_t* ale, i1905_cmdu_t *cmdu)
                 i1905_device_information_tlv_t *dev_info_tlv = (i1905_device_information_tlv_t *)tlv;
                 dev_info_tlv_nr++;
 
-                if (maccmp(ale->al_mac, dev_info_tlv->al_mac_address)) {
-                    mac_addr_str mac_str1;
-                    mac_addr_str mac_str2;
+                if (NULL != (ale = map_dm_get_ale_from_src_mac(src_mac))) {
+                    if (maccmp(ale->al_mac, dev_info_tlv->al_mac_address)) {
+                        mac_addr_str mac_str1;
+                        mac_addr_str mac_str2;
 
-                    log_ctrl_w("al mac mismatch in %s (%s <-> %s)", i1905_tlv_type_to_string(*tlv),
+                        log_ctrl_w("al mac mismatch in %s (%s <-> %s)", i1905_tlv_type_to_string(*tlv),
                                mac_to_string(ale->al_mac, mac_str1), mac_to_string(dev_info_tlv->al_mac_address, mac_str2));
+                    }
                 }
                 break;
             }
@@ -656,18 +660,18 @@ int map_validate_client_capability_report(UNUSED map_ale_info_t *ale, i1905_cmdu
 }
 
 /* MAP_R1 17.1.17 (type 0x800C) */
-int map_validate_ap_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+int map_validate_ap_metrics_response(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
     uint8_t *tlv;
     size_t   idx;
-    int      ap_metrics_tlv_nr     = 0;
-    int      ap_ext_metrics_tlv_nr = 0;
+    //int      ap_metrics_tlv_nr     = 0;
+    //int      ap_ext_metrics_tlv_nr = 0;
 
 
     i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
         switch (*tlv) {
             case TLV_TYPE_AP_METRICS:
-                ap_metrics_tlv_nr++;
+                //ap_metrics_tlv_nr++;
             break;
             case TLV_TYPE_ASSOCIATED_STA_TRAFFIC_STATS:
                 /* Optional */
@@ -676,7 +680,7 @@ int map_validate_ap_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
                 /* Optional */
             break;
             case TLV_TYPE_AP_EXTENDED_METRICS:                  /* Profile 2 */
-                ap_ext_metrics_tlv_nr++;
+                //ap_ext_metrics_tlv_nr++;
             break;
             case TLV_TYPE_RADIO_METRICS:                        /* Profile 2 */
                 /* Optional */
@@ -691,12 +695,18 @@ int map_validate_ap_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     }
 
     /* Profile 1 requirements */
+    /* TODO: make validation smarter */
+    /*       EM standard is not correct.
+             If there are no bss, there are no AP (extended) metrics TLVs
+    */
+#if 0
     CHECK_ONE_OR_MORE_TLV(TLV_TYPE_AP_METRICS, ap_metrics_tlv_nr);
 
     /* Profile 2 requirements */
     if (ale->map_profile >= MAP_PROFILE_2) {
         CHECK_ONE_OR_MORE_TLV(TLV_TYPE_AP_EXTENDED_METRICS, ap_ext_metrics_tlv_nr);
     }
+#endif
 
     return 0;
 }
@@ -904,6 +914,26 @@ int map_validate_client_disassoc_stats(UNUSED map_ale_info_t *ale, i1905_cmdu_t 
     return 0;
 }
 
+/* MAP_R2 17.1.43 (type 0x8028) */
+int map_validate_backhaul_sta_capability_report(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    uint8_t *tlv;
+    size_t   idx;
+
+    i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
+        switch (*tlv) {
+            case TLV_TYPE_BACKHAUL_STA_RADIO_CAPABILITIES:
+                /* Optional */
+            break;
+            default:
+                log_unexpected_tlv(cmdu, *tlv);
+            break;
+        }
+    }
+
+    return 0;
+}
+
 /* MAP_R2 17.1.44 (type 0x8033) */
 int map_validate_failed_connection(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
@@ -974,4 +1004,10 @@ int map_validate_proxied_encap_dpp(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmd
 int map_validate_chirp_notification(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
     return expect_one_tlv_type(cmdu, TLV_TYPE_DPP_CHIRP_VALUE);
+}
+
+/* MAP_R3 17.1.56 (type 0x802a) */
+int map_validate_direct_encap_dpp(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    return expect_one_tlv_type(cmdu, TLV_TYPE_DPP_MESSAGE);
 }

@@ -4,12 +4,17 @@
 # Licensed under the BSD+Patent License.
 ##########################################################################
 
-AM_CFLAGS = -D_ANSC_USER
-AM_CPPFLAGS = -D_GNU_SOURCE -DMULTIAP -D_FLAVOUR_AIRTIES_ -DSEND_EMPTY_TLVS -DFIX_BROKEN_TLVS -DSPEED_UP_DISCOVERY
+AM_CFLAGS = -D_ANSC_LINUX
+AM_CFLAGS += -D_ANSC_USER
+
+AM_CFLAGS += -D_GNU_SOURCE
+AM_CFLAGS += -Wall -Wextra -Werror
+
+AM_CFLAGS += -DMULTIAP -D_FLAVOUR_AIRTIES_ -DSEND_EMPTY_TLVS -DFIX_BROKEN_TLVS -DSPEED_UP_DISCOVERY
 
 lib_LIBRARIES = libal.a
 
-libal_a_CFLAGS = -I$(srcdir)/internal_interfaces \
+libal_a_CPPFLAGS = -I$(srcdir)/internal_interfaces \
                  -I$(srcdir)/src_independent \
                  -I$(srcdir)/src_independent/extensions/map \
                  -I$(top_srcdir)/source/libplatform/include \

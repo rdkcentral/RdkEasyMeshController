@@ -117,7 +117,7 @@ void i1905_register_tlv(uint8_t type, char *name, i1905_tlv_parse_cb_t parse_cb,
 /*#######################################################################
 # End of message TLV ("Section 6.4.1")                                  #
 ########################################################################*/
-static uint8_t* parse_end_of_message_tlv(UNUSED uint8_t *value, uint16_t len)
+static uint8_t* parse_end_of_message_tlv(UNUSED uint8_t *packet_stream, uint16_t len)
 {
     i1905_end_of_message_tlv_t *ret;
 
@@ -150,9 +150,10 @@ static void free_end_of_message_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Vendor specific TLV ("Section 6.4.2")                                 #
 ########################################################################*/
-static uint8_t* parse_vendor_specific_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_vendor_specific_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_vendor_specific_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be at least "3" */
     PARSE_CHECK_MIN_LEN(3)
@@ -164,14 +165,15 @@ static uint8_t* parse_vendor_specific_tlv(uint8_t *p, uint16_t len)
     _E1B(&p, &ret->vendorOUI[1]);
     _E1B(&p, &ret->vendorOUI[2]);
 
-     ret->m_nr = len - 3;
+    ret->m_nr = len - 3;
 
-     if (ret->m_nr) {
-         ret->m = malloc(ret->m_nr);
-         _EnB(&p, ret->m, ret->m_nr);
-     }
+    if (ret->m_nr) {
+        ret->m = malloc(ret->m_nr);
+        _EnB(&p, ret->m, ret->m_nr);
+    }
 
-     PARSE_RETURN
+    PARSE_CHECK_INTEGRITY
+    PARSE_RETURN
 }
 
 static uint8_t* forge_vendor_specific_tlv(void *memory_structure, uint16_t *len)
@@ -196,15 +198,16 @@ static void free_vendor_specific_tlv(void *memory_structure)
 {
     i1905_vendor_specific_tlv_t *m = memory_structure;
 
-    free(m->m);
+    SFREE(m->m);
 }
 
 /*#######################################################################
 # AL MAC address TLV ("Section 6.4.3")                                  #
 ########################################################################*/
-static uint8_t* parse_al_mac_address_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_al_mac_address_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_al_mac_address_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 6 */
     PARSE_CHECK_EXP_LEN(6)
@@ -214,7 +217,8 @@ static uint8_t* parse_al_mac_address_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_AL_MAC_ADDRESS;
     _EnB(&p, ret->al_mac_address, 6);
 
-     PARSE_RETURN
+    PARSE_CHECK_INTEGRITY
+    PARSE_RETURN
 }
 
 static uint8_t* forge_al_mac_address_tlv(void *memory_structure, uint16_t *len)
@@ -237,9 +241,10 @@ static void free_al_mac_address_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # MAC address TLV ("Section 6.4.4")                                     #
 ########################################################################*/
-static uint8_t* parse_mac_address_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_mac_address_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_mac_address_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 6 */
     PARSE_CHECK_EXP_LEN(6)
@@ -249,7 +254,8 @@ static uint8_t* parse_mac_address_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_MAC_ADDRESS;
     _EnB(&p, ret->mac_address, 6);
 
-     PARSE_RETURN
+    PARSE_CHECK_INTEGRITY
+    PARSE_RETURN
 }
 
 static uint8_t* forge_mac_address_tlv(void *memory_structure, uint16_t *len)
@@ -272,10 +278,10 @@ static void free_mac_address_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Device information TLV ("Section 6.4.5")                              #
 ########################################################################*/
-static uint8_t* parse_device_information_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_device_information_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_device_information_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CALLOC_RET
 
@@ -332,21 +338,26 @@ static uint8_t* parse_device_information_tlv(uint8_t *value, uint16_t len)
             _EnB(&p, ret->local_interfaces[i].media_specific_data.ieee1901.network_identifier, 7);
         } else {
             if (0 != ret->local_interfaces[i].media_specific_data_size) {
-                /* Malformed packet */
-                free(ret->local_interfaces);
-                free(ret);
-                return NULL;
+                /* Some WFA testbed devices send media_type in a wrong byte order. It is a workaround to be able handle them. */
+                if (WFA_CERT_R1_COMPATIBLE() && 10 == ret->local_interfaces[i].media_specific_data_size) {
+                     uint8_t aux;
+                    _EnB(&p, ret->local_interfaces[i].media_specific_data.ieee80211.network_membership, 6);
+                    _E1B(&p, &aux);
+                    ret->local_interfaces[i].media_specific_data.ieee80211.role = aux >> 4;
+                    _E1B(&p, &ret->local_interfaces[i].media_specific_data.ieee80211.ap_channel_band);
+                    _E1B(&p, &ret->local_interfaces[i].media_specific_data.ieee80211.ap_channel_center_frequency_index_1);
+                    _E1B(&p, &ret->local_interfaces[i].media_specific_data.ieee80211.ap_channel_center_frequency_index_2);
+                } else {
+                    /* Malformed packet */
+                    free(ret->local_interfaces);
+                    free(ret);
+                    return NULL;
+                }
             }
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        free(ret->local_interfaces);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -421,16 +432,16 @@ static void free_device_information_tlv(void *memory_structure)
 {
     i1905_device_information_tlv_t *m = memory_structure;
 
-    free(m->local_interfaces);
+    SFREE(m->local_interfaces);
 }
 
 /*########################################################################
 # Device bridging capability TLV ("Section 6.4.6")                       #
 #########################################################################*/
-static uint8_t* parse_device_bridging_capability_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_device_bridging_capability_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_device_bridging_cap_tlv_t *ret;
-    uint8_t *p = value, i, j;
+    uint8_t *p = packet_stream, i, j;
 
     PARSE_CALLOC_RET
 
@@ -472,16 +483,7 @@ static uint8_t* parse_device_bridging_capability_tlv(uint8_t *value, uint16_t le
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        for (i = 0; i < ret->bridging_tuples_nr; i++) {
-            free(ret->bridging_tuples[i].bridging_tuple_macs);
-        }
-        free(ret->bridging_tuples);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -520,18 +522,18 @@ static void free_device_bridging_capability_tlv(void *memory_structure)
     uint8_t i;
 
     for (i=0; i < m->bridging_tuples_nr; i++) {
-        free(m->bridging_tuples[i].bridging_tuple_macs);
+        SFREE(m->bridging_tuples[i].bridging_tuple_macs);
     }
-    free(m->bridging_tuples);
+    SFREE(m->bridging_tuples);
 }
 
 /*######################################################################
 # Non-1905 neighbor device list TLV ("Section 6.4.8")                  #
 #######################################################################*/
-static uint8_t* parse_non_1905_neighbor_device_list_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_non_1905_neighbor_device_list_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_non_1905_neighbor_device_list_tlv_t *ret;;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     /* According to the standard, the length *must* be "6 + 6*n" */
     if (0 != ((len - 6) % 6))
@@ -552,6 +554,7 @@ static uint8_t* parse_non_1905_neighbor_device_list_tlv(uint8_t *value, uint16_t
         _EnB(&p,  ret->non_1905_neighbors[i].mac_address, 6);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -578,16 +581,16 @@ static void free_non_1905_neighbor_device_list_tlv(void *memory_structure)
 {
     i1905_non_1905_neighbor_device_list_tlv_t *m = memory_structure;
 
-    free(m->non_1905_neighbors);
+    SFREE(m->non_1905_neighbors);
 }
 
 /*#######################################################################
 # Neighbor device TLV ("Section 6.4.9")                                 #
 ########################################################################*/
-static uint8_t* parse_neighbor_device_list_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_neighbor_device_list_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_neighbor_device_list_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     /* According to the standard, the length *must* be "6 + 7*n" "6+1" */
     if (0 != ((len - 6) % 7)) {
@@ -613,6 +616,7 @@ static uint8_t* parse_neighbor_device_list_tlv(uint8_t *value, uint16_t len)
         ret->neighbors[i].bridge_flag = (aux & 0x80) ? 1 : 0;
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -649,16 +653,17 @@ static void free_neighbor_device_list_tlv(void *memory_structure)
 {
     i1905_neighbor_device_list_tlv_t *m = memory_structure;
 
-    free(m->neighbors);
+    SFREE(m->neighbors);
 }
 
 /*#######################################################################
 # Link metric query TLV ("Section 6.4.10")                              #
 ########################################################################*/
-static uint8_t* parse_link_metric_query_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_link_metric_query_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_link_metric_query_tlv_t *ret;
     uint8_t destination, link_metrics_type;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be atleast 2 */
     PARSE_CHECK_MIN_LEN(2)
@@ -706,6 +711,7 @@ static uint8_t* parse_link_metric_query_tlv(uint8_t *p, uint16_t len)
         return NULL;
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -806,18 +812,16 @@ static void free_link_metric_query_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Transmitter link metric TLV ("Section 6.4.11")                        #
 ########################################################################*/
-static uint8_t* parse_transmitter_link_metric_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_transmitter_link_metric_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_transmitter_link_metric_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     /* According to the standard, the length *must* be "12+29*n" where
     *  "n" is "1" or greater
     */
-    if ((12 + 29 * 1) > len) {
-        /* Malformed packet */
-        return NULL;
-    }
+    PARSE_CHECK_MIN_LEN(12 + 29 * 1);
+
     if (0 != (len - 12) % 29) {
         /* Malformed packet */
         return NULL;
@@ -846,13 +850,7 @@ static uint8_t* parse_transmitter_link_metric_tlv(uint8_t *value, uint16_t len)
         _E2B(&p, &ret->transmitter_link_metrics[i].phy_rate);
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        free(ret->transmitter_link_metrics);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -888,16 +886,16 @@ static void free_transmitter_link_metric_tlv(void *memory_structure)
 {
     i1905_transmitter_link_metric_tlv_t *m = memory_structure;
 
-    free(m->transmitter_link_metrics);
+    SFREE(m->transmitter_link_metrics);
 }
 
 /*#######################################################################
 # Receiver link metric TLV ("Section 6.4.12")                           #
 ########################################################################*/
-static uint8_t* parse_receiver_link_metric_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_receiver_link_metric_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_receiver_link_metric_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     /* According to the standard, the length *must* be "12+23*n" where
     *  "n" is "1" or greater
@@ -929,13 +927,7 @@ static uint8_t* parse_receiver_link_metric_tlv(uint8_t *value, uint16_t len)
         _E1B(&p, &ret->receiver_link_metrics[i].rssi);
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        free(ret->receiver_link_metrics);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -968,15 +960,16 @@ static void free_receiver_link_metric_tlv(void *memory_structure)
 {
     i1905_receiver_link_metric_tlv_t *m = memory_structure;
 
-    free(m->receiver_link_metrics);
+    SFREE(m->receiver_link_metrics);
 }
 
 /*#######################################################################
 # Link metric result code TLV ("Section 6.4.13")                        #
 ########################################################################*/
-static uint8_t* parse_link_metric_result_code_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_link_metric_result_code_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_link_metric_result_code_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 1 */
     PARSE_CHECK_EXP_LEN(1)
@@ -986,6 +979,7 @@ static uint8_t* parse_link_metric_result_code_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_LINK_METRIC_RESULT_CODE;
     _E1B(&p, &ret->result_code);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1016,9 +1010,10 @@ static void free_link_metric_result_code_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Searched role TLV ("Section 6.4.14")                                  #
 ########################################################################*/
-static uint8_t* parse_searched_role_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_searched_role_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_searched_role_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 1 */
     PARSE_CHECK_EXP_LEN(1)
@@ -1028,6 +1023,7 @@ static uint8_t* parse_searched_role_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_SEARCHED_ROLE;
     _E1B(&p, &ret->role);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1058,9 +1054,10 @@ static void free_searched_role_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Autoconfig frequency band TLV ("Section 6.4.15")                      #
 ########################################################################*/
-static uint8_t* parse_autoconfig_freq_band_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_autoconfig_freq_band_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_autoconfig_freq_band_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 1 */
     PARSE_CHECK_EXP_LEN(1)
@@ -1070,6 +1067,7 @@ static uint8_t* parse_autoconfig_freq_band_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_AUTOCONFIG_FREQ_BAND;
     _E1B(&p, &ret->freq_band);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1102,9 +1100,10 @@ static void free_autoconfig_freq_band_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
  # Supported role TLV ("Section 6.4.16")                                #
 ########################################################################*/
-static uint8_t* parse_supported_role_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_supported_role_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_supported_role_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 1 */
     PARSE_CHECK_EXP_LEN(1)
@@ -1114,6 +1113,7 @@ static uint8_t* parse_supported_role_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_SUPPORTED_ROLE;
     _E1B(&p, &ret->role);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1144,9 +1144,10 @@ static void free_supported_role_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Supported frequency band TLV ("Section 6.4.17")                       #
 ########################################################################*/
-static uint8_t* parse_supported_freq_band_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_supported_freq_band_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_supported_freq_band_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 1 */
     PARSE_CHECK_EXP_LEN(1)
@@ -1156,6 +1157,7 @@ static uint8_t* parse_supported_freq_band_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_SUPPORTED_FREQ_BAND;
     _E1B(&p, &ret->freq_band);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1172,6 +1174,7 @@ static uint8_t* forge_supported_freq_band_tlv(void *memory_structure, uint16_t *
 
     if ((m->freq_band != IEEE80211_FREQUENCY_BAND_2_4_GHZ) &&
         (m->freq_band != IEEE80211_FREQUENCY_BAND_5_GHZ)   &&
+        /* (m->freq_band != IEEE80211_FREQUENCY_BAND_6_GHZ)   &&  TODO: add when it is defined in the standard */
         (m->freq_band != IEEE80211_FREQUENCY_BAND_60_GHZ)) {
         /* Malformed structure */
         free(ret);
@@ -1188,9 +1191,10 @@ static void free_supported_freq_band_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # WSC TLV ("Section 6.4.18")                                            #
 ########################################################################*/
-static uint8_t* parse_wsc_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_wsc_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_wsc_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CALLOC_RET
 
@@ -1202,6 +1206,7 @@ static uint8_t* parse_wsc_tlv(uint8_t *p, uint16_t len)
         _EnB(&p, ret->wsc_frame, len);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1224,16 +1229,16 @@ static void free_wsc_tlv(void *memory_structure)
 {
     i1905_wsc_tlv_t *m = memory_structure;
 
-    free(m->wsc_frame);
+    SFREE(m->wsc_frame);
 }
 
 /*#######################################################################
 # Push button event notification TLV ("Section 6.4.19")                 #
 ########################################################################*/
-static uint8_t* parse_push_button_event_notification_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_push_button_event_notification_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_push_button_event_notification_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CALLOC_RET
 
@@ -1260,65 +1265,61 @@ static uint8_t* parse_push_button_event_notification_tlv(uint8_t *value, uint16_
 
     _E1B(&p, &ret->media_types_nr);
 
-    ret->media_types = calloc(ret->media_types_nr, sizeof(*ret->media_types));
+    if (ret->media_types_nr > 0) {
+        ret->media_types = calloc(ret->media_types_nr, sizeof(*ret->media_types));
 
-    for (i=0; i < ret->media_types_nr; i++) {
-        _E2B(&p, &ret->media_types[i].media_type);
-        _E1B(&p, &ret->media_types[i].media_specific_data_size);
+        for (i=0; i < ret->media_types_nr; i++) {
+            _E2B(&p, &ret->media_types[i].media_type);
+            _E1B(&p, &ret->media_types[i].media_specific_data_size);
 
-        if ((MEDIA_TYPE_IEEE_802_11B_2_4_GHZ == ret->media_types[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11G_2_4_GHZ == ret->media_types[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11A_5_GHZ   == ret->media_types[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11N_2_4_GHZ == ret->media_types[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11N_5_GHZ   == ret->media_types[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == ret->media_types[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == ret->media_types[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11AF        == ret->media_types[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11AX        == ret->media_types[i].media_type))
-        {
-           uint8_t aux;
+            if ((MEDIA_TYPE_IEEE_802_11B_2_4_GHZ == ret->media_types[i].media_type) ||
+                (MEDIA_TYPE_IEEE_802_11G_2_4_GHZ == ret->media_types[i].media_type) ||
+                (MEDIA_TYPE_IEEE_802_11A_5_GHZ   == ret->media_types[i].media_type) ||
+                (MEDIA_TYPE_IEEE_802_11N_2_4_GHZ == ret->media_types[i].media_type) ||
+                (MEDIA_TYPE_IEEE_802_11N_5_GHZ   == ret->media_types[i].media_type) ||
+                (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == ret->media_types[i].media_type) ||
+                (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == ret->media_types[i].media_type) ||
+                (MEDIA_TYPE_IEEE_802_11AF        == ret->media_types[i].media_type) ||
+                (MEDIA_TYPE_IEEE_802_11AX        == ret->media_types[i].media_type))
+            {
+            uint8_t aux;
 
-            if (10 != ret->media_types[i].media_specific_data_size) {
-                /* Malformed packet */
-                free(ret->media_types);
-                free(ret);
-                return NULL;
-            }
+                if (10 != ret->media_types[i].media_specific_data_size) {
+                    /* Malformed packet */
+                    free(ret->media_types);
+                    free(ret);
+                    return NULL;
+                }
 
-            _EnB(&p, ret->media_types[i].media_specific_data.ieee80211.network_membership, 6);
-            _E1B(&p, &aux);
-            ret->media_types[i].media_specific_data.ieee80211.role = aux >> 4;
-            _E1B(&p, &ret->media_types[i].media_specific_data.ieee80211.ap_channel_band);
-            _E1B(&p, &ret->media_types[i].media_specific_data.ieee80211.ap_channel_center_frequency_index_1);
-            _E1B(&p, &ret->media_types[i].media_specific_data.ieee80211.ap_channel_center_frequency_index_2);
+                _EnB(&p, ret->media_types[i].media_specific_data.ieee80211.network_membership, 6);
+                _E1B(&p, &aux);
+                ret->media_types[i].media_specific_data.ieee80211.role = aux >> 4;
+                _E1B(&p, &ret->media_types[i].media_specific_data.ieee80211.ap_channel_band);
+                _E1B(&p, &ret->media_types[i].media_specific_data.ieee80211.ap_channel_center_frequency_index_1);
+                _E1B(&p, &ret->media_types[i].media_specific_data.ieee80211.ap_channel_center_frequency_index_2);
 
-        } else if ((MEDIA_TYPE_IEEE_1901_WAVELET == ret->media_types[i].media_type) ||
-                   (MEDIA_TYPE_IEEE_1901_FFT     == ret->media_types[i].media_type))
-        {
-            if (7 != ret->media_types[i].media_specific_data_size) {
-                /* Malformed packet */
-                free(ret->media_types);
-                free(ret);
-                return NULL;
-            }
-            _EnB(&p, ret->media_types[i].media_specific_data.ieee1901.network_identifier, 7);
-        } else {
-            if (0 != ret->media_types[i].media_specific_data_size) {
-                /* Malformed packet */
-                free(ret->media_types);
-                free(ret);
-                return NULL;
+            } else if ((MEDIA_TYPE_IEEE_1901_WAVELET == ret->media_types[i].media_type) ||
+                    (MEDIA_TYPE_IEEE_1901_FFT     == ret->media_types[i].media_type))
+            {
+                if (7 != ret->media_types[i].media_specific_data_size) {
+                    /* Malformed packet */
+                    free(ret->media_types);
+                    free(ret);
+                    return NULL;
+                }
+                _EnB(&p, ret->media_types[i].media_specific_data.ieee1901.network_identifier, 7);
+            } else {
+                if (0 != ret->media_types[i].media_specific_data_size) {
+                    /* Malformed packet */
+                    free(ret->media_types);
+                    free(ret);
+                    return NULL;
+                }
             }
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        free(ret->media_types);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1395,15 +1396,16 @@ static void free_push_button_event_notification_tlv(void *memory_structure)
 {
     i1905_push_button_event_notification_tlv_t *m = memory_structure;
 
-    free(m->media_types);
+    SFREE(m->media_types);
 }
 
 /*#######################################################################
 # Push button join notification TLV ("Section 6.4.20")                  #
 ########################################################################*/
-static uint8_t* parse_push_button_join_notification_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_push_button_join_notification_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_push_button_join_notification_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 20 */
     PARSE_CHECK_EXP_LEN(20)
@@ -1416,6 +1418,7 @@ static uint8_t* parse_push_button_join_notification_tlv(uint8_t *p, uint16_t len
     _EnB(&p, ret->mac_address, 6);
     _EnB(&p, ret->new_mac_address, 6);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1442,10 +1445,10 @@ static void free_push_button_join_notification_tlv(UNUSED void *memory_structure
 /*#######################################################################
 # Generic PHY device information TLV ("Section 6.4.21")                 #
 ########################################################################*/
-static uint8_t* parse_generic_phy_device_information_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_generic_phy_device_information_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_generic_phy_device_information_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CALLOC_RET
 
@@ -1477,17 +1480,7 @@ static uint8_t* parse_generic_phy_device_information_tlv(uint8_t *value, uint16_
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        for (i = 0; i < ret->local_interfaces_nr; i++) {
-            free(ret->local_interfaces[i].generic_phy_description_xml_url);
-            free(ret->local_interfaces[i].generic_phy_common_data.media_specific_bytes);
-        }
-        free(ret->local_interfaces);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1541,18 +1534,19 @@ static void free_generic_phy_device_information_tlv(void *memory_structure)
     uint8_t i;
 
     for (i=0; i < m->local_interfaces_nr; i++) {
-        free(m->local_interfaces[i].generic_phy_description_xml_url);
-        free(m->local_interfaces[i].generic_phy_common_data.media_specific_bytes);
+        SFREE(m->local_interfaces[i].generic_phy_description_xml_url);
+        SFREE(m->local_interfaces[i].generic_phy_common_data.media_specific_bytes);
     }
-    free(m->local_interfaces);
+    SFREE(m->local_interfaces);
 }
 
 /*#######################################################################
 # Device identification type TLV ("Section 6.4.22")                     #
 ########################################################################*/
-static uint8_t* parse_device_identification_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_device_identification_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_device_identification_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 192 */
     PARSE_CHECK_EXP_LEN(192)
@@ -1565,6 +1559,7 @@ static uint8_t* parse_device_identification_tlv(uint8_t *p, uint16_t len)
     _EnB(&p, ret->manufacturer_name,  64);
     _EnB(&p, ret->manufacturer_model, 64);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1590,9 +1585,10 @@ static void free_device_identification_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Control URL type TLV ("Section 6.4.23")                               #
 ########################################################################*/
-static uint8_t* parse_control_url_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_control_url_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_control_url_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CALLOC_RET
 
@@ -1603,6 +1599,7 @@ static uint8_t* parse_control_url_tlv(uint8_t *p, uint16_t len)
         _EnB(&p, ret->url, len);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1625,16 +1622,16 @@ static void free_control_url_tlv(void *memory_structure)
 {
     i1905_control_url_tlv_t *m = memory_structure;
 
-    free(m->url);
+    SFREE(m->url);
 }
 
 /*#######################################################################
 # IPv4 type TLV ("Section 6.4.24")                                      #
 ########################################################################*/
-static uint8_t* parse_ipv4_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_ipv4_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_ipv4_tlv_t *ret;
-    uint8_t *p = value, i, j;
+    uint8_t *p = packet_stream, i, j;
 
     PARSE_CALLOC_RET
 
@@ -1680,16 +1677,7 @@ static uint8_t* parse_ipv4_tlv(uint8_t *value, uint16_t len)
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        for (i = 0; i < ret->ipv4_interfaces_nr; i++) {
-            free(ret->ipv4_interfaces[i].ipv4);
-        }
-        free(ret->ipv4_interfaces);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1732,18 +1720,18 @@ static void free_ipv4_tlv(void *memory_structure)
     uint8_t i;
 
     for (i=0; i < m->ipv4_interfaces_nr; i++) {
-        free(m->ipv4_interfaces[i].ipv4);
+        SFREE(m->ipv4_interfaces[i].ipv4);
     }
-    free(m->ipv4_interfaces);
+    SFREE(m->ipv4_interfaces);
 }
 
 /*#######################################################################
 # IPv6 type TLV ("Section 6.4.25")                                      #
 ########################################################################*/
-static uint8_t* parse_ipv6_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_ipv6_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_ipv6_tlv_t *ret;
-    uint8_t *p = value, i, j;
+    uint8_t *p = packet_stream, i, j;
 
     PARSE_CALLOC_RET
 
@@ -1790,16 +1778,7 @@ static uint8_t* parse_ipv6_tlv(uint8_t *value, uint16_t len)
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        for (i=0; i < ret->ipv6_interfaces_nr; i++) {
-            free(ret->ipv6_interfaces[i].ipv6);
-        }
-        free(ret->ipv6_interfaces);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1844,18 +1823,18 @@ static void free_ipv6_tlv(void *memory_structure)
     uint8_t i;
 
     for (i=0; i < m->ipv6_interfaces_nr; i++) {
-        free(m->ipv6_interfaces[i].ipv6);
+        SFREE(m->ipv6_interfaces[i].ipv6);
     }
-    free(m->ipv6_interfaces);
+    SFREE(m->ipv6_interfaces);
 }
 
 /*#######################################################################
 # Push button generic PHY event notification TLV ("Section 6.4.26")     #
 ########################################################################*/
-static uint8_t* parse_generic_phy_event_notification_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_generic_phy_event_notification_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_generic_phy_event_notification_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CALLOC_RET
 
@@ -1897,16 +1876,7 @@ static uint8_t* parse_generic_phy_event_notification_tlv(uint8_t *value, uint16_
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        for (i = 0; i < ret->local_interfaces_nr; i++) {
-            free(ret->local_interfaces[i].media_specific_bytes);
-        }
-        free(ret->local_interfaces);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -1948,18 +1918,19 @@ static void free_generic_phy_event_notification_tlv(void *memory_structure)
     uint8_t i;
 
     for (i = 0; i < m->local_interfaces_nr; i++) {
-        free(m->local_interfaces[i].media_specific_bytes);
+        SFREE(m->local_interfaces[i].media_specific_bytes);
     }
 
-    free(m->local_interfaces);
+    SFREE(m->local_interfaces);
 }
 
 /*#######################################################################
 # Profile version TLV ("Section 6.4.27")                                #
 ########################################################################*/
-static uint8_t* parse_1905_profile_version_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_1905_profile_version_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_profile_version_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* According to the standard, the length *must* be 1 */
     PARSE_CHECK_EXP_LEN(1)
@@ -1969,6 +1940,7 @@ static uint8_t* parse_1905_profile_version_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_1905_PROFILE_VERSION;
     _E1B(&p, &ret->profile);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -2000,10 +1972,10 @@ static void free_1905_profile_version_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # Power off interface TLV ("Section 6.4.28")                            #
 ########################################################################*/
-static uint8_t* parse_power_off_interface_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_power_off_interface_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_power_off_interface_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CALLOC_RET
 
@@ -2045,16 +2017,7 @@ static uint8_t* parse_power_off_interface_tlv(uint8_t *value, uint16_t len)
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        for (i = 0; i < ret->power_off_interfaces_nr; i++) {
-            free(ret->power_off_interfaces[i].generic_phy_common_data.media_specific_bytes);
-        }
-        free(ret->power_off_interfaces);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -2100,18 +2063,18 @@ static void free_power_off_interface_tlv(void *memory_structure)
     uint8_t i;
 
     for (i = 0; i < m->power_off_interfaces_nr; i++) {
-        free(m->power_off_interfaces[i].generic_phy_common_data.media_specific_bytes);
+        SFREE(m->power_off_interfaces[i].generic_phy_common_data.media_specific_bytes);
     }
-    free(m->power_off_interfaces);
+    SFREE(m->power_off_interfaces);
 }
 
 /*#######################################################################
 # Interface power change information TLV ("Section 6.4.29")             #
 ########################################################################*/
-static uint8_t* parse_interface_power_change_information_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_interface_power_change_information_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_interface_power_change_information_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CALLOC_RET
 
@@ -2147,13 +2110,7 @@ static uint8_t* parse_interface_power_change_information_tlv(uint8_t *value, uin
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        free(ret->power_change_interfaces);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -2184,16 +2141,16 @@ static void free_interface_power_change_information_tlv(void *memory_structure)
 {
     i1905_interface_power_change_information_tlv_t *m = memory_structure;
 
-    free(m->power_change_interfaces);
+    SFREE(m->power_change_interfaces);
 }
 
 /*#######################################################################
 # Interface power change status TLV ("Section 6.4.30")                  #
 ########################################################################*/
-static uint8_t* parse_interface_power_change_status_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_interface_power_change_status_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_interface_power_change_status_tlv_t *ret;
-    uint8_t *p = value, i;
+    uint8_t *p = packet_stream, i;
 
     PARSE_CALLOC_RET
 
@@ -2229,13 +2186,7 @@ static uint8_t* parse_interface_power_change_status_tlv(uint8_t *value, uint16_t
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        free(ret->power_change_interfaces);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -2266,16 +2217,16 @@ static void free_interface_power_change_status_tlv(void *memory_structure)
 {
     i1905_interface_power_change_status_tlv_t *m = memory_structure;
 
-    free(m->power_change_interfaces);
+    SFREE(m->power_change_interfaces);
 }
 
 /*#######################################################################
 # L2 neighbor device TLV ("Section 6.4.31")                             #
 ########################################################################*/
-static uint8_t* parse_l2_neighbor_device_tlv(uint8_t *value, uint16_t len)
+static uint8_t* parse_l2_neighbor_device_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_l2_neighbor_device_tlv_t *ret;
-    uint8_t *p = value, i, j, k;
+    uint8_t *p = packet_stream, i, j, k;
 
     PARSE_CALLOC_RET
 
@@ -2329,19 +2280,7 @@ static uint8_t* parse_l2_neighbor_device_tlv(uint8_t *value, uint16_t len)
         }
     }
 
-    if (p - value != len) {
-        /* Malformed packet */
-        for (i = 0; i < ret->local_interfaces_nr; i++) {
-            for (j=0; j < ret->local_interfaces[i].l2_neighbors_nr; j++) {
-                free(ret->local_interfaces[i].l2_neighbors[j].behind_mac_addresses);
-            }
-            free(ret->local_interfaces[i].l2_neighbors);
-        }
-        free(ret->local_interfaces);
-        free(ret);
-        return NULL;
-    }
-
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -2393,11 +2332,11 @@ static void free_l2_neighbor_device_tlv(void *memory_structure)
 
     for (i = 0; i < m->local_interfaces_nr; i++) {
         for (j = 0; j < m->local_interfaces[i].l2_neighbors_nr; j++) {
-             free(m->local_interfaces[i].l2_neighbors[j].behind_mac_addresses);
+             SFREE(m->local_interfaces[i].l2_neighbors[j].behind_mac_addresses);
         }
-        free(m->local_interfaces[i].l2_neighbors);
+        SFREE(m->local_interfaces[i].l2_neighbors);
     }
-    free(m->local_interfaces);
+    SFREE(m->local_interfaces);
 }
 
 /*#######################################################################
@@ -2446,7 +2385,7 @@ static void free_unknown_tlv(void *memory_structure)
 {
     i1905_unknown_tlv_t *m = memory_structure;
 
-    free(m->v);
+    SFREE(m->v);
 }
 
 /*#######################################################################
@@ -2926,9 +2865,9 @@ uint8_t compare_1905_TLV_structures(uint8_t *memory_structure_1, uint8_t *memory
             i1905_push_button_join_notification_tlv_t *p2 = (i1905_push_button_join_notification_tlv_t *)memory_structure_2;
 
             if (maccmp(p1->al_mac_address,  p2->al_mac_address) !=0 ||
-                p1->message_identifier !=   p2->message_identifier   ||
-                maccmp(p1->mac_address,     p2->al_mac_address) !=0    ||
-                maccmp(p1->new_mac_address, p2->al_mac_address) !=0) {
+                p1->message_identifier !=   p2->message_identifier  ||
+                maccmp(p1->mac_address,     p2->mac_address) !=0    ||
+                maccmp(p1->new_mac_address, p2->new_mac_address) !=0) {
                 return 1;
             } else {
                 return 0;
@@ -3663,4 +3602,16 @@ char *convert_1905_TLV_type_to_string(uint8_t tlv_type)
     register_tlvs();
 
     return g_tlv_table[tlv_type].name;
+}
+
+uint8_t log_and_check_1905_TLV_malformed(int parsed, int len, uint8_t *tlv_structure)
+{
+    uint8_t ret = 0;
+
+    log_i1905_e("Parsed TLV length mismatch: parsed[%d] expected[%d] for %s", parsed, len, convert_1905_TLV_type_to_string(*tlv_structure));
+    if (parsed > len) {
+        ret = 1;
+    }
+
+    return ret;
 }

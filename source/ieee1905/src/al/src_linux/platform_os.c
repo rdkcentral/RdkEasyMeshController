@@ -127,15 +127,15 @@
 #                       TYPEDEFS                                        #
 ########################################################################*/
 typedef struct packet_socket_s {
-    list_head_t  list;
-    int          fd;
-    char         if_name[IFNAMSIZ];
-    int          if_index;
-    int          type;
-    map_fd_t    *map_fd;
+    list_head_t      list;
+    int              fd;
+    char             if_name[IFNAMSIZ];
+    int              if_index;
+    int              type;
+    acu_evloop_fd_t *evloop_fd;
 
-    uint32_t     tx_packets;
-    uint32_t     rx_packets;
+    uint32_t         tx_packets;
+    uint32_t         rx_packets;
 } packet_socket_t;
 
 typedef struct interface_s {
@@ -162,9 +162,9 @@ static i1905_packet_cb_t     g_packet_cb;
 static int                   g_send_ioctl_fd = -1;
 
 static int                   g_netlink_fd = -1;
-static map_fd_t             *g_netlink_map_fd;
+static acu_evloop_fd_t      *g_netlink_evloop_fd;
 
-static map_timer_t          *g_rt_query_timer = NULL;
+static acu_evloop_timer_t   *g_rt_query_timer      = NULL;
 
 /* Gateway mac. a.k.a DHCP server mac address*/
 static mac_addr              g_gateway_mac = {0};
@@ -193,7 +193,7 @@ static packet_socket_t* packet_socket_list_get(const char* if_name, int type)
 }
 
 static packet_socket_t *packet_socket_list_add(const char *if_name, int if_index, int fd, int type,
-                                               map_fd_cb_t cb)
+                                               acu_evloop_fd_cb_t cb)
 {
     packet_socket_t *sock = calloc(1, sizeof(packet_socket_t));
 
@@ -206,8 +206,8 @@ static packet_socket_t *packet_socket_list_add(const char *if_name, int if_index
         sock->type     = type;
         list_add_tail(&sock->list, &g_packet_socket_list);
 
-        sock->map_fd = map_fd_add(fd, cb, sock);
-        if (NULL == sock->map_fd) {
+        sock->evloop_fd = acu_evloop_fd_add(fd, cb, sock);
+        if (NULL == sock->evloop_fd) {
             free(sock);
             sock = NULL;
         }
@@ -217,8 +217,8 @@ static packet_socket_t *packet_socket_list_add(const char *if_name, int if_index
 
 static void packet_socket_list_remove(packet_socket_t *sock)
 {
-    if (sock->map_fd) {
-        map_fd_delete(sock->map_fd);
+    if (sock->evloop_fd) {
+        acu_evloop_fd_delete(sock->evloop_fd);
     }
     if (sock->fd >= 0) {
         close(sock->fd);
@@ -388,7 +388,7 @@ static void get_power_state(const char *if_name, uint8_t *power_state)
         *power_state = (ifr.ifr_flags & IFF_RUNNING) ? INTERFACE_POWER_STATE_ON : INTERFACE_POWER_STATE_OFF;
     } else {
         *power_state = INTERFACE_POWER_STATE_OFF;
-        platform_log(MAP_LIBRARY,LOG_ERR, "could not get interface power state %s", if_name);
+        log_i1905_e("could not get interface power state %s", if_name);
     }
 }
 
@@ -615,7 +615,7 @@ static int interfaces_init()
     */
     g_send_ioctl_fd = socket(AF_PACKET, SOCK_RAW, htons(ETHERTYPE_1905));
     if (g_send_ioctl_fd < 0) {
-        platform_log(MAP_LIBRARY,LOG_ERR,"%s: Failed to open raw send socket.", __FUNCTION__);
+        log_i1905_e("failed to open raw send socket");
         return -1;
     }
 
@@ -708,6 +708,7 @@ static int route_get_arp_entry (char *ip, size_t ip_len, char *mac, int mac_len)
                 int ret = snprintf(mac, mac_len, "%s", hw_addr);
                 if (ret >= mac_len) {
                     log_i1905_e("mac too long [%d]", ret);
+                    goto bail;
                 }
                 fclose(arp_table);
                 return 0;
@@ -760,7 +761,7 @@ static void periodic_nl_route_query_cb(void *userdata)
 
 static int route_init()
 {
-    g_rt_query_timer = map_timer_add(0, 10000, periodic_nl_route_query_cb, NULL);
+    g_rt_query_timer = acu_evloop_timer_add(0, 10000, periodic_nl_route_query_cb, NULL);
     if (NULL == g_rt_query_timer) {
         return -1;
     }
@@ -771,7 +772,7 @@ static int route_init()
 static void route_fini()
 {
     if (g_rt_query_timer) {
-        map_timer_delete(g_rt_query_timer);
+        acu_evloop_timer_delete(g_rt_query_timer);
     }
 }
 /*#######################################################################
@@ -975,8 +976,8 @@ static int netlink_init(void)
         return -1;
     }
 
-    g_netlink_map_fd = map_fd_add(fd, netlink_socket_cb, NULL);
-    if (NULL == g_netlink_map_fd) {
+    g_netlink_evloop_fd = acu_evloop_fd_add(fd, netlink_socket_cb, NULL);
+    if (NULL == g_netlink_evloop_fd) {
         log_i1905_e("failed register netlink socket");
         return -1;
     }
@@ -988,8 +989,8 @@ static int netlink_init(void)
 
 static void netlink_fini()
 {
-    if (g_netlink_map_fd) {
-        map_fd_delete(g_netlink_map_fd);
+    if (g_netlink_evloop_fd) {
+        acu_evloop_fd_delete(g_netlink_evloop_fd);
     }
 
     if (g_netlink_fd >= 0) {

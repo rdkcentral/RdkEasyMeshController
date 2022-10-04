@@ -56,7 +56,7 @@ struct stub_ap {
     struct stub_radio radio[4];
 };
 
-struct stub_ap g_ap_list[16];
+static struct stub_ap g_ap_list[16];
 
 static void remove_all_ap_device(void)
 {
@@ -155,32 +155,42 @@ static unsigned int get_device_radio_ap_idx(map_ale_info_t *ale, map_radio_info_
             (0 == get_ap_idx(*device_idx, *radio_idx, bss, ap_idx)) ? 0 : -1;
 }
 
-static void invalidate_ale_idx()
+static void update_ale_idxs(map_ale_info_t *removed_ale)
 {
     map_ale_info_t *ale;
+    unsigned int    idx;
 
     map_dm_foreach_agent_ale(ale) {
-        if (!is_local_agent(ale)) {
+        if (!is_local_agent(ale) && ale != removed_ale) {
             ale->airdata_idx = -1;
+            get_device_idx(ale, &idx);
         }
     }
 }
 
-static void invalidate_radio_idx(map_ale_info_t *ale)
+static void update_radio_idxs(map_ale_info_t *ale, map_radio_info_t *removed_radio)
 {
     map_radio_info_t *radio;
+    unsigned int      idx;
 
     map_dm_foreach_radio(ale, radio) {
-        radio->airdata_idx = -1;
+        if (radio != removed_radio) {
+            radio->airdata_idx = -1;
+            get_radio_idx(ale->airdata_idx, radio, &idx);
+        }
     }
 }
 
-static void invalidate_bss_idx(map_radio_info_t *radio)
+static void update_bss_idxs(map_radio_info_t *radio, map_bss_info_t *removed_bss)
 {
     map_bss_info_t *bss;
+    unsigned int    idx;
 
     map_dm_foreach_bss(radio, bss) {
-        bss->airdata_idx = -1;
+        if (bss != removed_bss) {
+            bss->airdata_idx = -1;
+            get_ap_idx(radio->ale->airdata_idx, radio->airdata_idx, bss, &idx);
+        }
     }
 }
 
@@ -203,13 +213,6 @@ static void mark_radios_removed(map_ale_info_t *ale)
     }
 }
 
-static bool is_radio_5g_low_high(map_radio_info_t *radio)
-{
-    return (radio->supported_freq == IEEE80211_FREQUENCY_BAND_5_GHZ) &&
-           (radio->band_type_5G & MAP_M2_BSS_RADIO5GL) &&
-           (radio->band_type_5G & MAP_M2_BSS_RADIO5GU);
-}
-
 /*#######################################################################
 #                       DATA HELPERS                                    #
 ########################################################################*/
@@ -219,22 +222,6 @@ static char *get_oui_str(mac_addr_oui oui, char *buf, size_t buf_len)
 {
     /* Upper case and no separator */
     snprintf(buf, buf_len, "%02hhX%02hhX%02hhX", oui[0], oui[1], oui[2]);
-
-    return buf;
-}
-
-static char *get_sw_version_str(uint32_t os_version, char *buf, size_t buf_len)
-{
-    uint8_t *p = (uint8_t*)&os_version;
-
-    snprintf(buf, buf_len, "%d.%d.%d.%d",
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-             p[0] & 0x7f, p[1], p[2], p[3]);
-#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-             p[3] & 0x7f, p[2], p[1], p[0]);
-#else
-  #error Not big and not little endian
-#endif
 
     return buf;
 }
@@ -254,10 +241,6 @@ static char *get_backhaul_link_type_str(map_ale_info_t *ale)
     }
 }
 
-static char *get_freq_band_str(bool is_2g)
-{
-    return is_2g ? "2.4GHz" : "5GHz";
-}
 
 static char* get_radio_standards_str(map_radio_info_t *radio, char *buf, size_t buf_len)
 {
@@ -281,72 +264,6 @@ static char *get_ext_channel_str(int type)
     }
 }
 
-/* TODO: Do this when radio basic cap tlv is needed as something simular is done in map_ctrl_msg_glue.c
-         Preferably as a bit mask so the result below ends up sorted as well.
-*/
-static char *get_supported_channels_str(map_radio_info_t *radio, char *buf, int buf_len)
-{
-    map_controller_cfg_t *cfg            = &map_cfg_get()->controller_cfg;
-    bandlock_5g_t         bandlock_5g    = cfg->bandlock_5g;
-    bool                  is_5g_low_high = is_radio_5g_low_high(radio);
-    wifi_channel_set      ch_set;
-    int                   i, j, k, pos = 0;
-    uint8_t               bw;
-
-    buf[0] = 0;
-
-    if (radio->cap_op_class_list.op_classes_nr == 0) {
-        return buf;
-    }
-
-    /* Fill supported channel set based on 20MHz operating classes */
-    for (i = 0; i < radio->cap_op_class_list.op_classes_nr; i++) {
-        map_op_class_t *op_class = &radio->cap_op_class_list.op_classes[i];
-
-        if (get_bw_from_operating_class(op_class->op_class, &bw) || bw != 20) {
-            continue;
-        }
-        if (get_channel_set_for_rclass(op_class->op_class, &ch_set)) {
-            continue;
-        }
-
-        /* Skip any op class that is not allowed because of 5G bandlock */
-        if (is_5g_low_high && bandlock_5g != MAP_BANDLOCK_5G_DISABLED) {
-            if ((bandlock_5g == MAP_BANDLOCK_5G_LOW  && !map_is_5g_low_op_class(op_class->op_class)) ||
-                (bandlock_5g == MAP_BANDLOCK_5G_HIGH && !map_is_5g_high_op_class(op_class->op_class))) {
-                continue;
-            }
-        }
-
-        /* Add all channels */
-        for (j = 0; j < ch_set.length && pos < buf_len; j++) {
-            uint8_t channel = ch_set.ch[j];
-
-            /* Check if allowed by config */
-            if (!map_is_channel_set(&cfg->allowed_channel_set_2g, channel) &&
-                !map_is_channel_set(&cfg->allowed_channel_set_5g, channel)) {
-                continue;
-            }
-
-            /* Check if in unallowed list */
-            for (k = 0; k < op_class->channel_count; k++) {
-                if (channel == op_class->channel_list[k]) {
-                    break;
-                }
-            }
-            if (k == op_class->channel_count) {
-                pos += snprintf(&buf[pos], buf_len - pos, "%d,", channel);
-            }
-        }
-    }
-
-    /* Remove space at the end */
-    if (pos > 0 && pos < buf_len) {
-        buf[pos - 1] = 0;
-    }
-
-    return buf;
-}
 
 static char *get_bw_str(int bw)
 {
@@ -425,8 +342,8 @@ static void create_ale_mac(mac_addr mac, int *ret_idx)
     get_oui_str(oui, oui_str, sizeof(oui_str));
 
     /* Set MAC */
-    fprintf(stderr, BBLUE">>>>create ale[%d]: %s"NORM"\n", idx, p_mac_str);
-    fprintf(stderr, BBLUE"  p_oui_str: %s"NORM"\n", p_oui_str);
+    log_lib_d(">>>>create ale[%d]: %s\n", idx, p_mac_str);
+    log_lib_d("  p_oui_str: %s\n", p_oui_str);
 
     return;
 }
@@ -445,16 +362,15 @@ static void map_dm_airdata_create_ale(map_ale_info_t *ale)
 static void map_dm_airdata_update_ale(map_ale_info_t *ale)
 {
     unsigned int       idx1;
-    map_device_info_t *d             = &ale->device_info;
-    char              *manufacturer  = d->manufacturer_name;
-    char              *serial        = d->serial_number;
-    char              *product_class = strlen(d->model_number) ? d->model_number : d->model_name;
-    UNUSED char        version_buf[32];
-    UNUSED char       *version       = get_sw_version_str(d->os_version, version_buf, sizeof(version_buf));
+    map_device_info_t *d              = &ale->device_info;
+    char              *manufacturer   = d->manufacturer_name;
+    char              *serial         = d->serial_number;
+    char              *product_class  = strlen(d->model_number) ? d->model_number : d->model_name;
+    UNUSED char       *version        = ale->inventory_exists ? ale->inventory.version : d->os_version_str;
     mac_addr_str       bh_al_mac_buf;
-    char              *bh_al_mac_str = bh_al_mac_buf;
-    char              *bh_link_type  = get_backhaul_link_type_str(ale);
-    bool               onboarded     = ale->ale_onboard_status == ALE_NODE_ONBOARDED;
+    char              *bh_al_mac_str  = bh_al_mac_buf;
+    char              *bh_link_type   = get_backhaul_link_type_str(ale);
+    bool               onboarded      = ale->ale_onboard_status == ALE_NODE_ONBOARDED;
 
     if (get_device_idx(ale, &idx1)) {
         log_lib_e("could not find indexes for ale[%s]", ale->al_mac_str);
@@ -472,14 +388,14 @@ static void map_dm_airdata_update_ale(map_ale_info_t *ale)
         mac_to_string(ale->upstream_al_mac, bh_al_mac_str);
     }
 
-    fprintf(stderr, BBLUE">>>>update ale[%d]: %s"NORM"\n", idx1, ale->al_mac_str);
-    fprintf(stderr, BBLUE"  manufacturer: %s"NORM"\n", manufacturer);
-    fprintf(stderr, BBLUE"  product_class: %s"NORM"\n", product_class);
-    fprintf(stderr, BBLUE"  serial: %s"NORM"\n", serial);
-    fprintf(stderr, BBLUE"  version: %s"NORM"\n", version);
-    fprintf(stderr, BBLUE"  bh_al_mac_str: %s"NORM"\n", bh_al_mac_str);
-    fprintf(stderr, BBLUE"  bh_link_type: %s"NORM"\n", bh_link_type);
-    fprintf(stderr, BBLUE"  onboarded: %d"NORM"\n", onboarded);
+    log_lib_d(">>>>update ale[%d]: %s\n", idx1, ale->al_mac_str);
+    log_lib_d("  manufacturer: %s\n", manufacturer);
+    log_lib_d("  product_class: %s\n", product_class);
+    log_lib_d("  serial: %s\n", serial);
+    log_lib_d("  version: %s\n", version);
+    log_lib_d("  bh_al_mac_str: %s\n", bh_al_mac_str);
+    log_lib_d("  bh_link_type: %s\n", bh_link_type);
+    log_lib_d("  onboarded: %d\n", onboarded);
 
     return;
 }
@@ -500,8 +416,8 @@ static void map_dm_airdata_remove_ale(map_ale_info_t *ale)
     free(g_ap_list[idx1].al_mac_str);
     memset(&g_ap_list[idx1], 0, sizeof(g_ap_list[idx1]));
 
-    /* Invalidate radio indexes as they are shifted */
-    invalidate_ale_idx();
+    /* Update other ale indexes as they are shifted */
+    update_ale_idxs(ale);
 
     /* Mark child objects are removed */
     mark_radios_removed(ale);
@@ -534,6 +450,8 @@ static void map_dm_airdata_create_radio(map_radio_info_t *radio)
     radio->airdata_idx = idx2;
 
     /* Set MAC */
+    log_lib_d(">>>>create radio[%d]: %s on ale[%d]: %s\n", idx2, radio->radio_id_str, idx1, g_ap_list[idx1].al_mac_str);
+    log_lib_d("  mac: %s\n", mac);
 
     return;
 }
@@ -542,14 +460,15 @@ static void map_dm_airdata_update_radio(map_radio_info_t *radio)
 {
     map_ale_info_t *ale         = radio->ale;
     unsigned int    idx1, idx2;
-    bool            is_2g       = (radio->supported_freq == IEEE80211_FREQUENCY_BAND_2_4_GHZ);
-    char           *freq_band   = get_freq_band_str(is_2g);
+    char           *freq_band   = map_get_freq_band_str(radio->supported_freq);
     char            standards_buf[32];
-    char           *standards    = get_radio_standards_str(radio, standards_buf, sizeof(standards_buf));
-    char            channels_buf[256];
-    char           *channels    = get_supported_channels_str(radio, channels_buf, sizeof(channels_buf));
-    unsigned int    c_channel   = radio->configured_channel;
-    char           *c_bw        = get_bw_str(radio->configured_bw);
+    char           *standards   = get_radio_standards_str(radio, standards_buf, sizeof(standards_buf));
+    char            channels_buf[MAP_CS_BUF_LEN];
+    char           *channels    = map_cs_to_string(&radio->ctl_channels, ',', channels_buf, sizeof(channels_buf));
+    char            channels_with_bw_buf[MAP_CHANS_W_BW_BUF_LEN];
+    char           *channels_with_bw = map_cs_bw_to_string(&radio->channels_with_bandwidth, ',', channels_with_bw_buf, sizeof(channels_with_bw_buf));
+    unsigned int    c_channel   = radio->chan_sel.channel;
+    char           *c_bw        = get_bw_str(radio->chan_sel.bandwidth);
     unsigned int    channel     = radio->current_op_channel;
     char           *ext_channel = get_ext_channel_str(map_get_ext_channel_type(radio->current_op_class));
     char           *bw          = get_bw_str(radio->current_bw);
@@ -561,19 +480,20 @@ static void map_dm_airdata_update_radio(map_radio_info_t *radio)
         return;
     }
 
-    fprintf(stderr, BBLUE">>>>update radio[%d]: %s on ale[%d]: %s"NORM"\n", idx2, radio->radio_id_str, idx1, g_ap_list[idx1].al_mac_str);
-    fprintf(stderr, BBLUE"  freq_band: %s"NORM"\n", freq_band);
-    fprintf(stderr, BBLUE"  standards: %s"NORM"\n", standards);
-    fprintf(stderr, BBLUE"  channels: %s"NORM"\n", channels);
-    fprintf(stderr, BBLUE"  c_channel: %d"NORM"\n", c_channel);
-    fprintf(stderr, BBLUE"  c_bw: %s"NORM"\n", c_bw);
+    log_lib_d(">>>>update radio[%d]: %s on ale[%d]: %s\n", idx2, radio->radio_id_str, idx1, g_ap_list[idx1].al_mac_str);
+    log_lib_d("  freq_band: %s\n", freq_band);
+    log_lib_d("  standards: %s\n", standards);
+    log_lib_d("  channels: %s\n", channels);
+    log_lib_d("  channels_w_bw: %s\n", channels_with_bw);
+    log_lib_d("  c_channel: %d\n", c_channel);
+    log_lib_d("  c_bw: %s\n", c_bw);
     if (channel > 0) {
-        fprintf(stderr, BBLUE"  channel: %d"NORM"\n", channel);
-        fprintf(stderr, BBLUE"  ext_channel: %s"NORM"\n", ext_channel);
-        fprintf(stderr, BBLUE"  bw: %s"NORM"\n", bw);
-        fprintf(stderr, BBLUE"  pct_power: %d"NORM"\n", pct_power);
+        log_lib_d("  channel: %d\n", channel);
+        log_lib_d("  ext_channel: %s\n", ext_channel);
+        log_lib_d("  bw: %s\n", bw);
+        log_lib_d("  pct_power: %d\n", pct_power);
     }
-    fprintf(stderr, BBLUE"  max_power: %d"NORM"\n", max_power);
+    log_lib_d("  max_power: %d\n", max_power);
 
     return;
 }
@@ -594,8 +514,8 @@ static void map_dm_airdata_remove_radio(map_radio_info_t *radio)
 
     memset(&g_ap_list[idx1].radio[idx2], 0, sizeof(g_ap_list[idx1].radio[idx2]));
 
-    /* Invalidate radio indexes as they are shifted */
-    invalidate_radio_idx(ale);
+    /* Update other radio indexes as they are shifted */
+    update_radio_idxs(ale, radio);
 
     /* Mark child objects are removed */
     mark_bsss_removed(radio);
@@ -641,6 +561,8 @@ static void map_dm_airdata_update_bss(map_bss_info_t *bss)
         return;
     }
 
+    log_lib_d(">>>>update bssid[%d]: %s on ale[%d]: %s, radio[%d]: %s\n", idx3, bss->bssid_str, idx1, g_ap_list[idx1].al_mac_str, idx2, g_ap_list[idx1].radio[idx2].radio_id_str);
+
     return;
 }
 
@@ -661,8 +583,8 @@ static void map_dm_airdata_remove_bss(map_bss_info_t *bss)
 
     g_ap_list[idx1].radio[idx2].bss[idx3] = NULL;
 
-    /* Invalidate radio indexes as they are shifted */
-    invalidate_bss_idx(radio);
+    /* Update other bss indexes as they are shifted */
+    update_bss_idxs(radio, bss);
 
     return;
 }

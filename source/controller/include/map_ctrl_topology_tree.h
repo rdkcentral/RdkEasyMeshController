@@ -63,10 +63,9 @@ void map_register_topology_query_retry(map_ale_info_t *ale);
  *  This API will cleanup all the resources assocciated with the ALE.
  *
  *  @param ale pointer to ALE node
- *  @param cmdu that lead to completion of retry
  *  @return The 0 - Success, -1 - fail
  */
-int8_t map_cleanup_dead_agent(map_ale_info_t *ale);
+int8_t map_cleanup_agent(map_ale_info_t *ale);
 
 /** @brief This function will extend the ALE deletion
  *

@@ -198,7 +198,7 @@ map_ap_metrics_tlv_t *map_get_ap_metrics_tlv(map_bss_info_t *bss)
     maccpy(tlv->bssid, bss->bssid);
     tlv->channel_util = bss->metrics.channel_utilization;
     tlv->stas_nr      = bss->stas_nr;
-    tlv->esp_present  = bss->metrics.esp_present;
+    tlv->esp_present  = bss->metrics.esp_present | MAP_ESP_INCLUDE_AC_BE_MASK; /* AC_BE shall always be included according to standard */
 
     if (tlv->esp_present) {
         for (i = 0; i<MAX_ACCESS_CATEGORY; i++) {
@@ -281,7 +281,7 @@ void map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radi
 {
     map_op_class_list_t *op_class_list = &radio->ctrl_pref_op_class_list; /* default and MAP_CHAN_SEL_PREF_CONTROLLER */
     map_op_class_list_t  merged_list   = {0};
-    uint8_t              i, j;
+    uint8_t              i;
 
     if (pref_type == MAP_CHAN_SEL_PREF_MERGED) {
         if (!map_merge_pref_op_class_list(&merged_list, &radio->cap_op_class_list,
@@ -302,12 +302,7 @@ void map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radi
         tlv_op_class->op_class = op_class->op_class;
         tlv_op_class->pref     = op_class->pref;
         tlv_op_class->reason   = op_class->reason;
-
-        for (j = 0; j < op_class->channel_count && j < MAX_CHANNEL_PER_OP_CLASS; j++) {
-            tlv_op_class->channels[j] = op_class->channel_list[j];
-        }
-
-        tlv_op_class->channels_nr = j;
+        map_cs_copy(&tlv_op_class->channels, &op_class->channels);
     }
 
     tlv->op_classes_nr = i;
@@ -322,17 +317,18 @@ void map_fill_transmit_power_tlv(map_transmit_power_limit_tlv_t *tlv, map_radio_
     tlv->transmit_power_eirp = radio->tx_pwr_limit;
 }
 
-void map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_radio_info_t *radio, bool fresh_scan)
+void map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_radio_info_t *radio,
+                                       bool fresh_scan, map_channel_set_t *channels)
 {
     map_channel_scan_request_tlv_radio_t *rsri = &tlv->radios[0];
-    int i,j;
+    int i;
 
     memset(tlv, 0, sizeof(map_channel_scan_request_tlv_t));
     tlv->tlv_type             = TLV_TYPE_CHANNEL_SCAN_REQUEST;
     tlv->fresh_scan_performed = fresh_scan ? 1 : 0;
     tlv->radios_nr            = 1;
 
-    memcpy(rsri->radio_id, radio->radio_id, ETHER_ADDR_LEN);
+    maccpy(rsri->radio_id, radio->radio_id);
     rsri->op_classes_nr = 0;
 
     if (!fresh_scan) {
@@ -341,21 +337,37 @@ void map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_
 
     /* Add all 20MHz op classes from scan cap tlv */
     for (i = 0; i < radio->scan_caps.op_class_list.op_classes_nr && rsri->op_classes_nr < MAX_OP_CLASS; i++) {
-         map_op_class_t     *op_class     = &radio->scan_caps.op_class_list.op_classes[i];
-         map_tlv_op_class_t *tlv_op_class = &rsri->op_classes[rsri->op_classes_nr];
-         uint8_t             bw;
+        map_op_class_t     *op_class     = &radio->scan_caps.op_class_list.op_classes[i];
+        map_tlv_op_class_t *tlv_op_class = &rsri->op_classes[rsri->op_classes_nr];
+        uint8_t             bw;
 
-         if (0 != get_bw_from_operating_class(op_class->op_class, &bw) || 20 != bw) {
-             continue;
-         }
+        if (0 != map_get_bw_from_op_class(op_class->op_class, &bw) || 20 != bw) {
+            continue;
+        }
 
-         tlv_op_class->op_class = op_class->op_class;
+        /* Start with what we received from channel scan capabilities */
+        tlv_op_class->op_class = op_class->op_class;
+        map_cs_copy(&tlv_op_class->channels, &op_class->channels);
 
-         for (j = 0; j < op_class->channel_count && j < MAX_CHANNEL_PER_OP_CLASS; j++) {
-             tlv_op_class->channels[j] = op_class->channel_list[j];
-         }
-         tlv_op_class->channels_nr = j;
-         rsri->op_classes_nr++;
+        if (channels) {
+            /* If 0 channels then add all supported channels in op_class */
+            if (map_cs_nr(&tlv_op_class->channels) == 0) {
+                if (0 != map_get_channel_set_from_op_class(op_class->op_class, &tlv_op_class->channels)) {
+                    continue;
+                }
+                map_cs_and(&tlv_op_class->channels, &radio->ctl_channels);
+            }
+
+            /* Only keep requested channels */
+            map_cs_and(&tlv_op_class->channels, channels);
+
+            /* Skip op_class if no channels set */
+            if (map_cs_nr(&tlv_op_class->channels) == 0) {
+                continue;
+            }
+        }
+
+        rsri->op_classes_nr++;
     }
 }
 

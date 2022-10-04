@@ -8,16 +8,15 @@
 #define MAP_CLI_H_
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <net/if.h>
 
-#define CLI_SERVER_PORT 10995
-#define CLI_SERVER_IP "127.0.0.1"
+#define CLI_SOCK_PATH "map_cli"
 
 typedef struct cli_s cli_t;
 
 typedef struct cli_options_s {
-	char bindip[20];
-	int port;
+    char sock_path[32];
 } cli_options_t;
 
 typedef void (*cli_function_t)(const char *event, const char *payload, void *context);

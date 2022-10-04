@@ -31,6 +31,7 @@
 #include "map_info.h"
 #include "map_retry_handler.h"
 #include "map_topology_tree.h"
+#include "map_staging_list.h"
 
 /*#######################################################################
 #                       DEFINES                                         #
@@ -54,6 +55,21 @@ static void get_str_attribute(uint16_t attr_type, char *dest, uint16_t dest_len,
     }
 }
 
+static void os_version_to_str(map_device_info_t *d)
+{
+    /* clear msb which is reserved and always 1 */
+    uint8_t *p = (uint8_t*)&d->os_version;
+
+    snprintf(d->os_version_str, sizeof(d->os_version_str), "%d.%d.%d.%d",
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+             p[0] & 0x7f, p[1], p[2], p[3]);
+#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+             p[3] & 0x7f, p[2], p[1], p[0]);
+#else
+#error Not big and not little endian
+#endif
+}
+
 static void get_m1_attributes(map_ale_info_t *ale, uint8_t *m1, uint16_t m1_size)
 {
     map_device_info_t  d;
@@ -62,6 +78,7 @@ static void get_m1_attributes(map_ale_info_t *ale, uint8_t *m1, uint16_t m1_size
 
     if ((p = map_get_wsc_attr(m1, m1_size, WSC_ATTR_OS_VERSION, &len)) && len == 4) {
         _E4B(&p, &d.os_version);
+        os_version_to_str(&d);
     }
 
     get_str_attribute(WSC_ATTR_MANUFACTURER,  d.manufacturer_name, sizeof(d.manufacturer_name), m1, m1_size);
@@ -98,6 +115,9 @@ static void refresh_radio_data(map_ale_info_t *ale, map_radio_info_t *radio)
 
     /* Renew AP Capabilities */
     set_radio_state_ap_cap_report_not_received(&radio->state);
+
+    /* Renew bhsta capabilities */
+    set_ale_state_bhsta_cap_report_not_received(&ale->state);
 }
 
 /*#######################################################################
@@ -349,61 +369,31 @@ static void map_remove_old_link_metrics(map_ale_info_t *ale, array_list_t *new_l
 /*#######################################################################
 #                       1905 CMDU HANDLERS                              #
 ########################################################################*/
-/* 1905.1 6.3.1 (type 0x0000) */
-int map_handle_topology_discovery(i1905_cmdu_t *cmdu)
+static int handle_1905_dev(i1905_cmdu_t *cmdu, bool topo_discovery)
 {
-    i1905_al_mac_address_tlv_t *al_mac_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_AL_MAC_ADDRESS, cmdu); /* Mandatory */
-    i1905_mac_address_tlv_t    *mac_tlv    = i1905_get_tlv_from_cmdu(TLV_TYPE_MAC_ADDRESS,    cmdu); /* Mandatory */
-    map_ale_info_t             *ale;
+    i1905_al_mac_address_tlv_t *al_mac_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_AL_MAC_ADDRESS, cmdu);
+    map_1905_dev_info_t        *dev;
 
-    if (!al_mac_tlv || !mac_tlv) {
-        return -1; /* Not possble - checked during validate */
+    /* Send topology query as soon as we see a 1905 device */
+    map_send_topology_query_with_al_mac(al_mac_tlv->al_mac_address, cmdu->interface_name, MID_NA);
+
+    if (NULL != (dev = map_stglist_get_1905_dev(al_mac_tlv->al_mac_address))) {
+        return 0; /* ALE is in the staging list */
     }
 
-    /* Check if this is a new ale */
-    if (!(ale = map_dm_get_ale(al_mac_tlv->al_mac_address))) {
-        if (!(ale = map_handle_new_agent_onboarding(al_mac_tlv->al_mac_address, cmdu->interface_name))) {
-            log_ctrl_e("%s: new agent onboarding failed", __FUNCTION__);
-            return -1;
-        }
+    if (!(dev = map_stglist_create_1905_dev(al_mac_tlv->al_mac_address, cmdu->cmdu_stream.src_mac_addr, topo_discovery))) {
+        log_ctrl_e("%s: Failed to create 1905 dev info", __FUNCTION__);
     }
 
-    /* Update the topology tree */
-    if (0 == is_parent_of(get_root_ale_node(), ale)) {
-        map_add_as_child_of_controller(ale);
-    }
-
-    /* Update the source mac of this frame */
-    map_update_ale_source_mac(ale, cmdu->cmdu_stream.src_mac_addr);
-
-    /* Update the receiving interface name. */
-    map_update_ale_receiving_iface(ale, cmdu->interface_name);
-
-    i1905_interface_info_t *info = i1905_get_interface_info(cmdu->interface_name);
-
-    /* Update information about upstream link */
-    map_dm_ale_set_upstream_info(ale,
-                                 /* upstream al mac     */ get_root_ale_node()->al_mac,
-                                 /* local upstream mac  */ mac_tlv->mac_address,
-                                 /* remote upstream mac */ info ? info->mac_address : NULL,
-                                 false, 0);
-
-    if (info) {
-        i1905_free_interface_info(info);
+    if (topo_discovery) {
+	i1905_mac_address_tlv_t *mac_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_MAC_ADDRESS, cmdu);
+	map_stglist_set_1905_dev_mac_tlv_mac(dev, mac_tlv->mac_address);
     }
 
     return 0;
 }
 
-/* 1905.1 6.3.2 (type 0x0001) */
-int map_handle_topology_query(i1905_cmdu_t *cmdu)
-{
-    /* Should we add ale from here too? */
-    return map_send_topology_response(cmdu);
-}
-
-/* 1905.1 6.3.3 (type 0x0002) */
-int map_handle_topology_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+static int map_handle_topology_response_ale(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
     i1905_device_information_tlv_t   *dev_info_tlv      = i1905_get_tlv_from_cmdu(TLV_TYPE_DEVICE_INFORMATION, cmdu); /* Mandatory */
     map_ap_operational_bss_tlv_t     *op_bss_tlv        = i1905_get_tlv_from_cmdu(TLV_TYPE_AP_OPERATIONAL_BSS, cmdu); /* Optional  */
@@ -462,14 +452,116 @@ int map_handle_topology_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     /* Store non 1905 neighbors.  Must be done after parsing device information tlv */
     map_parse_non_1905_neighbor_device_list_tlv(ale, non_1905_neighbor_dev_tlvs, non_1905_neighbor_dev_tlvs_nr);
 
-    /* Parse and update the connected clients */
+    /* Parse and update the connected clients
+       - Assoc_clients_tlv is only mandatory when at least one client is connected
+       - Before parsing, mark all stas.
+       - After parsing, remove all sta that are still marked. Only remove sta that
+         where connected for some time to avoid race between topology response
+         and topology notification.
+    */
+    map_dm_mark_stas(ale);
     if (assoc_clients_tlv) {
         map_parse_assoc_clients_tlv(ale, assoc_clients_tlv);
     }
+    map_dm_remove_marked_stas(ale, 30 /* seconds */);
 
     /* Store the last received topology response message */
     ale->keep_alive_time = get_current_time();
 
+    return 0;
+}
+
+int map_handle_topology_discovery_ale(map_ale_info_t *ale, char *iface_name, uint8_t *src_mac_addr, uint8_t *mac_tlv_mac)
+{
+    /* Update the topology tree */
+    if (0 == is_parent_of(get_root_ale_node(), ale)) {
+        map_add_as_child_of_controller(ale);
+    }
+
+    /* Update the source mac of this frame */
+    map_update_ale_source_mac(ale, src_mac_addr);
+
+    /* Update the receiving interface name. */
+    map_update_ale_receiving_iface(ale, iface_name);
+
+    i1905_interface_info_t *info = i1905_get_interface_info(iface_name);
+
+    /* Update information about upstream link */
+    map_dm_ale_set_upstream_info(ale,
+                                 /* upstream al mac     */ get_root_ale_node()->al_mac,
+                                 /* local upstream mac  */ mac_tlv_mac,
+                                 /* remote upstream mac */ info ? info->mac_address : NULL,
+                                 false, 0);
+
+    if (info) {
+        i1905_free_interface_info(info);
+    }
+
+    return 0;
+}
+
+/* 1905.1 6.3.1 (type 0x0000) */
+int map_handle_topology_discovery(i1905_cmdu_t *cmdu)
+{
+    i1905_al_mac_address_tlv_t *al_mac_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_AL_MAC_ADDRESS, cmdu); /* Mandatory */
+    i1905_mac_address_tlv_t    *mac_tlv    = i1905_get_tlv_from_cmdu(TLV_TYPE_MAC_ADDRESS,    cmdu); /* Mandatory */
+    map_ale_info_t             *ale;
+
+    if (!al_mac_tlv || !mac_tlv) {
+        return -1; /* Not possble - checked during validate */
+    }
+
+    /* Check if this is a new ale */
+    if (!(ale = map_dm_get_ale(al_mac_tlv->al_mac_address))) {
+        return handle_1905_dev(cmdu, true);
+    }
+
+    return map_handle_topology_discovery_ale(ale, cmdu->interface_name, cmdu->cmdu_stream.src_mac_addr, mac_tlv->mac_address);
+}
+
+/* 1905.1 6.3.2 (type 0x0001) */
+int map_handle_topology_query(i1905_cmdu_t *cmdu)
+{
+    /* Should we add ale from here too? */
+    return map_send_topology_response(cmdu);
+}
+
+/* 1905.1 6.3.3 (type 0x0002) */
+int map_handle_topology_response(i1905_cmdu_t *cmdu)
+{
+    i1905_device_information_tlv_t *dev_info_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_DEVICE_INFORMATION, cmdu); /* Mandatory */
+    uint8_t                        *src_mac      = cmdu->cmdu_stream.src_mac_addr;
+    map_ale_info_t                 *ale          = NULL;
+    map_1905_dev_info_t            *dev          = NULL;
+    mac_addr_str                    mac_str;
+
+    if (!dev_info_tlv) {
+        return -1; /* Not possible - checked during validate */
+    }
+
+    if (NULL != (ale = map_dm_get_ale(dev_info_tlv->al_mac_address))) {
+        return map_handle_topology_response_ale(ale, cmdu);
+    }
+
+    if (NULL != (dev = map_stglist_get_1905_dev(dev_info_tlv->al_mac_address))) {
+        if (!(ale = map_handle_new_agent_onboarding(map_stglist_get_1905_dev_al_mac(dev), cmdu->interface_name))) {
+            log_ctrl_e("%s: new agent onboarding failed", __FUNCTION__);
+            return -1;
+        }
+
+        /* Update the source mac of this frame */
+        map_update_ale_source_mac(ale, src_mac);
+
+        if (map_stglist_is_1905_dev_rcvd_topo_discovery(dev)) {
+            map_handle_topology_discovery_ale(ale, cmdu->interface_name, src_mac,
+                                              map_stglist_get_1905_dev_mac_tlv_mac(dev));
+        }
+
+        map_stglist_remove_1905_dev(dev);
+
+        return map_handle_topology_response_ale(ale, cmdu);
+    }
+    log_ctrl_w("%s: Failed to find (non-)EM device [%s]", __FUNCTION__, mac_to_string(src_mac, mac_str));
     return 0;
 }
 
@@ -486,10 +578,7 @@ int map_handle_topology_notification(i1905_cmdu_t *cmdu)
 
     /* Check if this is a new ale */
     if (!(ale = map_dm_get_ale(al_mac_tlv->al_mac_address))) {
-        if (!(ale = map_handle_new_agent_onboarding(al_mac_tlv->al_mac_address, cmdu->interface_name))) {
-            log_ctrl_e("%s: new agent onboarding failed", __FUNCTION__);
-            return -1;
-        }
+        return handle_1905_dev(cmdu, false);
     }
 
     /* Update the receiving interface name */
@@ -555,12 +644,28 @@ int map_handle_ap_autoconfig_search(i1905_cmdu_t *cmdu)
     i1905_al_mac_address_tlv_t  *al_mac_tlv  = i1905_get_tlv_from_cmdu(TLV_TYPE_AL_MAC_ADDRESS,  cmdu); /* Mandatory */
     map_multiap_profile_tlv_t   *profile_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_MULTIAP_PROFILE, cmdu); /* Optional  */
     map_supported_service_tlv_t *ss_tlv      = i1905_get_tlv_from_cmdu(TLV_TYPE_SUPPORTED_SERVICE, cmdu); /* Optional  */
+    map_1905_dev_info_t         *dev;
     map_ale_info_t              *ale;
+    mac_addr                     mac_tlv_mac;
     bool                         ale_is_agent = false;
+    bool                         topo_discovery_is_rcvd = false;
     uint8_t                      i;
 
     if (!al_mac_tlv) {
         return -1; /* Not possble - checked during validate */
+    }
+
+    if (!ss_tlv) {
+        /* non-EM 1905 device */
+        if (map_dm_get_ale(al_mac_tlv->al_mac_address)) {
+            return 0; /* Do nothing. It is a well behaving legacy 1905 dev */
+        }
+        return handle_1905_dev(cmdu, false);
+    } else if (NULL != (dev = map_stglist_get_1905_dev(al_mac_tlv->al_mac_address))) {
+        /* EM device is not added as ALE yet */
+        topo_discovery_is_rcvd = map_stglist_is_1905_dev_rcvd_topo_discovery(dev);
+        maccpy(mac_tlv_mac, map_stglist_get_1905_dev_mac_tlv_mac(dev));
+        map_stglist_remove_1905_dev(dev);
     }
 
     if (ss_tlv) {
@@ -580,6 +685,9 @@ int map_handle_ap_autoconfig_search(i1905_cmdu_t *cmdu)
         if (!(ale = map_handle_new_agent_onboarding(al_mac_tlv->al_mac_address, cmdu->interface_name))) {
             log_ctrl_e("%s: new agent onboarding failed", __FUNCTION__);
             return -1;
+        }
+        if (topo_discovery_is_rcvd) {
+            map_handle_topology_discovery_ale(ale, cmdu->interface_name, cmdu->cmdu_stream.src_mac_addr, mac_tlv_mac);
         }
     }
 
@@ -636,7 +744,7 @@ int map_handle_ap_autoconfig_wsc(i1905_cmdu_t *cmdu)
 
     /* Onboard radio if it is not known yet */
     if (!(radio = map_dm_get_radio(ale, ap_basic_cap_tlv->radio_id))) {
-        if (!(radio = map_handle_new_radio_onboarding(ale, ap_basic_cap_tlv->radio_id))) {
+        if (!(radio = map_handle_new_radio_onboarding(ale, ap_basic_cap_tlv->radio_id, true))) {
             log_ctrl_e("%s: radio[%s] onboarding failed", __FUNCTION__, mac_string(ap_basic_cap_tlv->radio_id));
             return -1;
         }
@@ -664,6 +772,10 @@ int map_handle_ap_autoconfig_wsc(i1905_cmdu_t *cmdu)
 
     set_radio_state_M1_receive(&radio->state);
     map_recompute_radio_state_and_update_ale_state(ale);
+
+    /* Update caps and generate dm updates for this radio. */
+    map_update_radio_caps(radio);
+    map_dm_radio_set_capabilities(radio);
 
     if (map_send_autoconfig_wsc_m2(ale, radio, cmdu, MID_NA)) {
         log_ctrl_e("unable to send WSC M2 message");
@@ -709,10 +821,38 @@ int map_handle_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     uint8_t          *tlv;
     size_t            idx;
 
+    /* Remove existing ht/vht/he/wifi6 capabilities... */
+    map_dm_foreach_radio(ale, radio) {
+        map_free_ht_vht_he_wifi6_caps(radio);
+    }
+
+    /* ...and then first update them to avoid doing other stuff with those unknown */
+    i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
+        switch (*tlv) {
+            case TLV_TYPE_AP_HT_CAPABILITIES:
+                map_parse_ap_ht_caps_tlv(ale, (map_ap_ht_cap_tlv_t *)tlv);
+            break;
+            case TLV_TYPE_AP_VHT_CAPABILITIES:
+                map_parse_ap_vht_caps_tlv(ale, (map_ap_vht_cap_tlv_t *)tlv);
+            break;
+            case TLV_TYPE_AP_HE_CAPABILITIES:
+                map_parse_ap_he_caps_tlv(ale, (map_ap_he_cap_tlv_t *)tlv);
+            break;
+            case TLV_TYPE_AP_WIFI6_CAPABILITIES:
+                map_parse_ap_wifi6_cap_tlv(ale, (map_ap_wifi6_cap_tlv_t *)tlv);
+            break;
+            default:
+            break;
+        }
+    }
+
     i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
         switch (*tlv) {
             case TLV_TYPE_AP_CAPABILITY:
                 map_parse_ap_cap_tlv(ale, (map_ap_cap_tlv_t *)tlv);
+                if (!is_ale_ap_cap_report_received(ale->state)) {
+                    set_ale_state_ap_cap_report_received(&ale->state);
+                }
             break;
             case TLV_TYPE_AP_RADIO_BASIC_CAPABILITIES: {
                 map_ap_radio_basic_cap_tlv_t *cap_tlv = (map_ap_radio_basic_cap_tlv_t *)tlv;
@@ -727,15 +867,6 @@ int map_handle_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
                 }
                 break;
             }
-            case TLV_TYPE_AP_HT_CAPABILITIES:
-                map_parse_ap_ht_caps_tlv(ale, (map_ap_ht_cap_tlv_t *)tlv);
-            break;
-            case TLV_TYPE_AP_VHT_CAPABILITIES:
-                map_parse_ap_vht_caps_tlv(ale, (map_ap_vht_cap_tlv_t *)tlv);
-            break;
-            case TLV_TYPE_AP_HE_CAPABILITIES:
-                map_parse_ap_he_caps_tlv(ale, (map_ap_he_cap_tlv_t *)tlv);
-            break;
             case TLV_TYPE_CHANNEL_SCAN_CAPABILITIES:
                 map_parse_channel_scan_cap_tlv(ale, (map_channel_scan_cap_tlv_t *)tlv);
             break;
@@ -748,9 +879,6 @@ int map_handle_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
             case TLV_TYPE_METRIC_COLLECTION_INTERVAL:
                 map_parse_metric_collection_interval_tlv(ale, (map_metric_collection_interval_tlv_t *)tlv);
             break;
-            case TLV_TYPE_AP_WIFI6_CAPABILITIES:
-                map_parse_ap_wifi6_cap_tlv(ale, (map_ap_wifi6_cap_tlv_t *)tlv);
-            break;
             case TLV_TYPE_DEVICE_INVENTORY:
                 map_parse_device_inventory_tlv(ale, (map_device_inventory_tlv_t *)tlv);
             break;
@@ -759,8 +887,9 @@ int map_handle_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
         }
     }
 
-    /* Generate dm updates for all radio */
+    /* Update caps and generate dm updates for all radios. */
     map_dm_foreach_radio(ale, radio) {
+        map_update_radio_caps(radio);
         /* TODO: check diffs but ok as this does not happen often */
         map_dm_radio_set_capabilities(radio);
     }
@@ -863,7 +992,7 @@ int map_handle_operating_channel_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
             uint8_t bw, min_bw = 160, max_bw = 20;
 
             for (idx = 0; idx < tlv->op_classes_nr; idx++) {
-                get_bw_from_operating_class(tlv->op_classes[idx].op_class, &bw);
+                map_get_bw_from_op_class(tlv->op_classes[idx].op_class, &bw);
                 if (bw < min_bw) {
                     min_bw = bw;
                     min_bw_idx = idx;
@@ -908,12 +1037,12 @@ int map_handle_client_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     }
 
     if (!(sta = map_dm_get_sta_from_ale(ale, client_info_tlv->sta_mac))) {
-        log_ctrl_w("handle[%s]: sta[%s] not found", i1905_cmdu_type_to_string(cmdu->message_type), mac_string(client_info_tlv->sta_mac));
+        log_ctrl_e("handle[%s]: sta[%s] not found", i1905_cmdu_type_to_string(cmdu->message_type), mac_string(client_info_tlv->sta_mac));
         return 0;
     }
 
     if (cap_report_tlv->result_code == MAP_CLIENT_CAP_FAILURE) {
-        log_ctrl_w("handle[%s]: sta[%s] result code failure", i1905_cmdu_type_to_string(cmdu->message_type), mac_string(client_info_tlv->sta_mac));
+        log_ctrl_e("handle[%s]: sta[%s] result code failure", i1905_cmdu_type_to_string(cmdu->message_type), mac_string(client_info_tlv->sta_mac));
         return 0;
     }
 
@@ -923,8 +1052,20 @@ int map_handle_client_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 /* MAP_R1 17.1.17 (type 0x800C) */
 int map_handle_ap_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
-    uint8_t *tlv;
-    size_t   idx;
+    map_radio_info_t *radio;
+    map_bss_info_t   *bss;
+    uint8_t          *tlv;
+    size_t            idx;
+
+    /* Invalidate some data */
+    map_dm_foreach_radio(ale, radio) {
+        radio->radio_metrics.valid = false;
+
+        map_dm_foreach_bss(radio, bss) {
+            bss->metrics.valid = false;
+            bss->extended_metrics.valid = false;
+        }
+    }
 
     i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
         switch (*tlv) {
@@ -1207,7 +1348,7 @@ static int update_tunneled_message(map_ale_info_t *ale, map_tunneled_tlv_t *tunn
     map_sta_info_t *sta = map_dm_get_sta_from_ale(ale, src_mac);
 
     if (!sta) {
-        log_ctrl_w("%s: ale[%s] type[%d]: sta[%s] not found", __FUNCTION__, ale->al_mac_str, msg_type, mac_string(src_mac));
+        log_ctrl_e("%s: ale[%s] type[%d]: sta[%s] not found", __FUNCTION__, ale->al_mac_str, msg_type, mac_string(src_mac));
         goto fail;
     }
 
@@ -1299,7 +1440,7 @@ int map_handle_client_disassoc_stats(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     }
 
     if(!(sta = map_dm_get_sta_from_ale(ale, stats_tlv->sta_mac))) {
-        log_ctrl_w("%s: sta[%s] not found", __FUNCTION__, mac_string(stats_tlv->sta_mac));
+        log_ctrl_e("%s: sta[%s] not found", __FUNCTION__, mac_string(stats_tlv->sta_mac));
         return -1;
     }
 
@@ -1314,6 +1455,27 @@ int map_handle_client_disassoc_stats(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     log_ctrl_d("radio id:    %s",     mac_string(sta->bss->radio->radio_id));
     log_ctrl_d("bssid:       %s",     mac_string(sta->bss->bssid));
     log_ctrl_i("--------------------------");
+
+    return 0;
+}
+
+/* MAP_R2 17.1.43 (type 0x8028) */
+int map_handle_backhaul_sta_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    map_backhaul_sta_radio_cap_tlv_t *bhsta_radio_cap_tlv = NULL;
+    map_backhaul_sta_radio_cap_tlv_t *bhsta_radio_cap_tlvs[MAX_RADIO_PER_AGENT] = {NULL};
+    uint8_t                           bhsta_radio_cap_tlvs_nr = 0, tlv_idx = 0;
+
+    /* Get all bhsta radio capability tlvs */
+    i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_BACKHAUL_STA_RADIO_CAPABILITIES, bhsta_radio_cap_tlv, cmdu, tlv_idx) {
+        if (bhsta_radio_cap_tlvs_nr < MAX_RADIO_PER_AGENT) {
+            bhsta_radio_cap_tlvs[bhsta_radio_cap_tlvs_nr++] = bhsta_radio_cap_tlv;
+        }
+    }
+
+    if (!map_parse_backhaul_sta_radio_capability_tlv(ale, bhsta_radio_cap_tlvs, bhsta_radio_cap_tlvs_nr)) {
+        set_ale_state_bhsta_cap_report_received(&ale->state);
+    }
 
     return 0;
 }
@@ -1378,4 +1540,17 @@ int map_handle_chirp_notification(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     }
 
     return map_parse_dpp_chirp_value_tlv(ale, chirp_tlv);
+}
+
+/* MAP_R3 17.1.56 (type 0x802a) */
+int map_handle_direct_encap_dpp(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    map_dpp_message_tlv_t  *dpp_message_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_DPP_MESSAGE,  cmdu); /* Mandatory */
+
+    if (!dpp_message_tlv) {
+        log_ctrl_e("Cannot get a valid DPP Message TLV!");
+        return -1;
+    }
+
+    return map_parse_dpp_message_tlv(ale, dpp_message_tlv);
 }

@@ -84,10 +84,10 @@
 /*#######################################################################
 # AP Wi-Fi 6 Capabilities associated structures ("Section 17.2.72")     #
 ########################################################################*/
-static uint8_t* parse_ap_wifi6_capabilities_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_ap_wifi6_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_wifi6_cap_tlv_t *ret;
-    uint8_t byte, i, j;
+    uint8_t *p = packet_stream, byte, i, j;
 
     /* Min TLV len: radio id + roles_nr len. */
     PARSE_CHECK_MIN_LEN(ETHER_ADDR_LEN + 1)
@@ -138,6 +138,7 @@ static uint8_t* parse_ap_wifi6_capabilities_tlv(uint8_t *p, uint16_t len)
         ret->cap_data[i].reserved      = byte & (BIT_MASK_1 | BIT_MASK_0);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -207,9 +208,10 @@ static void free_ap_wifi6_capabilities_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # BSSID TLV ("Section 17.2.74")                                         #
 ########################################################################*/
-static uint8_t* parse_bssid_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_bssid_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_bssid_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     PARSE_CHECK_EXP_LEN(6);
 
@@ -219,6 +221,7 @@ static uint8_t* parse_bssid_tlv(uint8_t *p, uint16_t len)
 
     _EnB(&p, ret->bssid, 6);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -242,10 +245,10 @@ static void free_bssid_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # 1905 Encap DPP TLV ("Section 17.2.79")                                #
 ########################################################################*/
-static uint8_t* parse_1905_encap_dpp_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_1905_encap_dpp_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_1905_encap_dpp_tlv_t *ret;
-    uint8_t byte;
+    uint8_t *p = packet_stream, byte;
 
     /* Min TLV len: bitfield (1) + frame_type (1) + frame_len (2) */
     PARSE_CHECK_MIN_LEN(4)
@@ -276,6 +279,7 @@ static uint8_t* parse_1905_encap_dpp_tlv(uint8_t *p, uint16_t len)
         _EnB(&p, ret->frame, ret->frame_len);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -316,15 +320,16 @@ static void free_1905_encap_dpp_tlv(void *memory_structure)
 {
     map_1905_encap_dpp_tlv_t *m = memory_structure;
 
-    free(m->frame);
+    SFREE(m->frame);
 }
 
 /*#######################################################################
 # DPP CCE Indication TLV ("Section 17.2.82")                            #
 ########################################################################*/
-static uint8_t* parse_dpp_cce_indication_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_dpp_cce_indication_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_dpp_cce_indication_tlv_t *ret;
+    uint8_t *p = packet_stream;
 
     /* Min TLV len: 1 byte of Advertise flag */
     PARSE_CHECK_MIN_LEN(1)
@@ -334,6 +339,7 @@ static uint8_t* parse_dpp_cce_indication_tlv(uint8_t *p, uint16_t len)
     ret->tlv_type = TLV_TYPE_DPP_CCE_INDICATION;
     _E1B(&p, &ret->advertise);
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -359,10 +365,10 @@ static void free_dpp_cce_indication_tlv(UNUSED void *memory_structure) {}
 /*#######################################################################
 # DPP Chirp Value TLV ("Section 17.2.83")                               #
 ########################################################################*/
-static uint8_t* parse_dpp_chirp_value_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_dpp_chirp_value_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_dpp_chirp_value_tlv_t *ret;
-    uint8_t byte;
+    uint8_t *p = packet_stream, byte;
 
     /* TLV len: bitfield (1) + length field (1) + hash length (n) */
     PARSE_CHECK_MIN_LEN(2)
@@ -391,6 +397,7 @@ static uint8_t* parse_dpp_chirp_value_tlv(uint8_t *p, uint16_t len)
         _EnB(&p, ret->hash, ret->hash_len);
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -429,16 +436,58 @@ static void free_dpp_chirp_value_tlv(void *memory_structure)
 {
     map_dpp_chirp_value_tlv_t *m = memory_structure;
 
-    free(m->hash);
+    SFREE(m->hash);
 }
+
+/*#######################################################################
+# DPP Message TLV ("Section 17.2.86")                                   #
+########################################################################*/
+static uint8_t* parse_dpp_message_tlv(uint8_t *packet_stream, uint16_t len)
+{
+    map_dpp_message_tlv_t *ret;
+    uint8_t *p = packet_stream;
+
+    PARSE_CHECK_MIN_LEN(1)
+
+    /* Allocate struct and frame_body */
+    ret = calloc(1, sizeof(*ret) + len);
+    if (NULL == ret) {
+        return NULL;
+    }
+
+    ret->tlv_type  = TLV_TYPE_DPP_MESSAGE;
+    ret->frame_len = len;
+    ret->frame     = (uint8_t *)(ret + 1);
+    _EnB(&p, ret->frame, ret->frame_len);
+
+    PARSE_CHECK_INTEGRITY
+    PARSE_RETURN
+}
+
+static uint8_t* forge_dpp_message_tlv(void *memory_structure, uint16_t *len)
+{
+    map_dpp_message_tlv_t *m = memory_structure;
+    uint16_t tlv_length = m->frame_len;
+    uint8_t  *ret, *p;
+
+    FORGE_MALLOC_RET
+
+    _I1B(&m->tlv_type, &p);
+    _I2B(&tlv_length,  &p);
+    _InB(m->frame, &p, m->frame_len);
+
+    FORGE_RETURN
+}
+
+static void free_dpp_message_tlv(UNUSED void *memory_structure) {}
 
 /*#######################################################################
 # Device Inventory TLV ("Section 17.2.76")                              #
 ########################################################################*/
-static uint8_t* parse_device_inventory_tlv(uint8_t *p, uint16_t len)
+static uint8_t* parse_device_inventory_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_device_inventory_tlv_t *ret;
-    uint8_t i;
+    uint8_t *p = packet_stream, i;
 
     /* TLV len: lsn (1) + lsv (1) + lee (1) */
     PARSE_CHECK_MIN_LEN(3)
@@ -483,6 +532,7 @@ static uint8_t* parse_device_inventory_tlv(uint8_t *p, uint16_t len)
         }
     }
 
+    PARSE_CHECK_INTEGRITY
     PARSE_RETURN
 }
 
@@ -555,6 +605,7 @@ void map_r3_register_tlvs(void)
     I1905_REGISTER_TLV(TLV_TYPE_AP_WIFI6_CAPABILITIES,      ap_wifi6_capabilities);
     I1905_REGISTER_TLV(TLV_TYPE_BSSID,                      bssid);
     I1905_REGISTER_TLV(TLV_TYPE_1905_ENCAP_DPP,             1905_encap_dpp);
+    I1905_REGISTER_TLV(TLV_TYPE_DPP_MESSAGE,                dpp_message);
     I1905_REGISTER_TLV(TLV_TYPE_DPP_CCE_INDICATION,         dpp_cce_indication);
     I1905_REGISTER_TLV(TLV_TYPE_DPP_CHIRP_VALUE,            dpp_chirp_value);
     I1905_REGISTER_TLV(TLV_TYPE_DEVICE_INVENTORY,           device_inventory);

@@ -17,8 +17,6 @@
 /*#######################################################################
 #                       DEFINES                                         #
 ########################################################################*/
-/* Timer ID's */
-#define HLDATA_SSID_PROFILE_LOAD_TIMER_ID  "HLDATA_SSID_PROFILE_LOAD_TIMER_ID"
 
 /*#######################################################################
 #                       INCLUDES                                        #
@@ -62,7 +60,6 @@ static profile_types_map_t g_profile_types[] = { {MAP_PROFILE_TYPE_HOME,     "ho
                                                  {MAP_PROFILE_TYPE_BACKHAUL, "backhaul"},
                                                  {MAP_PROFILE_TYPE_OTHER,    "other"   } };
 
-static char *g_ssid_profile_payload = NULL;
 /*#######################################################################
 #                       HELP FUNCTIONS                                  #
 ########################################################################*/
@@ -110,6 +107,21 @@ static bandlock_5g_t bandlock_type_from_string(const char *s)
         return MAP_BANDLOCK_5G_HIGH;
     } else {
         return MAP_BANDLOCK_5G_DISABLED;
+    }
+}
+
+static int bandwidth_from_string(const char *s)
+{
+    if (!strcasecmp(s, "20MHz")) {
+        return 20;
+    } else if (!strcasecmp(s, "40MHz")) {
+        return 40;
+    } else if (!strcasecmp(s, "80MHz")) {
+        return 80;
+    } else if (!strcasecmp(s, "160MHz")) {
+        return 160;
+    } else {
+        return 0; /* Auto */
     }
 }
 
@@ -215,94 +227,93 @@ done:
    - all
    - include list (1,6,11)
    - exclude list (!140,!144)
+   - PSC or !NONPSC for 6G band
 */
-static int set_chan_list(wifi_channel_set *ch_set, char *list, bool is_2g)
+static int set_chan_list(map_channel_set_t *ch_set, char *list, uint8_t freq_band, bool *ret_psc)
 {
-    wifi_channel_set ctl_ch_set;
+    map_channel_set_t ctl_ch_set;
+    map_channel_set_t psc_ch_set;
     int idx = 0, ret = 0, channel;
     char *elem = NULL, *p;
-    bool exclude = false;
+    bool exclude = false, psc = false;
 
-    ch_set->length = 0;
+    map_cs_unset_all(ch_set);
 
     /* Get all possible control (20MHz) channels */
-    if (is_2g) {
-        map_get_2G_ctl_channel_set(&ctl_ch_set);
-    } else {
-        map_get_5G_ctl_channel_set(&ctl_ch_set);
+    switch(freq_band) {
+        case IEEE80211_FREQUENCY_BAND_2_4_GHZ:
+            map_get_2G_ctl_channel_set(&ctl_ch_set);
+        break;
+        case IEEE80211_FREQUENCY_BAND_5_GHZ:
+            map_get_5G_ctl_channel_set(&ctl_ch_set);
+        break;
+        case IEEE80211_FREQUENCY_BAND_6_GHZ:
+            map_get_6G_ctl_channel_set(&ctl_ch_set);
+        break;
+        default:
+        break;
     }
 
     /* Check for "all" */
     if (!strcasecmp(list, "all")) {
-        *ch_set = ctl_ch_set;
+        map_cs_copy(ch_set, &ctl_ch_set);
         return 0;
     }
 
     /* DataListGet return code does not give the difference between
        malloc failure and end of list...
     */
-    while (list_item_get(list, idx, &elem) == 0) {
+    while (ret == 0 && list_item_get(list, idx, &elem) == 0) {
         /* First element is used to select between include/exclude */
         if ((p = strchr(elem, '!')) && idx == 0) {
             exclude = true;
-            *ch_set = ctl_ch_set; /* Start with all */
+            map_cs_copy(ch_set, &ctl_ch_set); /* Start with all */
         }
 
         /* Skip '!' if it was present */
         p = p ? p + 1 : elem;
 
-        if (1 != sscanf(p, "%d", &channel)) {
+        /* If 6G, check for PSC first */
+        if ((freq_band == IEEE80211_FREQUENCY_BAND_6_GHZ) && ((exclude && !strcasecmp(p, "NONPSC")) || !strcasecmp(p, "PSC"))) {
+            psc = true;
+            map_get_6G_psc_channel_set(&psc_ch_set);
+            if (exclude) {
+                map_cs_and(ch_set, &psc_ch_set);
+            } else {
+                map_cs_or(ch_set, &psc_ch_set);
+            }
+        } else if (sscanf(p, "%d", &channel) == 1) {
+            if (exclude) {
+                map_cs_unset(ch_set, channel);
+            } else if (map_cs_is_set(&ctl_ch_set, channel)) {
+                map_cs_set(ch_set, channel);
+            }
+        } else {
             ret = -1;
         }
 
-        free(elem);
-
-        if (ret) {
-            break;
-        }
-
-        if (exclude) {
-            map_unset_channel(ch_set, channel);
-        } else if (map_is_channel_set(&ctl_ch_set, channel)) {
-            map_set_channel(ch_set, channel);
-        }
-
+        SFREE(elem);
         idx++;
     }
 
     /* Empty list or failure -> default to all */
-    if (idx == 0 || ch_set->length == 0 || ret) {
+    if (idx == 0 || map_cs_nr(ch_set) == 0 || ret) {
         /* Default to all */
-        *ch_set = ctl_ch_set;
+        map_cs_copy(ch_set, &ctl_ch_set);
+    }
+
+    if (ret_psc) {
+        *ret_psc = psc;
     }
 
     return ret;
-}
-
-static int config_change_profile_update_cb(queue_t *updates)
-{
-    update_params_t *update;
-
-    if (g_map_cfg_cbs.profile_update_cb) {
-        g_map_cfg_cbs.profile_update_cb();
-    }
-    update = queue_pop(updates);
-    while (update != NULL) {
-        CosaEmctlProfileConfigChangeNotification(update);
-        free(update->type);
-        free(update->value);
-        free(update);
-        update = queue_pop(updates);
-    }
-
-    return 0;
 }
 
 /*#######################################################################
 #                       CONFIG LOAD                                     #
 ########################################################################*/
 static void get_iface_security_mode(const char *supported_security_modes, uint16_t *auth_mode,
-                                    uint16_t *encryption_mode, uint8_t profile_idx)
+                                    uint16_t *encryption_mode, UNUSED uint8_t profile_idx)
 {
     *auth_mode       = 0;
     *encryption_mode = 0;
@@ -362,6 +373,8 @@ static void get_frequency_bands(char* frequency_bands, uint16_t* bss_freq_bands)
             *bss_freq_bands |= MAP_M2_BSS_RADIO5GL;
         } else if (!strcasecmp(p, "5H") || !strcasecmp(p, "5GH") || !strcasecmp(p, "5U") || !strcasecmp(p, "5GU")) {
             *bss_freq_bands |= MAP_M2_BSS_RADIO5GU;
+        } else if (!strcmp(p, "6") || !strcasecmp(p, "6G")) {
+            *bss_freq_bands |= MAP_M2_BSS_RADIO6G;
         }
         p = strtok_r(NULL, ", ", &save_ptr);
     }
@@ -369,7 +382,7 @@ static void get_frequency_bands(char* frequency_bands, uint16_t* bss_freq_bands)
 
 static int profile_load(map_profile_cfg_t *profile, uint8_t index)
 {
-    bool  enable, fh, bh, gateway, extender;
+    bool  enable, fh, bh;
     char *type = NULL;
     char *label = NULL;
     char *ssid = NULL;
@@ -383,7 +396,6 @@ static int profile_load(map_profile_cfg_t *profile, uint8_t index)
 
     /* Fill in profiles */
     memset(profile, 0, sizeof(map_profile_cfg_t));
-    profile->profile_idx = index;
 
 #if 0
     DataGet(CtlMultiAPControllerProfileEnable, &enable);                /* NOT mandatory */
@@ -404,21 +416,27 @@ static int profile_load(map_profile_cfg_t *profile, uint8_t index)
     CosaEmctlProfileGetType(index, &type);
     CosaEmctlProfileGetVLANID(index, &profile->vlan_id);
 
-    get_frequency_bands(freq_bands, &profile->bss_freq_bands);
-    strncpy(profile->bss_ssid, ssid, sizeof(profile->bss_ssid) - 1);
-    profile->bss_state |= fh ? MAP_FRONTHAUL_BSS : 0;
-    profile->bss_state |= bh ? MAP_BACKHAUL_BSS  : 0;
-    strncpy(profile->label, label, sizeof(profile->label) - 1);
-    get_iface_security_mode(security_mode, &profile->supported_auth_modes, &profile->supported_encryption_types, index);
+    profile->profile_idx = index;
     profile->type = profile_type_from_string(type);
+    strncpy(profile->label, label, sizeof(profile->label) - 1);
+
+    strncpy(profile->bss_ssid, ssid, sizeof(profile->bss_ssid) - 1);
+
+    get_frequency_bands(freq_bands, &profile->bss_freq_bands);
+
+    get_iface_security_mode(security_mode, &profile->supported_auth_modes, &profile->supported_encryption_types, index);
+
     strncpy(profile->wpa_key, key_passphrase, sizeof(profile->wpa_key) -1);
 
+    profile->bss_state |= fh ? MAP_FRONTHAUL_BSS : 0;
+    profile->bss_state |= bh ? MAP_BACKHAUL_BSS  : 0;
+
     SFREE(type);
-    SFREE(ssid);
-    SFREE(security_mode);
     SFREE(label);
-    SFREE(key_passphrase);
+    SFREE(ssid);
     SFREE(freq_bands);
+    SFREE(security_mode);
+    SFREE(key_passphrase);
 
     return 0;
 }
@@ -456,8 +474,10 @@ static int cfg_load(map_cfg_t *cfg, bool init)
         cfg->serial_number = strdup("");
         cfg->storage_path = strdup("/data");
         comp_interfaces_regex(cfg);
+
         cfg->primary_vlan_id = vlan_id;
-        cfg->default_pcp = pcp;
+        cfg->default_pcp     = pcp;
+
         /* TODO: there should also be a platform cleanup that frees these at shutdown... */
     }
 
@@ -479,6 +499,7 @@ static int cfg_load(map_cfg_t *cfg, bool init)
     cfg->enabled = 1;
     cfg->is_master = 1;
     cfg->wfa_cert_r1_compatible = 0;
+
     cfg->controller_log_level = convert_log_level(log_level_controller);
     cfg->library_log_level    = convert_log_level(log_level_platform);
     cfg->ieee1905_log_level   = convert_log_level(log_level_ieee1905);
@@ -519,49 +540,69 @@ static int controller_cfg_load(map_controller_cfg_t *cfg, bool init)
     }
 
     /* LOAD ALWAYS */
+    CosaEmctlGetTopologyQueryInterval(&cfg->topology_query_interval);
+    CosaEmctlGetLinkMetricsQueryInterval(&cfg->link_metrics_query_interval);
+    cfg->ap_capability_query_interval = 60;
+    CosaEmctlGetDeadAgentDetectionInterval(&cfg->dead_agent_detection_interval);
+    CosaEmctlGetConfigureBackhaulStation(&cfg->configure_backhaul_station);
     CosaEmctlGetConfigRenewInterval(&cfg->config_renew_interval);
     CosaEmctlGetConfigRenewMaxRetry(&cfg->config_renew_max_retry);
-    CosaEmctlGetConfigureBackhaulStation(&cfg->configure_backhaul_station);
-    CosaEmctlGetDeadAgentDetectionInterval(&cfg->dead_agent_detection_interval);
-    CosaEmctlGetLinkMetricsQueryInterval(&cfg->link_metrics_query_interval);
-    CosaEmctlGetTopologyDiscoveryInterval(&cfg->topology_discovery_interval);
-    CosaEmctlGetTopologyQueryInterval(&cfg->topology_query_interval);
     CosaEmctlTopologyStableCheckInterval(&cfg->topology_stable_check_interval);
+
     CosaEmctlGetAllowedChannelList2G(str_value);
-    if (set_chan_list(&cfg->allowed_channel_set_2g, str_value, true)) {
+    if (set_chan_list(&cfg->allowed_channel_set_2g, str_value, IEEE80211_FREQUENCY_BAND_2_4_GHZ, NULL)) {
         log_lib_e("failed parsing allowed 2G chan list[%s]", str_value);
     }
+
     CosaEmctlGetAllowedChannelList5G(str_value);
-    if (set_chan_list(&cfg->allowed_channel_set_5g, str_value, false)) {
+    if (set_chan_list(&cfg->allowed_channel_set_5g, str_value, IEEE80211_FREQUENCY_BAND_5_GHZ, NULL)) {
         log_lib_e("failed parsing allowed 5G chan list[%s]", str_value);
     }
+
+    CosaEmctlGetAllowedChannelList6G(str_value);
+    if (set_chan_list(&cfg->allowed_channel_set_6g, str_value, IEEE80211_FREQUENCY_BAND_6_GHZ, &cfg->allowed_channel_6g_psc)) {
+        log_lib_e("failed parsing allowed 6G chan list[%s]", str_value);
+    }
+
     CosaEmctlGetDefault2GPreferredChannelList(str_value);
-    if (set_chan_list(&cfg->default_pref_channel_set_2g, str_value, true)) {
+    if (set_chan_list(&cfg->default_pref_channel_set_2g, str_value, IEEE80211_FREQUENCY_BAND_2_4_GHZ, NULL)) {
         log_lib_e("failed parsing pref 2G chan list[%s]", str_value);
     }
+
     CosaEmctlGetDefault5GPreferredChannelList(str_value);
-    if (set_chan_list(&cfg->default_pref_channel_set_5g, str_value, false)) {
+    if (set_chan_list(&cfg->default_pref_channel_set_5g, str_value, IEEE80211_FREQUENCY_BAND_5_GHZ, NULL)) {
         log_lib_e("failed parsing pref 5G chan list[%s]", str_value);
     }
+
+    CosaEmctlGetDefault6GPreferredChannelList(str_value);
+    if (set_chan_list(&cfg->default_pref_channel_set_6g, str_value, IEEE80211_FREQUENCY_BAND_6_GHZ, NULL)) {
+        log_lib_e("failed parsing pref 6G chan list[%s]", str_value);
+    }
+
+    CosaEmctlGetAllowedBandwidth2G(str_value);
+    cfg->allowed_bandwidth_2g = bandwidth_from_string(str_value);
+    CosaEmctlGetAllowedBandwidth5G(str_value);
+    cfg->allowed_bandwidth_5g = bandwidth_from_string(str_value);
+    CosaEmctlGetAllowedBandwidth6G(str_value);
+    cfg->allowed_bandwidth_6g = bandwidth_from_string(str_value);
+
     CosaEmctlGetBandLock5G(str_value);
     cfg->bandlock_5g = bandlock_type_from_string(str_value);
 
     /* TODO: convert to cosa */
     cfg->map_profile                 = getenv_int("MAP_CONTROLLER_MULTIAP_PROFILE",               MAP_DEFAULT_MULTIAP_PROFILE);
     cfg->lldp_interval               = getenv_int("AL_ENTITY_LLDP_BRIDGE_DISCOVERY_ENV_INTERVAL", MAP_DEFAULT_LLDP_BRIDGE_DISCOVERY_INTERVAL);
+    CosaEmctlGetTopologyDiscoveryInterval(&cfg->topology_discovery_interval);
     cfg->channel_selection_enabled   = getenv_int("MAP_CONTROLLER_CHANNEL_SELECTION_ENABLED",     MAP_DEFAULT_CHANNEL_SELECTION_ENABLED);
 
     val = getenv_int("MAP_CONTROLLER_FREQ_2_4_GHZ", MAP_DEFAULT_FREQ_2_4_GHZ);
     cfg->supportedfreq[IEEE80211_FREQUENCY_BAND_2_4_GHZ] = val ? IEEE80211_FREQUENCY_BAND_2_4_GHZ : 0;
+
     val = getenv_int("MAP_CONTROLLER_FREQ_5_GHZ",   MAP_DEFAULT_FREQ_5_GHZ);
     cfg->supportedfreq[IEEE80211_FREQUENCY_BAND_5_GHZ] = val ? IEEE80211_FREQUENCY_BAND_5_GHZ : 0;
-    val = getenv_int("MAP_CONTROLLER_FREQ_60_GHZ",  MAP_DEFAULT_FREQ_60_GHZ);
-    cfg->supportedfreq[IEEE80211_FREQUENCY_BAND_60_GHZ] = val ? IEEE80211_FREQUENCY_BAND_60_GHZ : 0;
 
-    if (EmctlRegisterConfigChangeCB(&config_change_profile_update_cb) != 0) {
-        fprintf(stderr, "failed to register callback\n");
-    }
-    fprintf(stderr, BYELLOW">>>>Controller Config Load, init: %d, OK"NORM"\n", init);
+    val = getenv_int("MAP_CONTROLLER_FREQ_6_GHZ",  MAP_DEFAULT_FREQ_6_GHZ);
+    cfg->supportedfreq[IEEE80211_FREQUENCY_BAND_6_GHZ] = val ? IEEE80211_FREQUENCY_BAND_6_GHZ : 0;
 
     return 0;
 
@@ -588,17 +629,38 @@ static void cfg_free(map_cfg_t *cfg)
     memset(cfg, 0, sizeof(map_cfg_t));
 }
 
+static int config_change_profile_update_cb(queue_t *updates)
+{
+    update_params_t *update;
+
+    if (g_map_cfg_cbs.profile_update_cb) {
+        g_map_cfg_cbs.profile_update_cb();
+    }
+    update = queue_pop(updates);
+    while (update != NULL) {
+        CosaEmctlProfileConfigChangeNotification(update);
+        free(update->type);
+        free(update->value);
+        free(update);
+        update = queue_pop(updates);
+    }
+
+    return 0;
+}
+
 /*#######################################################################
 #                       PUBLIC FUNCTIONS                                #
 ########################################################################*/
 int map_cfg_init(void)
 {
+    if (EmctlRegisterConfigChangeCB(&config_change_profile_update_cb) != 0) {
+        fprintf(stderr, "failed to register callback\n");
+    }
     return 0;
 }
 
 void map_cfg_fini(void)
 {
-    SFREE(g_ssid_profile_payload);
     cfg_free(&g_map_cfg);
 }
 
@@ -663,7 +725,7 @@ int map_cfg_set_master_state(bool master)
     return 0;
 }
 
-int map_profile_load(bool *ret_changed)
+int map_profile_load(bool *ret_changed, bool dump_profiles)
 {
     map_controller_cfg_t *cfg = &map_cfg_get()->controller_cfg;
     unsigned int          profile_count, i, idx = 0;
@@ -699,7 +761,9 @@ int map_profile_load(bool *ret_changed)
         *ret_changed = changed;
     }
 
-    map_profile_dump(cfg);
+    if (dump_profiles) {
+        map_profile_dump(cfg);
+    }
 
     return 0;
 }
@@ -741,13 +805,4 @@ void map_profile_dump()
         log_lib_i("|  --profile %d--", i);
         dump_profile(&cfg->profiles[i]);
     }
-}
-
-int map_ssid_profile_get(const char **data)
-{
-    if (map_is_timer_registered(HLDATA_SSID_PROFILE_LOAD_TIMER_ID)) {
-        return -1;
-    }
-    *data = g_ssid_profile_payload;
-    return 0;
 }

@@ -22,7 +22,7 @@
 /****************** DEFAULT VALUES ******************/
 #define MAP_DEFAULT_FREQ_2_4_GHZ                    1
 #define MAP_DEFAULT_FREQ_5_GHZ                      1
-#define MAP_DEFAULT_FREQ_60_GHZ                     0
+#define MAP_DEFAULT_FREQ_6_GHZ                      1
 #define MAP_DEFAULT_TOPOLOGY_DISCOVERY_INTERVAL     60
 #define MAP_DEFAULT_LLDP_BRIDGE_DISCOVERY_INTERVAL  3
 #define MAP_DEFAULT_UCI_MGMT_IPC_REPORT_INTERVAL    5
@@ -52,7 +52,7 @@
 #define MAX_INACTIVE_STA            128
 
 #define MAX_OP_CLASS                48
-#define MAX_CHANNEL_PER_OP_CLASS    24
+#define MAX_CHANNEL_PER_OP_CLASS    59
 
 #define MAX_TRAFFIC_SEP_SSID        8
 #define MAX_ACCESS_CATEGORY         4
@@ -69,7 +69,7 @@
 #define MAX_SCAN_STATUS_STR_LEN     25 /* "FRESH SCAN NOT SUPPORTED" + null */
 #define MAX_SCAN_TYPE_STR_LEN       9  /* "PASSIVE" + null */
 #define MAX_PROFILE_LABEL_LEN       65 /* Length = 64 + 1 for Null character at the end */
-#define NUM_FREQ_BANDS              3  /* 2.4G, 5G, 6G */
+#define NUM_FREQ_BANDS              5  /* 2.4G, 5G, 60G, 6G*/
 
 /* Flags for MultiAp extension subelement  */
 #define MAP_TEAR_DOWN               0x10 /* Bit 4 */
@@ -79,8 +79,6 @@
 
 #define HASH_KEY_LEN                22  /* sizeof("ALE:00:00:00:00:00:00") */
 #define MAC_ADDR_START_OFFSET       4
-
-#define MAX_CHANNEL_SET             54
 
 #define MAX_TIME_LEN                50
 
@@ -99,35 +97,37 @@
 #define STD_80211_A      2
 #define STD_80211_N      3
 #define STD_80211_AC     4
-#define STD_80211_AN     5
-#define STD_80211_ANAC   6
-#define STD_80211_NAX    7
-#define STD_80211_ANACAX 8
-#define STD_80211_ANAX   9
-#define STD_80211_ACAX   10
+#define STD_80211_AX     5
+#define STD_80211_AN     6
+#define STD_80211_ANAC   7
+#define STD_80211_NAX    8
+#define STD_80211_ANACAX 9
+#define STD_80211_ANAX   10
+#define STD_80211_ACAX   11
 
 #define WIFI_AC_BE       0  /* Best effort Access class */
 #define WIFI_AC_BK       1  /* Background Access class */
 #define WIFI_AC_VD       2  /* Video Access class */
 #define WIFI_AC_VO       3  /* Voice Access class */
 
+#define MAP_ESP_INCLUDE_AC_BE_MASK 0x80   /* Bit 7 */
+
 #define MAP_ASSOC_STA_LINK_METRICS_INCLUSION_POLICY (1<<6)
 #define MAP_ASSOC_STA_TRAFFIC_STA_INCLUSION_POLICY  (1<<7)
 
 /* Use below keys prepended with ALE MAC address of the agent */
 #define ONBOARDING_STATUS_TIMER_ID          "ONBOARDING-STATUS-TIMER"
-#define HLDATA_SSID_PROFILE_SYNC_TIMER_ID   "HLDATA-SSID-PROFILE-SYNC-TIMER"
 #define MCAST_CONFIG_RENEW_TIMER_ID         "MCAST-CONFIG-RENEW-TIMER"
+#define BLOCKLIST_REFRESH_TIMER_ID          "BLOCKLIST-REFRESH-TIMER"
 
 #define AP_CAPS_QUERY_RETRY_ID      "AP-CAPS-QUERY"
+#define BHSTA_CAP_QUERY_RETRY_ID    "BHSTA-CAP-QUERY"
 #define CHAN_PREF_QUERY_RETRY_ID    "AP-CHAN-PREF-QUERY"
 #define CHAN_SELEC_REQ_RETRY_ID     "AP-CHAN-SELC_REQ"
 #define TOPOLOGY_QUERY_RETRY_ID     "TOPOLOGY-QUERY"
 #define BEACON_METRICS_RETRY_ID     "BEACON-METRICS-RESP"
 #define AUTOCONFIG_RESP_RETRY_ID    "AUTOCONFIG-RESP"
 #define UCAST_CONFIG_RENEW_RETRY_ID "UCAST-CONFIG-RENEW"
-#define VENDOR_SPEFICIC_RETRY_ID    "VENDOR-SPECIFIC"
-#define HIGHER_LAYER_DATA_RETRY_ID  "HIGHER-LAYER-DATA"
 #define ASSOC_CONTROL_RETRY_ID      "ASSOC-CONTROL"
 
 /* Use below keys prepended with RADIO MAC address */
@@ -156,17 +156,21 @@ enum {
 
 #define MAP_ASSOC_TS_DELTA            65536 /* Max assoc time in Associated Clients TLV */
 
+
 /* TODO: also defines in 1905_tlvs.h */
 #ifndef IEEE80211_FREQUENCY_BAND_2_4_GHZ
   #define IEEE80211_FREQUENCY_BAND_2_4_GHZ 0x00
   #define IEEE80211_FREQUENCY_BAND_5_GHZ   0x01
   #define IEEE80211_FREQUENCY_BAND_60_GHZ  0x02
+  #define IEEE80211_FREQUENCY_BAND_6_GHZ   0x04
+  #define IEEE80211_FREQUENCY_BAND_UNKNOWN 0xFF
 #endif
 
 enum map_m2_bss_freq_band {
     MAP_M2_BSS_RADIO2G  = 0x10,
     MAP_M2_BSS_RADIO5GU = 0x20,
     MAP_M2_BSS_RADIO5GL = 0x40,
+    MAP_M2_BSS_RADIO6G  = 0x80,
 };
 
 #endif /* MAP_COMMON_DEFINES_H_ */

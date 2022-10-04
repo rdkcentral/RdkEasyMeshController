@@ -756,7 +756,7 @@ fail:
 /*#######################################################################
 #                      FUNCTIONS                                        #
 ########################################################################*/
-int multiap_controller_wfa_capi(char *line, map_printf_cb_t print_cb)
+int map_ctrl_wfa_capi(char *line, map_printf_cb_t print_cb)
 {
     capi_params_t  params = {.count = 0};
     char          *save_ptr = NULL;

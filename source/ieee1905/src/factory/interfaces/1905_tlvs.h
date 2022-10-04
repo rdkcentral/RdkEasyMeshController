@@ -88,7 +88,6 @@
 # TLV types as detailed in "Section 6.4"                                #
 ########################################################################*/
 #define TLV_TYPE_END_OF_MESSAGE                      (0)
-#define TLV_TYPE_VENDOR_SPECIFIC                     (11)
 #define TLV_TYPE_AL_MAC_ADDRESS                      (1)
 #define TLV_TYPE_MAC_ADDRESS                         (2)
 #define TLV_TYPE_DEVICE_INFORMATION                  (3)
@@ -98,6 +97,7 @@
 #define TLV_TYPE_LINK_METRIC_QUERY                   (8)
 #define TLV_TYPE_TRANSMITTER_LINK_METRIC             (9)
 #define TLV_TYPE_RECEIVER_LINK_METRIC                (10)
+#define TLV_TYPE_VENDOR_SPECIFIC                     (11)
 #define TLV_TYPE_LINK_METRIC_RESULT_CODE             (12)
 #define TLV_TYPE_SEARCHED_ROLE                       (13)
 #define TLV_TYPE_AUTOCONFIG_FREQ_BAND                (14)
@@ -158,6 +158,8 @@
   #define IEEE80211_FREQUENCY_BAND_2_4_GHZ           (0x00)
   #define IEEE80211_FREQUENCY_BAND_5_GHZ             (0x01)
   #define IEEE80211_FREQUENCY_BAND_60_GHZ            (0x02)
+  #define IEEE80211_FREQUENCY_BAND_6_GHZ             (0x04)
+  #define IEEE80211_FREQUENCY_BAND_UNKNOWN           (0xFF)
 #endif
 
 /*#######################################################################
@@ -972,6 +974,20 @@ typedef void     (*i1905_tlv_free_cb_t)(void *memory_structure);
         return NULL;                 \
     }
 
+#define PARSE_CHECK_INTEGRITY                                                                   \
+    if (p - packet_stream != len) {                                                             \
+        if (log_and_check_1905_TLV_malformed((p - packet_stream), len, (uint8_t *)ret)) {       \
+            free_1905_TLV_structure((uint8_t *)ret);                                            \
+            return NULL;                                                                        \
+        }                                                                                       \
+    }
+
+#define PARSE_LIMIT_N_DROP(var, lim)                 \
+    if (var > (lim)) {                               \
+        free_1905_TLV_structure((uint8_t *)ret);     \
+        return NULL;                                 \
+    }
+
 #define PARSE_LIMIT(var, lim) \
     if (var > (lim)) {        \
         var = (lim);          \
@@ -1095,6 +1111,8 @@ void visit_1905_TLV_structure(uint8_t *memory_structure, void (*callback)(void (
 *  Return "Unknown" if the provided type does not exist.
 */
 char *convert_1905_TLV_type_to_string(uint8_t tlv_type);
+
+uint8_t log_and_check_1905_TLV_malformed(int parsed, int len, uint8_t *tlv_structure);
 
 /* Register a TLV handler */
 void i1905_register_tlv(uint8_t type, char *name, i1905_tlv_parse_cb_t parse_cb,

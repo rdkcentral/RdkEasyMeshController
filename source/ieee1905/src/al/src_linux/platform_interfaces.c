@@ -823,7 +823,7 @@ uint8_t PLATFORM_SET_INTERFACE_POWER_MODE(char *interface_name, uint8_t power_mo
             log_i1905_d("%s --> POWER SAVE", interface_name);
         break;
         default:
-            log_i1905_w("Unknown power mode for interface %s (%d)", interface_name, power_mode);
+            log_i1905_e("Unknown power mode for interface %s (%d)", interface_name, power_mode);
             return 0;
         break;
     }

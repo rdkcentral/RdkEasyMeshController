@@ -21,6 +21,8 @@
 #include "map_data_model.h"
 #include "map_config.h"
 
+#define IS_ANY_SUBBAND_CHANNEL_SET(channel_set, channel, opclass) (!map_is_no_subband_channel_set(channel_set, channel, opclass))
+
 /** @brief Get controller configuration
  *
  *  @return pointer to config structure
@@ -91,11 +93,6 @@ const char *map_scan_status_to_string(uint8_t scan_status);
 const char* map_scan_type_to_string(uint8_t scan_type);
 
 /**
- *  @brief  Check if channel is present in the channel list of this opclass
- */
-bool map_is_channel_in_op_class_list(map_op_class_t *op_class, int channel);
-
-/**
  *  @brief  Find first radio that supports provided channel.
  *
  *  Checks if channel is supported in op class list received in
@@ -123,6 +120,15 @@ map_profile_cfg_t *map_get_profile_from_bss(map_bss_info_t *bss);
  */
 uint8_t *map_get_wsc_attr(uint8_t *message, uint16_t message_size, uint16_t attr_type, uint16_t *attr_len);
 
+/**
+ * @brief Check if channel is in op class and not its non operable list
+ */
+bool map_is_channel_in_cap_op_class(map_op_class_t *cap_op_class, int channel);
+
+/**
+ *  @brief  Update radio supported channel set based on config and cap_op_class_list.
+ */
+void map_update_radio_channels(map_radio_info_t *radio);
 
 /**
  *  @brief  Merge 2 op_class lists into 1 (taking lowest preference for each op_class/channel).
@@ -134,6 +140,16 @@ int map_merge_pref_op_class_list(map_op_class_list_t *merged_list, map_op_class_
  *  @brief  Optimize op_class list by removing channel lists that contain all channels of an op_class.
  */
 void map_optimize_pref_op_class_list(map_op_class_list_t *list, map_op_class_list_t *cap_list);
+
+/**
+ *  @brief  Check if none of the subband channels from chan/op_class are present in channels list
+ */
+bool map_is_no_subband_channel_set(map_channel_set_t *channels, uint8_t chan, uint8_t op_class);
+
+/**
+ *  @brief  Check if all of the subband channels from chan/op_class are present in channels list
+ */
+bool map_is_all_subband_channel_set(map_channel_set_t *channels, uint8_t chan, uint8_t op_class);
 
 /**
  *  @brief  Sort op_classes and channels in op_class list.
@@ -149,5 +165,25 @@ bool map_is_cac_request_valid(map_radio_info_t *radio, uint8_t cac_method, uint8
  *  @brief  Find local iface of ale based on mac
  */
 map_local_iface_t *map_find_local_iface(map_ale_info_t *ale, mac_addr mac);
+
+/**
+ *  @brief  Find backhaul sta iface of ale based on mac
+ */
+map_backhaul_sta_iface_t *map_find_bhsta_iface_from_ale(map_ale_info_t *ale, mac_addr sta_mac);
+
+/**
+ *  @brief  Find backhaul sta iface globally based on mac
+ */
+map_backhaul_sta_iface_t *map_find_bhsta_iface_gbl(mac_addr sta_mac);
+
+/**
+ *  @brief  Delete ht/vht/he/wifi6 capability tlv
+ */
+void map_free_ht_vht_he_wifi6_caps(map_radio_info_t *radio);
+
+/**
+ *  @brief  Update global radio caps from ht/vht/he capability tlv
+ */
+void map_update_radio_caps(map_radio_info_t *radio);
 
 #endif /* MAP_CTRL_UTILS_H_ */

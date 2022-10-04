@@ -205,7 +205,7 @@ int map_build_and_send_initial_channel_scan_req(void *args, UNUSED uint16_t *mid
     */
     bool fresh_scan = !radio->scan_caps.boot_only && radio->last_scan_info.last_scan_status_failed;
 
-    map_fill_channel_scan_request_tlv(&channel_scan_req_tlv, radio, fresh_scan);
+    map_fill_channel_scan_request_tlv(&channel_scan_req_tlv, radio, fresh_scan, /* all channels */ NULL);
 
     if (map_send_channel_scan_request(radio->ale, &channel_scan_req_tlv, MID_NA)) {
         log_ctrl_e("map_send_channel_scan_request failed");
@@ -275,9 +275,11 @@ int map_agent_handle_channel_selection(map_ale_info_t *ale, map_radio_info_t *ra
         if (action == MAP_CHAN_SEL_QUERY) {
             /* Retry Channel preference query untill we get a report from agent. */
             map_dm_get_ale_timer_id(retry_id, ale, CHAN_PREF_QUERY_RETRY_ID);
-            if (map_register_retry(retry_id, 10, 10, ale, chan_sel_query_compl_cb, map_send_channel_preference_query)) {
-                log_ctrl_e("failed Registering retry timer[%s]", retry_id);
-                ERROR_EXIT(status)
+            if (!map_is_timer_registered(retry_id)) {
+                if (map_register_retry(retry_id, 10, 10, ale, chan_sel_query_compl_cb, map_send_channel_preference_query)) {
+                    log_ctrl_e("failed Registering retry timer[%s]", retry_id);
+                    ERROR_EXIT(status)
+                }
             }
         } else if(action == MAP_CHAN_SEL_REQUEST) {
             /* Retry Channel selection request untill we get a response.
@@ -298,9 +300,11 @@ int map_agent_handle_channel_selection(map_ale_info_t *ale, map_radio_info_t *ra
                 } else {
                     map_dm_get_ale_timer_id(retry_id, ale, CHAN_SELEC_REQ_RETRY_ID);
                 }
-                if (map_register_retry(retry_id, 10, 10, pref_type, map_cleanup_retry_args, map_send_channel_selection_request)) {
-                    log_ctrl_e("failed Registering retry timer[%s]", retry_id);
-                    ERROR_EXIT(status)
+                if (!map_is_timer_registered(retry_id)) {
+                    if (map_register_retry(retry_id, 10, 10, pref_type, map_cleanup_retry_args, map_send_channel_selection_request)) {
+                        log_ctrl_e("failed Registering retry timer[%s]", retry_id);
+                        ERROR_EXIT(status)
+                    }
                 }
             } else {
                 log_ctrl_e("failed to allocate memory");
