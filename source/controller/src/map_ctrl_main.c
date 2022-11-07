@@ -40,11 +40,7 @@
 #include "map_retry_handler.h"
 #include "map_staging_list.h"
 #include "map_blocklist.h"
-
-/* TODO: create a proper header file */
-int ssp_fini(void);
-int ssp_main(int argc, char *argv[]);
-void ssp_stack_backtrace(void);
+#include "ssp_internal.h"
 
 /*#######################################################################
 #                       DEFINES                                         #

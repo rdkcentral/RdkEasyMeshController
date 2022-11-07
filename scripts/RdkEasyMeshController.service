@@ -4,12 +4,13 @@ Description=RdkEasyMeshController service
 After=ccspwifiagent.service
 
 [Service]
-Type=forking
+Type=simple
 WorkingDirectory=/usr/ccsp/easymesh
 Environment="Subsys=eRT."
 Environment="LOG4C_RCPATH=/etc"
 EnvironmentFile=/etc/device.properties
-ExecStart=/usr/bin/em-etl -e
+ExecStart=/usr/bin/em_ctl -e
+Restart=always
 
 StandardOutput=syslog+console
 
