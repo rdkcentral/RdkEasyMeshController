@@ -480,6 +480,7 @@ static int cfg_load(map_cfg_t *cfg, bool init)
     char         *log_level_platform   = NULL;
     char         *log_level_ieee1905   = NULL;
     char         *log_output           = NULL;
+    char         *value                = NULL;
     int           vlan_id;
     unsigned int  pcp;
 
@@ -517,18 +518,18 @@ static int cfg_load(map_cfg_t *cfg, bool init)
     /* LOAD ALWAYS */
 #if 0
     /* TODO: convert to PSM */
-    DataGet(CtlMultiAPControllerLoggingControllerLevel, &log_level_controller);     /* NOT mandatory */
-    DataGet(CtlMultiAPControllerLoggingPlatformLevel, &log_level_platform);         /* NOT mandatory */
-    DataGet(CtlMultiAPControllerLoggingIEEE1905Level, &log_level_ieee1905);         /* NOT mandatory */
-    DataGet(CtlMultiAPControllerLoggingOutput, &log_output);                        /* NOT mandatory */
     DataGet(CtlMultiAPControllerEnable, &cfg->enabled);                             /* Mandatory */
     DataGet(CtlMultiAPControllerIsMaster, &cfg->is_master);                         /* Mandatory ? */
     DataGet(CtlMultiAPControllerWfaCertR1Compatible, &cfg->wfa_cert_r1_compatible); /* NOT mandatory */
 #endif
-    log_level_controller = strdup("error");
-    log_level_platform = strdup("error");
-    log_level_ieee1905 = strdup("error");
-    log_output = strdup("stderr");
+    value = getenv("MAP_CONTROLLER_LOG_LEVEL");
+    log_level_controller = (value == NULL) ? strdup("error") : strdup(value);
+    value = getenv("MAP_PLATFORM_LOG_LEVEL");
+    log_level_platform = (value == NULL) ? strdup("error") : strdup(value);
+    value = getenv("MAP_IEEE1905_LOG_LEVEL");
+    log_level_ieee1905 = (value == NULL) ? strdup("error") : strdup(value);
+    value = getenv("MAP_LOG_OUTPUT");
+    log_output = (value == NULL) ? strdup("stderr") : strdup(value);
     cfg->enabled = 1;
     cfg->is_master = 1;
     cfg->wfa_cert_r1_compatible = 0;
@@ -536,9 +537,13 @@ static int cfg_load(map_cfg_t *cfg, bool init)
     cfg->controller_log_level = convert_log_level(log_level_controller);
     cfg->library_log_level    = convert_log_level(log_level_platform);
     cfg->ieee1905_log_level   = convert_log_level(log_level_ieee1905);
-    cfg->agent_log_level      = LOG_EMERG;  /* Not relevant */
-    cfg->vendor_ipc_log_level = LOG_EMERG;  /* Not relevant */
-    cfg->log_output           = !strcmp(log_output, "syslog") ? log_syslog : log_stderr;
+    if (!strcmp(log_output, "file_only")) {
+        cfg->log_output       = log_file_only;
+    } else if (!strcmp(log_output, "syslog")) {
+        cfg->log_output       = log_syslog;
+    } else {
+        cfg->log_output       = log_stderr;
+    }
 
 
     SFREE(log_level_controller);

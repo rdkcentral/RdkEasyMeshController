@@ -93,39 +93,55 @@ static int get_module_loglevel(map_cfg_t *cfg, int module)
     switch(module) {
         case MAP_LIBRARY:        return cfg->library_log_level;
         case MAP_IEEE1905:       return cfg->ieee1905_log_level;
-        case MAP_AGENT:          return cfg->agent_log_level;
         case MAP_CONTROLLER:     return cfg->controller_log_level;
-        case MAP_VENDOR_IPC:     return cfg->vendor_ipc_log_level;
-        case MAP_CONTROLLER_BHS: return cfg->controller_bhs_log_level;
         default:                 return LOG_INFO;
+    }
+}
+
+static void map_vlog_file(int level, const char *format, va_list args)
+{
+    char buffer[1024];
+
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    switch (level) {
+        case LOG_ERR:
+            CcspTraceError(("%s\n", buffer));
+            break;
+        case LOG_WARNING:
+            CcspTraceWarning(("%s\n", buffer));
+            break;
+        case LOG_INFO:
+            CcspTraceInfo(("%s\n", buffer));
+            break;
+        case LOG_DEBUG:
+            CcspTraceDebug(("%s\n", buffer));
+            break;
+        default:
+            break;
     }
 }
 
 void map_vlog_ext(int module, int level, bool check_level, const char *format, va_list args)
 {
+    va_list args2;
     map_cfg_t *cfg = map_cfg_get();
 
     if (check_level && level > get_module_loglevel(cfg, module)) {
         return;
     }
 
+    /* args will be consumed for stderr, we need to copy */
+    va_copy(args2, args);
+    map_vlog_file(level, format, args2);
+    va_end(args2);
+
+    if (log_file_only == cfg->log_output) {
+        return;
+    }
+
     if (log_stderr == cfg->log_output) {
-        switch (level) {
-            case LOG_ERR:
-                CcspTraceError((format, args));
-                break;
-            case LOG_WARNING:
-                CcspTraceWarning((format, args));
-                break;
-            case LOG_INFO:
-                CcspTraceInfo((format, args));
-                break;
-            case LOG_DEBUG:
-                CcspTraceDebug((format, args));
-                break;
-            default:
-                break;
-        }
+        vfprintf(stderr, format, args);
+        fprintf(stderr, "\n");
     } else {
         vsyslog(level, format, args);
     }
@@ -136,7 +152,7 @@ void map_vlog(int module, int level, const char *format, va_list args)
     map_vlog_ext(module, level, true, format, args);
 }
 
-void map_log(int module, int level, const char *format,...)
+void map_log(int module, int level, const char *format, ...)
 {
     va_list args;
     va_start(args, format);

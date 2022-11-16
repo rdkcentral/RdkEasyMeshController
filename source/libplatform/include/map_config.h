@@ -61,7 +61,8 @@ typedef struct {
 
 typedef enum {
     log_syslog,
-    log_stderr
+    log_stderr,
+    log_file_only
 } map_log_iface_t;
 
 /* Credential type. See Device.X_AIRTIES_OBJ.MultiapController.SSIDProfile.{i}.Type.
@@ -137,9 +138,6 @@ typedef struct map_cfg_s {
     unsigned int          library_log_level;
     unsigned int          ieee1905_log_level;
     unsigned int          controller_log_level;
-    unsigned int          agent_log_level;
-    unsigned int          vendor_ipc_log_level;
-    unsigned int          controller_bhs_log_level;
     int                   al_fd;
 
     char                 *manufacturer;
