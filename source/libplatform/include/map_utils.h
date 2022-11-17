@@ -147,10 +147,7 @@ uint64_t get_clock_diff_secs(struct timespec new_time, struct timespec old_time)
 typedef enum {
     MAP_LIBRARY,
     MAP_IEEE1905,
-    MAP_AGENT,
     MAP_CONTROLLER,
-    MAP_VENDOR_IPC,
-    MAP_CONTROLLER_BHS,
     MAP_TEST
 } map_log_source_t;
 
