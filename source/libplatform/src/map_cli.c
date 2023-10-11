@@ -63,12 +63,10 @@ void cli_printf(cli_t *cli, const char *fmt, ...)
 
 void cli_run(cli_t *cli)
 {
-    int rc;
-
     struct sockaddr_un cli_addr;
     socklen_t cli_len = sizeof(cli_addr);
 
-    int fd = -1;
+    int rc, fd;
     FILE *fp = NULL;
     int r, len;
     char *buffer = NULL;
@@ -78,7 +76,6 @@ void cli_run(cli_t *cli)
 
     subscription_t *subscription;
 
-    cli_len = sizeof(cli_addr);
     fd = accept(cli->fd, (struct sockaddr *)&cli_addr, &cli_len);
     if (fd < 0) {
         log_lib_e("can not accept client");
@@ -226,7 +223,7 @@ void cli_destroy(cli_t *cli)
     free(cli);
 }
 
-int cli_subscribe(cli_t *cli, const char *event, cli_function_t function, void *context)
+int cli_subscribe(cli_t *cli, const char *event, cli_function_t function, uint32_t flags, void *context)
 {
     if (cli == NULL) {
         log_lib_e("cli is invalid");
@@ -240,7 +237,7 @@ int cli_subscribe(cli_t *cli, const char *event, cli_function_t function, void *
         log_lib_e("function is invalid");
         goto bail;
     }
-    return subscriptions_add(cli->subscriptions, event, function, context);
+    return subscriptions_add(cli->subscriptions, event, function, flags, context);
 
 bail:
     return -1;

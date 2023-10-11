@@ -106,12 +106,16 @@ uint8_t *parse_lldp_TLV_from_packet(uint8_t *packet_stream)
             *  "IEEE Std 802.1AB-2009 Section 8.5.1"
             */
 
-            struct endOfLldppduTLV *ret = malloc(sizeof(struct endOfLldppduTLV));
+            lldp_end_of_lldp_ppdu_tlv_t *ret;
 
             /* According to the standard, the length *must* be 0 */
             if (0 != len) {
                 /* Malformed packet */
-                free(ret);
+                return NULL;
+            }
+
+            ret = malloc(sizeof(lldp_end_of_lldp_ppdu_tlv_t));
+            if (!ret) {
                 return NULL;
             }
 
@@ -124,7 +128,7 @@ uint8_t *parse_lldp_TLV_from_packet(uint8_t *packet_stream)
             *  "IEEE Std 802.1AB-2009 Section 8.5.2"
             */
 
-            struct chassisIdTLV *ret = malloc(sizeof(struct chassisIdTLV));
+            lldp_chassis_id_tlv_t *ret;
 
             /* In the 1905 context we are only interested in processing those
             *  TLVs whose length is "6+1" (ie. it contains a 6 bytes MAC address
@@ -133,7 +137,11 @@ uint8_t *parse_lldp_TLV_from_packet(uint8_t *packet_stream)
             */
             if (6+1 != len) {
                 /* Not interested */
-                free(ret);
+                return NULL;
+            }
+
+            ret = malloc(sizeof(lldp_chassis_id_tlv_t));
+            if (!ret) {
                 return NULL;
             }
 
@@ -160,7 +168,7 @@ uint8_t *parse_lldp_TLV_from_packet(uint8_t *packet_stream)
             *  "IEEE Std 802.1AB-2009 Section 8.5.3"
             */
 
-            struct portIdTLV *ret = malloc(sizeof(struct portIdTLV));
+            lldp_port_id_tlv_t *ret;
 
             /* In the 1905 context we are only interested in processing those
             *  TLVs whose length is "6+1" (ie. it contains a 6 bytes MAC address
@@ -169,7 +177,11 @@ uint8_t *parse_lldp_TLV_from_packet(uint8_t *packet_stream)
             */
             if (6+1 != len) {
                 /* Not interested */
-                free(ret);
+                return NULL;
+            }
+
+            ret = malloc(sizeof(lldp_port_id_tlv_t));
+            if (!ret) {
                 return NULL;
             }
 
@@ -196,12 +208,16 @@ uint8_t *parse_lldp_TLV_from_packet(uint8_t *packet_stream)
             *  "IEEE Std 802.1AB-2009 Section 8.5.4"
             */
 
-            struct timeToLiveTypeTLV *ret = malloc(sizeof(struct timeToLiveTypeTLV));
+            lldp_time_to_live_tlv_t *ret;
 
             /* According to the standard, the length *must* be 2 */
             if (2 != len) {
                 /* Not interested */
-                free(ret);
+                return NULL;
+            }
+
+            ret = malloc(sizeof(lldp_time_to_live_tlv_t));
+            if (!ret) {
                 return NULL;
             }
 
@@ -237,17 +253,22 @@ uint8_t *forge_lldp_TLV_from_structure(uint8_t *memory_structure, uint16_t *len)
             */
 
             uint8_t *ret, *p;
-            struct endOfLldppduTLV *m;
+            lldp_end_of_lldp_ppdu_tlv_t *m;
             uint8_t byte1, byte2;
 
             uint16_t tlv_length;
 
-            m = (struct endOfLldppduTLV *)memory_structure;
+            m = (lldp_end_of_lldp_ppdu_tlv_t *)memory_structure;
 
             tlv_length = 0;
             *len = 1 + 1 + tlv_length;
 
-            p = ret = malloc(1 + 1 + tlv_length);
+            ret = malloc(1 + 1 + tlv_length);
+            if (!ret) {
+                return NULL;
+            }
+            p = ret;
+
 
             byte1 = (m->tlv_type << 1) | ((tlv_length & 0x80) >> 7);
             byte2 = tlv_length & 0x7f;
@@ -263,12 +284,12 @@ uint8_t *forge_lldp_TLV_from_structure(uint8_t *memory_structure, uint16_t *len)
             */
 
             uint8_t *ret, *p;
-            struct chassisIdTLV *m;
+            lldp_chassis_id_tlv_t *m;
             uint8_t byte1, byte2;
 
             uint16_t tlv_length;
 
-            m = (struct chassisIdTLV *)memory_structure;
+            m = (lldp_chassis_id_tlv_t *)memory_structure;
 
             if (CHASSIS_ID_TLV_SUBTYPE_MAC_ADDRESS != m->chassis_id_subtype) {
                 /* 1905 *only* forges chassis of type "MAC address" */
@@ -278,7 +299,11 @@ uint8_t *forge_lldp_TLV_from_structure(uint8_t *memory_structure, uint16_t *len)
             tlv_length = 1+6;  /* subtype (1 byte) + AL MAC address (6 bytes) */
             *len = 1 + 1 + tlv_length;
 
-            p = ret = malloc(1 + 1 + tlv_length);
+            ret = malloc(1 + 1 + tlv_length);
+            if (!ret) {
+                return NULL;
+            }
+            p = ret;
 
             byte1 = (m->tlv_type << 1) | ((tlv_length & 0x80) >> 7);
             byte2 = tlv_length & 0x7f;
@@ -296,12 +321,12 @@ uint8_t *forge_lldp_TLV_from_structure(uint8_t *memory_structure, uint16_t *len)
             */
 
             uint8_t *ret, *p;
-            struct portIdTLV *m;
+            lldp_port_id_tlv_t *m;
             uint8_t byte1, byte2;
 
             uint16_t tlv_length;
 
-            m = (struct portIdTLV *)memory_structure;
+            m = (lldp_port_id_tlv_t *)memory_structure;
 
             if (PORT_ID_TLV_SUBTYPE_MAC_ADDRESS != m->port_id_subtype) {
                 /* 1905 *only* forges ports of type "MAC address" */
@@ -311,7 +336,11 @@ uint8_t *forge_lldp_TLV_from_structure(uint8_t *memory_structure, uint16_t *len)
             tlv_length = 1+6;  // subtype (1 byte) + AL MAC address (6 bytes)
             *len = 1 + 1 + tlv_length;
 
-            p = ret = malloc(1 + 1 + tlv_length);
+            ret = malloc(1 + 1 + tlv_length);
+            if (!ret) {
+                return NULL;
+            }
+            p = ret;
 
             byte1 = (m->tlv_type << 1) | ((tlv_length & 0x80) >> 7);
             byte2 = tlv_length & 0x7f;
@@ -329,12 +358,12 @@ uint8_t *forge_lldp_TLV_from_structure(uint8_t *memory_structure, uint16_t *len)
             */
 
             uint8_t *ret, *p;
-            struct timeToLiveTypeTLV *m;
+            lldp_time_to_live_tlv_t *m;
             uint8_t byte1, byte2;
 
             uint16_t tlv_length;
 
-            m = (struct timeToLiveTypeTLV *)memory_structure;
+            m = (lldp_time_to_live_tlv_t *)memory_structure;
 
             if (TIME_TO_LIVE_TLV_1905_DEFAULT_VALUE != m->ttl) {
                 /* 1905 *only* forges TTLs with this default value */
@@ -344,7 +373,11 @@ uint8_t *forge_lldp_TLV_from_structure(uint8_t *memory_structure, uint16_t *len)
             tlv_length = 2;
             *len = 1 + 1 + tlv_length;
 
-            p = ret = malloc(1 + 1 + tlv_length);
+            ret = malloc(1 + 1 + tlv_length);
+            if (!ret) {
+                return NULL;
+            }
+            p = ret;
 
             byte1 = (m->tlv_type << 1) | ((tlv_length & 0x80) >> 7);
             byte2 = tlv_length & 0x7f;
@@ -454,7 +487,7 @@ uint8_t compare_lldp_TLV_structures(uint8_t *memory_structure_1, uint8_t *memory
 }
 
 void visit_lldp_TLV_structure(uint8_t *memory_structure, void (*callback)(void (*write_function)(const char *fmt, ...),
-                              const char *prefix, uint8_t size, const char *name, const char *fmt, void *p),
+                              const char *prefix, size_t size, const char *name, const char *fmt, void *p),
                               void (*write_function)(const char *fmt, ...), const char *prefix)
 {
     if (NULL == memory_structure) {

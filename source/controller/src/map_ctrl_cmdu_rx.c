@@ -204,6 +204,11 @@ static cmdu_cbs_t g_cmdu_cbs[]={
         .handle_ale_cb   = map_handle_proxied_encap_dpp,
     },
     {
+        .cmdu_type       = CMDU_TYPE_MAP_1905_ENCAP_EAPOL,                      /* MAP_R3 17.1.49 (type 0x8030) */
+        .validate_ale_cb = map_validate_1905_encap_eapol,
+        .handle_ale_cb   = map_handle_1905_encap_eapol,
+    },
+    {
         .cmdu_type       = CMDU_TYPE_MAP_DIRECT_ENCAP_DPP,                      /* MAP_R3 17.1.56 (type 0x802a) */
         .validate_ale_cb = map_validate_direct_encap_dpp,
         .handle_ale_cb   = map_handle_direct_encap_dpp,

@@ -15,10 +15,9 @@ AM_CFLAGS += -DMULTIAP -D_FLAVOUR_AIRTIES_ -DSEND_EMPTY_TLVS -DFIX_BROKEN_TLVS -
 lib_LIBRARIES = libfactory.a
 
 libfactory_a_CPPFLAGS = -I$(srcdir)/interfaces \
-                      -I$(srcdir)/interfaces/extensions/map \
-                      -I$(top_srcdir)/source/libplatform/include \
-                      -I$(top_srcdir)/source/ieee1905/src/common/interfaces \
-                      -I$(top_srcdir)/source/ssp
+                        -I$(srcdir)/interfaces/extensions/map \
+                        -I$(top_srcdir)/source/libplatform/include \
+                        -I$(top_srcdir)/source/ieee1905/src/common/interfaces
 
 libfactory_a_SOURCES = $(srcdir)/src_independent/1905_cmdus.c \
                        $(srcdir)/src_independent/1905_tlvs.c \
@@ -29,4 +28,3 @@ libfactory_a_SOURCES = $(srcdir)/src_independent/1905_cmdus.c \
                        $(srcdir)/src_independent/extensions/map/map_r2_tlvs.c \
                        $(srcdir)/src_independent/extensions/map/map_r3_tlvs.c
 
-libfactory_a_LIBADD = ${top_builddir}/source/ieee1905/src/common/libcommon.a

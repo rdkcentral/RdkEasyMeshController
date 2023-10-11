@@ -587,6 +587,11 @@ typedef struct supportedFreqBandTLV {
 #define WSC_ATTR_OS_VERSION       (0x102d)
 #define WSC_ATTR_VENDOR_EXTENSION (0x1049)
 
+/* Flags for MultiAp extension subelement  */
+#define WSC_WFA_MAP_ATTR_FLAG_BACKHAUL_BSS  (0x40) /* Bit 6 */
+#define WSC_WFA_MAP_ATTR_FLAG_FRONTHAUL_BSS (0x20) /* Bit 5 */
+#define WSC_WFA_MAP_ATTR_FLAG_TEARDOWN      (0x10) /* Bit 4 */
+
 typedef struct wscTLV {
     uint8_t   tlv_type;           /* Must always be set to TLV_TYPE_WSC */
 
@@ -964,47 +969,103 @@ typedef uint8_t* (*i1905_tlv_forge_cb_t)(void *memory_structure, uint16_t *len);
 
 typedef void     (*i1905_tlv_free_cb_t)(void *memory_structure);
 
+#define TLV_STRUCT_NAME_PREFIX_I1905 100
+#define TLV_STRUCT_NAME_PREFIX_MAP   200
+
+#if TLV_STRUCT_NAME_PREFIX == TLV_STRUCT_NAME_PREFIX_I1905
+#define TLV_STRUCT_NAME(type) i1905_##type##_tlv_t
+#elif TLV_STRUCT_NAME_PREFIX == TLV_STRUCT_NAME_PREFIX_MAP
+#define TLV_STRUCT_NAME(type) map_##type##_tlv_t
+#else
+#define TLV_STRUCT_NAME(type) invalid
+#endif
+
+
+/* The TLV_FREE_FUNCTION macro creates two tlv free functions:
+   - one with the correct type used in some macros below
+   - one with void type to be used as tlv_free callback (and calls the first one)
+
+   This is done to allow proper static code analysis of the
+   free functions.  The tool cannot understand the generic
+   free_1905_TLV_structure function which uses the void type functions.
+*/
+#define TLV_FREE_FUNCTION_NAME(type)      free_##type##_tlv
+#define TLV_VOID_FREE_FUNCTION_NAME(type) free_##type##_tlv_void
+
+#define TLV_FREE_FUNCTION(type)                                           \
+static void TLV_FREE_FUNCTION_NAME(type)(TLV_STRUCT_NAME(type)*);         \
+static void TLV_VOID_FREE_FUNCTION_NAME(type)(void *m)                    \
+{                                                                         \
+    TLV_FREE_FUNCTION_NAME(type)(m);                                      \
+}                                                                         \
+static void TLV_FREE_FUNCTION_NAME(type)(UNUSED TLV_STRUCT_NAME(type)* m)
+
+
 #define PARSE_CHECK_EXP_LEN(exp_len) \
     if (len != (exp_len)) {          \
         return NULL;                 \
     }
+
 
 #define PARSE_CHECK_MIN_LEN(min_len) \
     if (len < (min_len)) {           \
         return NULL;                 \
     }
 
-#define PARSE_CHECK_INTEGRITY                                                                   \
-    if (p - packet_stream != len) {                                                             \
-        if (log_and_check_1905_TLV_malformed((p - packet_stream), len, (uint8_t *)ret)) {       \
-            free_1905_TLV_structure((uint8_t *)ret);                                            \
-            return NULL;                                                                        \
-        }                                                                                       \
+
+#define PARSE_CHECK_INTEGRITY(type)                                                  \
+    if (check_and_log_1905_TLV_malformed((p - packet_stream), len, ret->tlv_type)) { \
+        TLV_FREE_FUNCTION_NAME(type)(ret);                                           \
+        free(ret);                                                                   \
+        return NULL;                                                                 \
     }
 
-#define PARSE_LIMIT_N_DROP(var, lim)                 \
-    if (var > (lim)) {                               \
-        free_1905_TLV_structure((uint8_t *)ret);     \
-        return NULL;                                 \
+
+/* Check limit and free TLV using free function if needed
+   !! can only be used from points where the
+   tlv state is valid for the tlv free function
+*/
+#define PARSE_LIMIT_N_DROP(type, var, lim) \
+    if (var > (lim)) {                     \
+        TLV_FREE_FUNCTION_NAME(type)(ret); \
+        free(ret);                         \
+        return NULL;                       \
     }
+
 
 #define PARSE_LIMIT(var, lim) \
     if (var > (lim)) {        \
         var = (lim);          \
     }
 
+
 #define PARSE_CALLOC_RET                             \
     if (NULL == (ret = (calloc(1, sizeof(*ret))))) { \
         return NULL;                                 \
     }
 
+
+/* Free TLV using free function and return NULL
+   !! can only be called from points where the
+   tlv state is valid for the tlv free function
+*/
+#define PARSE_FREE_RET_RETURN(type)    \
+do {                                   \
+    TLV_FREE_FUNCTION_NAME(type)(ret); \
+    free(ret);                         \
+    return NULL;                       \
+} while(0);
+
+
 #define PARSE_RETURN \
     return (uint8_t *)ret;
+
 
 #define FORGE_MALLOC_RET                                         \
     if (NULL == (p = ret = malloc(TLV_HDR_SIZE + tlv_length))) { \
         return NULL;                                             \
     }
+
 
 #define FORGE_RETURN                  \
     *len = TLV_HDR_SIZE + tlv_length; \
@@ -1100,7 +1161,7 @@ uint8_t compare_1905_TLV_structures(uint8_t *memory_structure_1, uint8_t *memory
 *      structure traversing order)
 */
 void visit_1905_TLV_structure(uint8_t *memory_structure, void (*callback)(void (*write_function)(const char *fmt, ...),
-                              const char *prefix, uint8_t size, const char *name, const char *fmt, void *p),
+                              const char *prefix, size_t size, const char *name, const char *fmt, void *p),
                               void (*write_function)(const char *fmt, ...), const char *prefix);
 
 /* Use this function for debug purposes. It turns a TLV_TYPE_* variable into its
@@ -1112,12 +1173,12 @@ void visit_1905_TLV_structure(uint8_t *memory_structure, void (*callback)(void (
 */
 char *convert_1905_TLV_type_to_string(uint8_t tlv_type);
 
-uint8_t log_and_check_1905_TLV_malformed(int parsed, int len, uint8_t *tlv_structure);
+int check_and_log_1905_TLV_malformed(int parsed, int len, uint8_t tlv_type);
 
 /* Register a TLV handler */
 void i1905_register_tlv(uint8_t type, char *name, i1905_tlv_parse_cb_t parse_cb,
                         i1905_tlv_forge_cb_t forge_cb, i1905_tlv_free_cb_t free_cb);
 
-#define I1905_REGISTER_TLV(tlv, cb) i1905_register_tlv(tlv, #tlv, parse_##cb##_tlv, forge_##cb##_tlv, free_##cb##_tlv)
+#define I1905_REGISTER_TLV(tlv, cb) i1905_register_tlv(tlv, #tlv, parse_##cb##_tlv, forge_##cb##_tlv, TLV_VOID_FREE_FUNCTION_NAME(cb))
 
 #endif /* _1905_TLVS_H_ */

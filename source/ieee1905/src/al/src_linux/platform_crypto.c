@@ -337,13 +337,17 @@ uint8_t PLATFORM_HMAC_SHA256(uint8_t *key, uint32_t keylen, uint8_t num_elem, ui
     HMAC_CTX_init(ctx);
 #endif
 
-    HMAC_Init_ex(ctx, key, keylen, EVP_sha256(), NULL);
+    if (HMAC_Init_ex(ctx, key, keylen, EVP_sha256(), NULL) != 1) {
+        return 0;
+    }
 
     for (i = 0; i < num_elem; i++) {
         HMAC_Update(ctx, addr[i], len[i]);
     }
 
-    HMAC_Final(ctx, hmac, &mdlen);
+    if (HMAC_Final(ctx, hmac, &mdlen) != 1) {
+        return 0;
+    }
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
     HMAC_CTX_free(ctx);

@@ -29,8 +29,6 @@ typedef enum {
     STATION
 } tree_node_type_t;
 
-#define MAX_TYPE_STRING_LEN 15
-
 /*
  *   @brief Get the tree node from ALE node
  *

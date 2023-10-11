@@ -21,8 +21,8 @@
 int  map_get_bridging_cap_tlv(i1905_device_bridging_cap_tlv_t *bridging_cap_tlv);
 void map_free_bridging_cap_tlv(i1905_device_bridging_cap_tlv_t *bridging_cap_tlv);
 
-int  map_get_1905_neighbor_tlvs(i1905_neighbor_device_list_tlv_t *neighbor_1905_tlvs, int *neighbor_count);
-void map_free_1905_neighbor_tlv(i1905_neighbor_device_list_tlv_t *neighbor_1905_tlv);
+int  map_get_1905_neighbor_tlvs(i1905_neighbor_device_list_tlv_t **tlvs, size_t *tlvs_nr);
+void map_free_1905_neighbor_tlv(i1905_neighbor_device_list_tlv_t *tlvs, size_t tlvs_nr);
 
 map_error_code_tlv_t *map_get_error_code_tlv(mac_addr sta_mac, uint8_t reason_code);
 

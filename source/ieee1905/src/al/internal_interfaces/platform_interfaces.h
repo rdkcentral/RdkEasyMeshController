@@ -147,7 +147,7 @@ typedef struct linkMetrics {
                                               *  Let's call this MAC "B".
                                               */
 
-    uint32_t  measures_window;  /* Time in seconds representing how far back in
+    uint64_t  measures_window;  /* Time in seconds representing how far back in
                                 *  time statistics have been being recorded for
                                 *  this interface.
                                 *  For example, if this value is set to "5" and
@@ -270,7 +270,7 @@ void PLATFORM_FREE_LIST_OF_BRIDGES(i1905_bridge_t *x, uint8_t nr);
 *  If there is a problem and the packet cannot be sent, this function returns
 *  "0", otherwise it returns "1"
 */
-uint8_t PLATFORM_SEND_RAW_PACKET(char *interface_name, uint8_t *dst_mac, uint8_t *src_mac, uint16_t eth_type, uint8_t *payload, uint16_t payload_len);
+uint8_t PLATFORM_SEND_RAW_PACKET(char *interface_name, mac_addr dst_mac, mac_addr src_mac, uint16_t eth_type, uint8_t *payload, uint16_t payload_len);
 
 
 /*#######################################################################
@@ -328,14 +328,18 @@ uint8_t PLATFORM_SET_INTERFACE_POWER_MODE(char *interface_name, uint8_t power_mo
 *  'network_key' is a NULL terminated string representing the "network key" the
 *  AP is going to use.
 */
-uint8_t PLATFORM_CONFIGURE_80211_AP(char *interface_name, uint8_t *ssid, uint8_t *bssid, uint16_t auth_mode, uint16_t encryption_mode, uint8_t *network_key);
+uint8_t PLATFORM_CONFIGURE_80211_AP(char *interface_name, uint8_t *ssid, uint8_t *bssid,
+                                    uint16_t auth_mode, uint16_t encryption_mode, uint8_t *network_key,
+                                    uint8_t map_ext);
 
 /*#######################################################################
 # Unit test support                                                     #
 ########################################################################*/
 #ifdef UNIT_TEST
 typedef void (*i1905_unit_test_send_cb_t)(char *if_name, uint8_t *payload, uint16_t payload_len);
-typedef void (*i1905_unit_test_configure_ap_cb_t)(char *if_name, uint8_t *ssid, uint8_t *bssid, uint16_t auth_mode, uint16_t encryption_mode, uint8_t *network_key);
+typedef void (*i1905_unit_test_configure_ap_cb_t)(char *if_name, uint8_t *ssid, uint8_t *bssid,
+                                                  uint16_t auth_mode, uint16_t encryption_mode, uint8_t *network_key,
+                                                  uint8_t map_ext);
 
 void PLATFORM_REGISTER_UNIT_TEST_SEND_CB(i1905_unit_test_send_cb_t cb);
 void PLATFORM_REGISTER_UNIT_TEST_CONFIGURE_AP_CB(i1905_unit_test_configure_ap_cb_t cb);

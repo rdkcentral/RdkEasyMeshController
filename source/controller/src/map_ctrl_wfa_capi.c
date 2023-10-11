@@ -139,6 +139,10 @@ static int capi_handle_bss_config(map_controller_cfg_t* cfg, char *bss_cfg)
     uint16_t           freq_band          = 0;
     char              *p, *save_ptr = NULL;
 
+    if (!bss_cfg) {
+        goto fail;
+    }
+
     log_ctrl_i("  Handle bss_config[%s]", bss_cfg);
 
     if (!(p = strtok_r(bss_cfg, " ", &save_ptr))) {
@@ -174,8 +178,8 @@ static int capi_handle_bss_config(map_controller_cfg_t* cfg, char *bss_cfg)
     }
 
     /* Add... */
-    if (cfg->num_profiles >= MAX_NUM_PROFILES) {
-        log_ctrl_e("  Too many profiles");
+    if (map_profile_realloc(cfg->num_profiles + 1)) {
+        log_ctrl_e("  Adding profile failed");
         return -1;
     }
 
@@ -183,6 +187,7 @@ static int capi_handle_bss_config(map_controller_cfg_t* cfg, char *bss_cfg)
     memset(profile, 0, sizeof(map_profile_cfg_t));
     maccpy(profile->al_mac, alid);
     map_strlcpy(profile->bss_ssid, p, sizeof(profile->bss_ssid));
+    profile->enabled        = 1;
     profile->bss_freq_bands = freq_band;
     profile->gateway        = 1;
     profile->extender       = 1;
@@ -274,7 +279,10 @@ static int capi_tlv_hex_to_bin(uint8_t *buf, int buf_len, uint16_t *bin_len, cha
                 log_ctrl_e("  TLV too long");
                 goto fail;
             }
-            sscanf(h, "%"SCNx8, p++);
+            if (1 != sscanf(h, "%"SCNx8, p++)) {
+                log_ctrl_e("  hex conversion failed");
+                goto fail;
+            }
             q+=2;
         } else if (isxdigit(c) && (isblank(d) || d == '}')) {
             /* Test case 5.14.4... This is all so inconsitent... */

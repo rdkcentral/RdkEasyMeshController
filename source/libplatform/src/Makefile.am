@@ -15,26 +15,24 @@ AM_CFLAGS += -DFEATURE_SUPPORT_RDKLOG
 lib_LIBRARIES = libutils.a
 
 libutils_a_CPPFLAGS = -I$(top_srcdir)/source/libplatform/include \
-                      -I$(top_srcdir)/source/ssp \
-                      -I$(TOPDIR)/usr/include/libubox \
-                      -I${JSONC_INC_DIR}
+                      -I${PKG_CONFIG_SYSROOT_DIR}$(includedir)/rbus
 
 libutils_a_SOURCES = acu_utils.c \
                      arraylist.c \
                      kwaytree.c \
                      map_80211.c \
                      map_blocklist.c \
+                     map_channel_set.c \
                      map_cli.c \
                      map_cli_subscription.c \
                      map_config.c \
                      map_data_model.c \
                      map_data_model_dumper.c \
-                     map_dm_airdata.c \
+                     map_dm_eth_device_list.c \
+                     map_dm_rbus.c \
                      map_info.c \
                      map_retry_handler.c \
                      map_staging_list.c \
                      map_timer_handler.c \
                      map_topology_tree.c \
                      map_utils.c
-
-libutils_a_LDFLAGS = -lz -ljson-c -lubox -lccsp_common -llog4c

@@ -8,8 +8,13 @@ Type=simple
 WorkingDirectory=/usr/ccsp/easymesh
 Environment="Subsys=eRT."
 Environment="LOG4C_RCPATH=/etc"
+Environment="MAP_CONTROLLER_LOG_LEVEL=error"
+Environment="MAP_PLATFORM_LOG_LEVEL=error"
+Environment="MAP_IEEE1905_LOG_LEVEL=error"
+Environment="MAP_SSP_LOG_LEVEL=error"
+Environment="MAP_LOG_OUTPUT=fileonly"
 EnvironmentFile=/etc/device.properties
-ExecStart=/usr/bin/em_ctl -e
+ExecStart=/usr/bin/em_ctl -subsys eRT. -e
 Restart=always
 
 StandardOutput=syslog+console

@@ -228,7 +228,7 @@
 #define ATTR_AUTHENTICATOR     (0x1005)
 
 /* Flags for MultiAp extension subelement  */
-#define WFA_MAP_ATTR_FLAG_TEARDOWN               0x10 /* Bit 4 */
+#define WFA_MAP_ATTR_FLAG_TEARDOWN                0x10 /* Bit 4 */
 #define WFA_MAP_ATTR_FLAG_FRONTHAUL_BSS           0x20 /* Bit 5 */
 #define WFA_MAP_ATTR_FLAG_BACKHAUL_BSS            0x40 /* Bit 6 */
 #define WFA_MAP_ATTR_FLAG_BACKHAUL_STA            0x80 /* Bit 7 */
@@ -249,7 +249,7 @@
 *  "SHA256_MAC_LEN" bytes long (ie. 're_len' must always be "SHA256_MAC_LEN",
 *  even if it is an input argument)
 */
-static void wps_key_derivation_function(uint8_t *key, uint8_t *label_prefix, uint32_t label_prefix_len, char *label, uint8_t *res, uint32_t res_len)
+static uint8_t wps_key_derivation_function(uint8_t *key, uint8_t *label_prefix, uint32_t label_prefix_len, char *label, uint8_t *res, uint32_t res_len)
 {
     uint8_t i_buf[4];
     uint8_t key_bits[4];
@@ -289,7 +289,10 @@ static void wps_key_derivation_function(uint8_t *key, uint8_t *label_prefix, uin
         p = i_buf;
         _I4B(&i, &p);
 
-        PLATFORM_HMAC_SHA256(key, SHA256_MAC_LEN, 4, addr, len, hash);
+        if (PLATFORM_HMAC_SHA256(key, SHA256_MAC_LEN, 4, addr, len, hash) != 1) {
+            log_i1905_e("PLATFORM_HMAC_SHA256 failed");
+            return 0;
+        }
 
         if (i < iter) {
             memcpy(opos, hash, SHA256_MAC_LEN);
@@ -299,6 +302,7 @@ static void wps_key_derivation_function(uint8_t *key, uint8_t *label_prefix, uin
             memcpy(opos, hash, left);
         }
     }
+    return 1;
 }
 
 /*#######################################################################
@@ -310,10 +314,10 @@ static void wps_key_derivation_function(uint8_t *key, uint8_t *label_prefix, uin
 ########################################################################*/
 uint8_t wscBuildM1(char *interface_name, uint8_t **m1, uint16_t *m1_size, void **key)
 {
-    uint8_t              *buffer;
-    struct interfaceInfo *x;
-    struct wscKey        *private_key;
-    uint8_t              *p;
+    uint8_t              *buffer      = NULL;
+    struct interfaceInfo *x           = NULL;
+    struct wscKey        *private_key = NULL;
+    uint8_t              *p           = NULL;
     uint8_t               aux8;
     uint16_t              aux16;
     uint32_t              aux32;
@@ -328,8 +332,11 @@ uint8_t wscBuildM1(char *interface_name, uint8_t **m1, uint16_t *m1_size, void *
         return 0;
     }
 
-    buffer = malloc(sizeof(uint8_t)*1000);
-    p      = buffer;
+    if (!(buffer = malloc(1000))) {
+        log_i1905_e("malloc() failed");
+        goto fail;
+    }
+    p = buffer;
 
     /* VERSION */
     {
@@ -365,9 +372,12 @@ uint8_t wscBuildM1(char *interface_name, uint8_t **m1, uint16_t *m1_size, void *
 
     /* ENROLLEE NONCE */
     {
-        uint8_t enrollee_nonce[16];
+        uint8_t enrollee_nonce[16] = { 0 };
 
-        PLATFORM_GET_RANDOM_BYTES(enrollee_nonce, 16);
+        if (PLATFORM_GET_RANDOM_BYTES(enrollee_nonce, 16) != 1) {
+            log_i1905_e("PLATFORM_GET_RANDOM_BYTES failed");
+            goto fail;
+        }
 
         aux16 = ATTR_ENROLLEE_NONCE;                                      _I2B(&aux16,           &p);
         aux16 = 16;                                                       _I2B(&aux16,           &p);
@@ -379,17 +389,30 @@ uint8_t wscBuildM1(char *interface_name, uint8_t **m1, uint16_t *m1_size, void *
         uint8_t  *priv = NULL, *pub = NULL;
         uint16_t  priv_len = 0, pub_len = 0;
 
-        PLATFORM_GENERATE_DH_KEY_PAIR(&priv, &priv_len, &pub, &pub_len);
+        if (PLATFORM_GENERATE_DH_KEY_PAIR(&priv, &priv_len, &pub, &pub_len) != 1) {
+            log_i1905_e("PLATFORM_GENERATE_DH_KEY_PAIR failed");
+            goto fail;
+        }
         /* TODO: ZERO PAD the pub key (doesn't seem to be really needed though) */
 
         aux16 = ATTR_PUBLIC_KEY;                                          _I2B(&aux16,       &p);
         aux16 = pub_len;                                                  _I2B(&aux16,       &p);
                                                                           _InB( pub,         &p, pub_len);
-        log_i1905_d("  Enrollee privkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", priv_len,  priv[0], priv[1], priv[2], priv[priv_len-3], priv[priv_len-2], priv[priv_len-1]);
-        log_i1905_d("  Enrollee pubkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", pub_len,  pub[0], pub[1], pub[2], pub[pub_len-3], pub[pub_len-2], pub[pub_len-1]);
+        log_i1905_t("  Enrollee privkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", priv_len,  priv[0], priv[1], priv[2], priv[priv_len-3], priv[priv_len-2], priv[priv_len-1]);
+        log_i1905_t("  Enrollee pubkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", pub_len,  pub[0], pub[1], pub[2], pub[pub_len-3], pub[pub_len-2], pub[pub_len-1]);
         /* The private key is one of the output arguments */
-        private_key          = malloc(sizeof(struct wscKey));
-        private_key->key     = malloc(priv_len);
+        private_key = malloc(sizeof(struct wscKey));
+        if (!private_key) {
+            free(priv);
+            free(pub);
+            goto fail;
+        }
+        private_key->key = malloc(priv_len);
+        if (!private_key->key) {
+            free(priv);
+            free(pub);
+            goto fail;
+        }
         private_key->key_len = priv_len;
         memcpy(private_key->key, priv, priv_len);
 #ifdef MULTIAP
@@ -581,6 +604,17 @@ uint8_t wscBuildM1(char *interface_name, uint8_t **m1, uint16_t *m1_size, void *
     *key     = private_key;
 
     return 1;
+
+fail:
+    PLATFORM_FREE_1905_INTERFACE_INFO(x);
+
+    free(buffer);
+    if (private_key) {
+        free(private_key->key);
+        free(private_key);
+    }
+
+    return 0;
 }
 
 uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uint16_t m2_size)
@@ -625,12 +659,12 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
     uint8_t  *m1_mac;
 
 #ifdef MULTIAP
-    uint16_t  elem_len       = 0;
-    uint8_t   oui[3]         = {0};
-    uint8_t   map_extension  = 0;
-    uint8_t  *vendor_elem    = NULL;
-    uint8_t   wfa_elem       = 0;
-    uint8_t   wfa_elem_len   = 0;
+    uint16_t              elem_len       = 0;
+    uint8_t               oui[3]         = {0};
+    uint8_t               map_ext        = 0;
+    uint8_t              *vendor_elem    = NULL;
+    uint8_t               wfa_elem       = 0;
+    uint8_t               wfa_elem_len   = 0;
 #endif
 
     if (NULL == m1) {
@@ -758,7 +792,10 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
         *  same shared secret using its private key and ou public key -contained
         *  in M2-)
         */
-        PLATFORM_COMPUTE_DH_SHARED_SECRET(&shared_secret, &shared_secret_len, m2_pubkey, m2_pubkey_len, m1_privkey, m1_privkey_len);
+        if (PLATFORM_COMPUTE_DH_SHARED_SECRET(&shared_secret, &shared_secret_len, m2_pubkey, m2_pubkey_len, m1_privkey, m1_privkey_len) != 1) {
+            log_i1905_e("PLATFORM_COMPUTE_DH_SHARED_SECRET failed");
+            return 0;
+        }
         /* TODO: ZERO PAD the shared_secret (doesn't seem to be really needed
         *  though)
 
@@ -768,7 +805,10 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
         addr[0] = shared_secret;
         len[0]  = shared_secret_len;
 
-        PLATFORM_SHA256(1, addr, len, dhkey);
+        if (PLATFORM_SHA256(1, addr, len, dhkey) != 1) {
+            log_i1905_e("PLATFORM_SHA256 failed");
+            return 0;
+        }
 
         /* Next, concatenate three things (the enrolle nonce contained in M1,
         *  the enrolle MAC address, and the nonce we just generated before, and
@@ -782,30 +822,36 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
         len[1]  = 6;
         len[2]  = 16;
 
-        PLATFORM_HMAC_SHA256(dhkey, SHA256_MAC_LEN, 3, addr, len, kdk);
+        if (PLATFORM_HMAC_SHA256(dhkey, SHA256_MAC_LEN, 3, addr, len, kdk) != 1) {
+            log_i1905_e("PLATFORM_HMAC_SHA256 failed");
+            return 0;
+        }
 
         /* Finally, take "kdk" and using a function provided in the "Wi-Fi
         *  simple configuration" standard, obtain THREE KEYS that we will use
         *  later ("authkey", "keywrapkey" and "emsk")
         */
-        wps_key_derivation_function(kdk, NULL, 0, "Wi-Fi Easy and Secure Key Derivation", keys, sizeof(keys));
+        if(wps_key_derivation_function(kdk, NULL, 0, "Wi-Fi Easy and Secure Key Derivation", keys, sizeof(keys)) != 1) {
+            log_i1905_e("wps_key_derivation_function failed");
+            return 0;
+        }
 
         memcpy(authkey,    keys,                                        WPS_AUTHKEY_LEN);
         memcpy(keywrapkey, keys + WPS_AUTHKEY_LEN,                      WPS_KEYWRAPKEY_LEN);
         memcpy(emsk,       keys + WPS_AUTHKEY_LEN + WPS_KEYWRAPKEY_LEN, WPS_EMSK_LEN);
 
-        log_i1905_d("WPS keys: ");
-        log_i1905_d("  Registrar pubkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m2_pubkey_len,  m2_pubkey[0], m2_pubkey[1], m2_pubkey[2], m2_pubkey[m2_pubkey_len-3], m2_pubkey[m2_pubkey_len-2], m2_pubkey[m2_pubkey_len-1]);
-        log_i1905_d("  Enrollee privkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_privkey_len,  m1_privkey[0], m1_privkey[1], m1_privkey[2], m1_privkey[m1_privkey_len-3], m1_privkey[m1_privkey_len-2], m1_privkey[m1_privkey_len-1]);
-        log_i1905_d("  Enrollee pubkey   (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_pubkey_len,  m1_pubkey[0], m1_pubkey[1], m1_pubkey[2], m1_pubkey[m1_pubkey_len-3], m1_pubkey[m1_pubkey_len-2], m1_pubkey[m1_pubkey_len-1]);
-        log_i1905_d("  Shared secret     (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", shared_secret_len, shared_secret[0], shared_secret[1], shared_secret[2], shared_secret[shared_secret_len-3], shared_secret[shared_secret_len-2], shared_secret[shared_secret_len-1]);
-        log_i1905_d("  DH key            ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", dhkey[0], dhkey[1], dhkey[2], dhkey[29], dhkey[30], dhkey[31]);
-        log_i1905_d("  Enrollee nonce    ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_nonce[0], m1_nonce[1], m1_nonce[2], m1_nonce[13], m1_nonce[14], m1_nonce[15]);
-        log_i1905_d("  Registrar nonce   ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m2_nonce[0], m2_nonce[1], m2_nonce[2], m2_nonce[13], m2_nonce[14], m2_nonce[15]);
-        log_i1905_d("  KDK               ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", kdk[0], kdk[1], kdk[2], kdk[29], kdk[30], kdk[31]);
-        log_i1905_d("  authkey           ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", authkey[0], authkey[1], authkey[2], authkey[WPS_AUTHKEY_LEN-3], authkey[WPS_AUTHKEY_LEN-2], authkey[WPS_AUTHKEY_LEN-1]);
-        log_i1905_d("  keywrapkey        ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", keywrapkey[0], keywrapkey[1], keywrapkey[2], keywrapkey[WPS_KEYWRAPKEY_LEN-3], keywrapkey[WPS_KEYWRAPKEY_LEN-2], keywrapkey[WPS_KEYWRAPKEY_LEN-1]);
-        log_i1905_d("  emsk              ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", emsk[0], emsk[1], emsk[2], emsk[WPS_EMSK_LEN-3], emsk[WPS_EMSK_LEN-2], emsk[WPS_EMSK_LEN-1]);
+        log_i1905_t("WPS keys: ");
+        log_i1905_t("  Registrar pubkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m2_pubkey_len,  m2_pubkey[0], m2_pubkey[1], m2_pubkey[2], m2_pubkey[m2_pubkey_len-3], m2_pubkey[m2_pubkey_len-2], m2_pubkey[m2_pubkey_len-1]);
+        log_i1905_t("  Enrollee privkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_privkey_len,  m1_privkey[0], m1_privkey[1], m1_privkey[2], m1_privkey[m1_privkey_len-3], m1_privkey[m1_privkey_len-2], m1_privkey[m1_privkey_len-1]);
+        log_i1905_t("  Enrollee pubkey   (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_pubkey_len,  m1_pubkey[0], m1_pubkey[1], m1_pubkey[2], m1_pubkey[m1_pubkey_len-3], m1_pubkey[m1_pubkey_len-2], m1_pubkey[m1_pubkey_len-1]);
+        log_i1905_t("  Shared secret     (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", shared_secret_len, shared_secret[0], shared_secret[1], shared_secret[2], shared_secret[shared_secret_len-3], shared_secret[shared_secret_len-2], shared_secret[shared_secret_len-1]);
+        log_i1905_t("  DH key            ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", dhkey[0], dhkey[1], dhkey[2], dhkey[29], dhkey[30], dhkey[31]);
+        log_i1905_t("  Enrollee nonce    ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_nonce[0], m1_nonce[1], m1_nonce[2], m1_nonce[13], m1_nonce[14], m1_nonce[15]);
+        log_i1905_t("  Registrar nonce   ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m2_nonce[0], m2_nonce[1], m2_nonce[2], m2_nonce[13], m2_nonce[14], m2_nonce[15]);
+        log_i1905_t("  KDK               ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", kdk[0], kdk[1], kdk[2], kdk[29], kdk[30], kdk[31]);
+        log_i1905_t("  authkey           ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", authkey[0], authkey[1], authkey[2], authkey[WPS_AUTHKEY_LEN-3], authkey[WPS_AUTHKEY_LEN-2], authkey[WPS_AUTHKEY_LEN-1]);
+        log_i1905_t("  keywrapkey        ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", keywrapkey[0], keywrapkey[1], keywrapkey[2], keywrapkey[WPS_KEYWRAPKEY_LEN-3], keywrapkey[WPS_KEYWRAPKEY_LEN-2], keywrapkey[WPS_KEYWRAPKEY_LEN-1]);
+        log_i1905_t("  emsk              ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", emsk[0], emsk[1], emsk[2], emsk[WPS_EMSK_LEN-3], emsk[WPS_EMSK_LEN-2], emsk[WPS_EMSK_LEN-1]);
 
         free(shared_secret);
     }
@@ -826,7 +872,10 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
         len[0]  = m1_size;
         len[1]  = m2_size-12;
 
-        PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 2, addr, len, hash);
+        if (PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 2, addr, len, hash) != 1) {
+            log_i1905_e("PLATFORM_HMAC_SHA256 failed");
+            return 0;
+        }
 
         if (memcmp(m2_authenticator, hash, 8) != 0) {
             log_i1905_e("Message M2 authentication failed");
@@ -839,10 +888,13 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
         uint8_t  *plain     = m2_encrypted_settings     + AES_BLOCK_SIZE;;
         uint32_t  plain_len = m2_encrypted_settings_len - AES_BLOCK_SIZE;
 
-        log_i1905_d("AP settings before decryption (%d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", plain_len, plain[0], plain[1], plain[2], plain[plain_len-3], plain[plain_len-2], plain[plain_len-1]);
-        log_i1905_d("IV (%d bytes)                           : 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", AES_BLOCK_SIZE, m2_encrypted_settings[0], m2_encrypted_settings[1], m2_encrypted_settings[2], m2_encrypted_settings[AES_BLOCK_SIZE-3], m2_encrypted_settings[AES_BLOCK_SIZE-2], m2_encrypted_settings[AES_BLOCK_SIZE-1]);
-        PLATFORM_AES_DECRYPT(keywrapkey, m2_encrypted_settings, plain, plain_len);
-        log_i1905_d("AP settings after  decryption (%d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", plain_len, plain[0], plain[1], plain[2], plain[plain_len-3], plain[plain_len-2], plain[plain_len-1]);
+        log_i1905_t("AP settings before decryption (%d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", plain_len, plain[0], plain[1], plain[2], plain[plain_len-3], plain[plain_len-2], plain[plain_len-1]);
+        log_i1905_t("IV (%d bytes)                           : 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", AES_BLOCK_SIZE, m2_encrypted_settings[0], m2_encrypted_settings[1], m2_encrypted_settings[2], m2_encrypted_settings[AES_BLOCK_SIZE-3], m2_encrypted_settings[AES_BLOCK_SIZE-2], m2_encrypted_settings[AES_BLOCK_SIZE-1]);
+        if (PLATFORM_AES_DECRYPT(keywrapkey, m2_encrypted_settings, plain, plain_len) != 1) {
+            log_i1905_e("PLATFORM_AES_DECRYPT failed");
+            return 0;
+        }
+        log_i1905_t("AP settings after  decryption (%d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", plain_len, plain[0], plain[1], plain[2], plain[plain_len-3], plain[plain_len-2], plain[plain_len-1]);
 
         /* Remove padding */
         plain_len -= plain[plain_len-1];
@@ -881,24 +933,26 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
             }
 #ifdef MULTIAP
             else if (ATTR_VENDOR_EXTENSION == attr_type) {
+                uint8_t wfa_oui[3]     = {WPS_VENDOR_ID_WFA_1, WPS_VENDOR_ID_WFA_2, WPS_VENDOR_ID_WFA_3};
                 elem_len = attr_len;
 
                 _EnB(&p, oui, sizeof(oui));
                 elem_len -= sizeof(oui);
 
-                /* FRV: CODE IS NOT CHECKING OUI?? */
-
                  /* Collect vendor specific info */
                 vendor_elem = p;
-                while (p - vendor_elem < elem_len) {
-                    _E1B(&p, &wfa_elem);
-                    _E1B(&p, &wfa_elem_len);
 
-                    if (wfa_elem & WFA_ELEM_MAP_EXT_ATTR) {
-                        _E1B(&p, &map_extension);
-                        break;
-                    } else {
-                        p += wfa_elem_len;
+                if (!memcmp(oui, wfa_oui, 3)) {
+                    while (p - vendor_elem < elem_len) {
+                        _E1B(&p, &wfa_elem);
+                        _E1B(&p, &wfa_elem_len);
+
+                        if (wfa_elem & WFA_ELEM_MAP_EXT_ATTR) {
+                            _E1B(&p, &map_ext);
+                            break;
+                        } else {
+                            p += wfa_elem_len;
+                        }
                     }
                 }
             }
@@ -917,7 +971,10 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
                 addr[0] = plain;
                 len[0]  = end_of_hmac-plain;
 
-                PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 1, addr, len, hash);
+                if (PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 1, addr, len, hash) != 1) {
+                    log_i1905_e("PLATFORM_HMAC_SHA256 failed");
+                    return 0;
+                }
 
                 if (memcmp(p, hash, 8) != 0) {
                     log_i1905_e("Message M2 keywrap failed (%d)", attr_len);
@@ -945,7 +1002,8 @@ uint8_t  wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uin
     */
 
     /* Apply the security settings so that this AP clones the registrar configuration */
-    PLATFORM_CONFIGURE_80211_AP(DMmacToInterfaceName(m1_mac), ssid, bssid, auth_type, encryption_type, network_key);
+    PLATFORM_CONFIGURE_80211_AP(DMmacToInterfaceName(m1_mac), ssid, bssid, auth_type, encryption_type,
+                                network_key, map_ext);
 
     return 1;
 
@@ -958,14 +1016,14 @@ Fail:
 //////////////////////////////////////// Registrar functions ///////////////////
 //
 #ifdef MULTIAP
-uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_size, map_profile_cfg_t* profile, char *recv_iface)
+uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_size,
+                   const map_profile_cfg_t *profile, uint8_t map_ext, char *recv_iface)
 #else
 uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_size)
 #endif
 
 {
     uint8_t  *buffer;
-    uint8_t   status = 1;
     struct interfaceInfo  *x;
 
     uint8_t  *p;
@@ -1077,13 +1135,15 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
 
     /* Now we can build "M2" */
     if (NULL == (x = PLATFORM_GET_1905_INTERFACE_INFO(registrar_interface_name))) {
-        log_i1905_e("Could not retrieve info of interface %s", registrar_interface_name );
-        status = 0;
-        goto CLEANUP;
+        log_i1905_e("Could not retrieve info of interface %s", registrar_interface_name);
+        return 0;
     }
 
-    buffer = malloc(sizeof(uint8_t)*1280);
-    p      = buffer;
+    if (!(buffer = malloc(1280))) {
+        log_i1905_e("malloc() failed");
+        goto fail;
+    }
+    p = buffer;
 
     /* VERSION */
     {
@@ -1108,7 +1168,10 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
 
     /* REGISTRAR NONCE */
     {
-        PLATFORM_GET_RANDOM_BYTES(registrar_nonce, 16);
+        if (PLATFORM_GET_RANDOM_BYTES(registrar_nonce, 16) != 1) {
+            log_i1905_e("PLATFORM_GET_RANDOM_BYTES failed");
+            goto fail;
+        }
 
         aux16 = ATTR_REGISTRAR_NONCE;                                     _I2B(&aux16,           &p);
         aux16 = 16;                                                       _I2B(&aux16,           &p);
@@ -1121,7 +1184,10 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
             (x->interface_type == INTERFACE_TYPE_IEEE_802_3AB_GIGABIT_ETHERNET) ||
             (x->interface_type == INTERFACE_TYPE_UNKNOWN))
         {
-            PLATFORM_GET_RANDOM_BYTES(registrar_uuid, sizeof(registrar_uuid));
+            if (PLATFORM_GET_RANDOM_BYTES(registrar_uuid, sizeof(registrar_uuid)) != 1) {
+                log_i1905_e("PLATFORM_GET_RANDOM_BYTES failed");
+                goto fail;
+            }
         } else {
             memcpy(registrar_uuid, x->uuid, sizeof(registrar_uuid));
         }
@@ -1133,7 +1199,10 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
 
     /* PUBLIC KEY */
     {
-        PLATFORM_GENERATE_DH_KEY_PAIR(&priv, &priv_len, &pub, &pub_len);
+        if (PLATFORM_GENERATE_DH_KEY_PAIR(&priv, &priv_len, &pub, &pub_len) != 1) {
+            log_i1905_e("PLATFORM_GENERATE_DH_KEY_PAIR failed");
+            goto fail;
+        }
         /* TODO: ZERO PAD the pub key (doesn't seem to be really needed though) */
 
         aux16 = ATTR_PUBLIC_KEY;                                          _I2B(&aux16,       &p);
@@ -1166,7 +1235,10 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
         *  same shared secret using its private key and our public key
         *  -contained in M2-)
         */
-        PLATFORM_COMPUTE_DH_SHARED_SECRET(&shared_secret, &shared_secret_len, m1_pubkey, m1_pubkey_len, local_privkey, local_privkey_len);
+        if (PLATFORM_COMPUTE_DH_SHARED_SECRET(&shared_secret, &shared_secret_len, m1_pubkey, m1_pubkey_len, local_privkey, local_privkey_len) != 1) {
+            log_i1905_e("PLATFORM_COMPUTE_DH_SHARED_SECRET failed");
+            goto fail;
+        }
 
         /* TODO: ZERO PAD the shared_secret (doesn't seem to be really needed though) */
 
@@ -1174,7 +1246,10 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
         addr[0] = shared_secret;
         len[0]  = shared_secret_len;
 
-        PLATFORM_SHA256(1, addr, len, dhkey);
+        if (PLATFORM_SHA256(1, addr, len, dhkey) != 1) {
+            log_i1905_e("PLATFORM_SHA256 failed");
+            goto fail;
+        }
 
         /* Next, concatenate three things (the enrollee nonce contained in M1,
         *  the enrolle MAC address -also contained in M1-, and the nonce we just
@@ -1188,30 +1263,36 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
         len[1]  = 6;
         len[2]  = 16;
 
-        PLATFORM_HMAC_SHA256(dhkey, SHA256_MAC_LEN, 3, addr, len, kdk);
+        if (PLATFORM_HMAC_SHA256(dhkey, SHA256_MAC_LEN, 3, addr, len, kdk) != 1) {
+            log_i1905_e("PLATFORM_HMAC_SHA256 failed");
+            goto fail;
+        }
 
         /* Finally, take "kdk" and using a function provided in the "Wi-Fi
         *  simple configuration" standard, obtain THREE KEYS that we will use
         *  later ("authkey", "keywrapkey" and "emsk")
         */
-        wps_key_derivation_function(kdk, NULL, 0, "Wi-Fi Easy and Secure Key Derivation", keys, sizeof(keys));
+        if (wps_key_derivation_function(kdk, NULL, 0, "Wi-Fi Easy and Secure Key Derivation", keys, sizeof(keys)) != 1) {
+            log_i1905_e("wps_key_derivation_function failed");
+            goto fail;
+        }
 
         memcpy(authkey,    keys,                                        WPS_AUTHKEY_LEN);
         memcpy(keywrapkey, keys + WPS_AUTHKEY_LEN,                      WPS_KEYWRAPKEY_LEN);
         memcpy(emsk,       keys + WPS_AUTHKEY_LEN + WPS_KEYWRAPKEY_LEN, WPS_EMSK_LEN);
 
-        log_i1905_d("WPS keys: ");
-        log_i1905_d("  Enrollee pubkey   (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_pubkey_len,  m1_pubkey[0], m1_pubkey[1], m1_pubkey[2], m1_pubkey[m1_pubkey_len-3], m1_pubkey[m1_pubkey_len-2], m1_pubkey[m1_pubkey_len-1]);
-        log_i1905_d("  Registrar privkey (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", local_privkey_len,  local_privkey[0], local_privkey[1], local_privkey[2], local_privkey[local_privkey_len-3], local_privkey[local_privkey_len-2], local_privkey[local_privkey_len-1]);
-        log_i1905_d("  Registrar pubkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", pub_len,  pub[0], pub[1], pub[2], pub[pub_len -3], pub[pub_len-2], pub[pub_len-1]);
-        log_i1905_d("  Shared secret     (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", shared_secret_len, shared_secret[0], shared_secret[1], shared_secret[2], shared_secret[shared_secret_len-3], shared_secret[shared_secret_len-2], shared_secret[shared_secret_len-1]);
-        log_i1905_d("  DH key            ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", dhkey[0], dhkey[1], dhkey[2], dhkey[29], dhkey[30], dhkey[31]);
-        log_i1905_d("  Enrollee nonce    ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_nonce[0], m1_nonce[1], m1_nonce[2], m1_nonce[13], m1_nonce[14], m1_nonce[15]);
-        log_i1905_d("  Registrar nonce   ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", registrar_nonce[0], registrar_nonce[1], registrar_nonce[2], registrar_nonce[13], registrar_nonce[14], registrar_nonce[15]);
-        log_i1905_d("  KDK               ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", kdk[0], kdk[1], kdk[2], kdk[29], kdk[30], kdk[31]);
-        log_i1905_d("  authkey           ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", authkey[0], authkey[1], authkey[2], authkey[WPS_AUTHKEY_LEN-3], authkey[WPS_AUTHKEY_LEN-2], authkey[WPS_AUTHKEY_LEN-1]);
-        log_i1905_d("  keywrapkey        ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", keywrapkey[0], keywrapkey[1], keywrapkey[2], keywrapkey[WPS_KEYWRAPKEY_LEN-3], keywrapkey[WPS_KEYWRAPKEY_LEN-2], keywrapkey[WPS_KEYWRAPKEY_LEN-1]);
-        log_i1905_d("  emsk              ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", emsk[0], emsk[1], emsk[2], emsk[WPS_EMSK_LEN-3], emsk[WPS_EMSK_LEN-2], emsk[WPS_EMSK_LEN-1]);
+        log_i1905_t("WPS keys: ");
+        log_i1905_t("  Enrollee pubkey   (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_pubkey_len,  m1_pubkey[0], m1_pubkey[1], m1_pubkey[2], m1_pubkey[m1_pubkey_len-3], m1_pubkey[m1_pubkey_len-2], m1_pubkey[m1_pubkey_len-1]);
+        log_i1905_t("  Registrar privkey (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", local_privkey_len,  local_privkey[0], local_privkey[1], local_privkey[2], local_privkey[local_privkey_len-3], local_privkey[local_privkey_len-2], local_privkey[local_privkey_len-1]);
+        log_i1905_t("  Registrar pubkey  (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", pub_len,  pub[0], pub[1], pub[2], pub[pub_len -3], pub[pub_len-2], pub[pub_len-1]);
+        log_i1905_t("  Shared secret     (%3d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", shared_secret_len, shared_secret[0], shared_secret[1], shared_secret[2], shared_secret[shared_secret_len-3], shared_secret[shared_secret_len-2], shared_secret[shared_secret_len-1]);
+        log_i1905_t("  DH key            ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", dhkey[0], dhkey[1], dhkey[2], dhkey[29], dhkey[30], dhkey[31]);
+        log_i1905_t("  Enrollee nonce    ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", m1_nonce[0], m1_nonce[1], m1_nonce[2], m1_nonce[13], m1_nonce[14], m1_nonce[15]);
+        log_i1905_t("  Registrar nonce   ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", registrar_nonce[0], registrar_nonce[1], registrar_nonce[2], registrar_nonce[13], registrar_nonce[14], registrar_nonce[15]);
+        log_i1905_t("  KDK               ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", kdk[0], kdk[1], kdk[2], kdk[29], kdk[30], kdk[31]);
+        log_i1905_t("  authkey           ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", authkey[0], authkey[1], authkey[2], authkey[WPS_AUTHKEY_LEN-3], authkey[WPS_AUTHKEY_LEN-2], authkey[WPS_AUTHKEY_LEN-1]);
+        log_i1905_t("  keywrapkey        ( 16 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", keywrapkey[0], keywrapkey[1], keywrapkey[2], keywrapkey[WPS_KEYWRAPKEY_LEN-3], keywrapkey[WPS_KEYWRAPKEY_LEN-2], keywrapkey[WPS_KEYWRAPKEY_LEN-1]);
+        log_i1905_t("  emsk              ( 32 bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", emsk[0], emsk[1], emsk[2], emsk[WPS_EMSK_LEN-3], emsk[WPS_EMSK_LEN-2], emsk[WPS_EMSK_LEN-1]);
 
         free(shared_secret);
     }
@@ -1412,20 +1493,20 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
         *       snooping can have a look at these attributes)
         */
 
-        uint8_t   plain[200];
-        uint8_t   hash[SHA256_MAC_LEN];
-        uint8_t  *iv_start;
-        uint8_t  *data_start;
-        uint8_t  *r;
-        uint8_t   pad_elements_nr;
+        uint8_t     plain[1024];
+        uint8_t     hash[SHA256_MAC_LEN];
+        uint8_t    *iv_start;
+        uint8_t    *data_start;
+        uint8_t    *r;
+        uint8_t     pad_elements_nr;
 
-        uint8_t  *addr[1];
-        uint32_t  len[1];
+        uint8_t    *addr[1];
+        uint32_t    len[1];
 
-        char     *ssid;
-        char     *network_key;
-        uint16_t  authentication_mode;
-        uint16_t  encryption_mode;
+        const char *ssid;
+        const char *network_key;
+        uint16_t    authentication_mode;
+        uint16_t    encryption_mode;
 
 #ifdef MULTIAP
 
@@ -1516,12 +1597,9 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
 
 #ifdef MULTIAP
             /* MULTIAP VENDOR EXTENSION */
-            aux8 = WFA_ELEM_MAP_EXT_ATTR;                                     _I1B(&aux8,         &r);
-            aux8 = 1;                                                         _I1B(&aux8,         &r);
-
-            /* Empty ssid = teardown */
-            aux8 = (ssid[0] != 0) ? profile->bss_state : WFA_MAP_ATTR_FLAG_TEARDOWN;
-                                                                              _I1B(&aux8,         &r);
+            aux8 = WFA_ELEM_MAP_EXT_ATTR;                                     _I1B(&aux8,          &r);
+            aux8 = 1;                                                         _I1B(&aux8,          &r);
+            aux8 = map_ext;                                                   _I1B(&aux8,          &r);
 #endif
         }
 
@@ -1530,14 +1608,17 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
         log_i1905_d("  - BSSID           : %02x:%02x:%02x:%02x:%02x:%02x", x->mac_address[0], x->mac_address[1], x->mac_address[2], x->mac_address[3], x->mac_address[4], x->mac_address[5]);
         log_i1905_d("  - AUTH_TYPE       : 0x%04x", profile->supported_auth_modes);
         log_i1905_d("  - ENCRYPTION_TYPE : 0x%04x", profile->supported_encryption_types);
-        log_i1905_d("  - MAP_EXTENSION   : %d", profile->bss_state);
+        log_i1905_d("  - MAP_EXTENSION   : 0x%02x", map_ext);
 
         /* Obtain the HMAC of the whole plain buffer using "authkey" as the
         *  secret key.
         */
         addr[0] = plain;
         len[0]  = r-plain;
-        PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 1, addr, len, hash);
+        if (PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 1, addr, len, hash) != 1) {
+            log_i1905_e("PLATFORM_HMAC_SHA256 failed");
+            goto fail;
+        }
 
         /* ...and add it to the same plain buffer (well, only the first 8 bytes
         * of the hash)
@@ -1563,15 +1644,24 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
         */
         aux16 = ATTR_ENCR_SETTINGS;                                       _I2B(&aux16,         &p);
         aux16 = AES_BLOCK_SIZE + (r-plain);                               _I2B(&aux16,         &p);
-        iv_start   = p; PLATFORM_GET_RANDOM_BYTES(p, AES_BLOCK_SIZE); p+=AES_BLOCK_SIZE;
+        iv_start   = p;
+        if (PLATFORM_GET_RANDOM_BYTES(p, AES_BLOCK_SIZE) != 1) {
+            log_i1905_e("PLATFORM_GET_RANDOM_BYTES failed");
+            goto fail;
+        }
+        p+=AES_BLOCK_SIZE;
+
         data_start = p; _InB(plain, &p, r-plain);
         /*   Encrypt the data IN-PLACE. Note that the "ATTR_ENCR_SETTINGS"
         *    attribute containes both the IV and the encrypted data.
         */
-        log_i1905_d("AP settings before encryption (%d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", (int)(r-plain), data_start[0], data_start[1], data_start[2], data_start[(r-plain)-3], data_start[(r-plain)-2], data_start[(r-plain)-1]);
-        log_i1905_d("IV (%d bytes)                           : 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", AES_BLOCK_SIZE, iv_start[0], iv_start[1], iv_start[2], iv_start[AES_BLOCK_SIZE-3], iv_start[AES_BLOCK_SIZE-2], iv_start[AES_BLOCK_SIZE-1]);
-        PLATFORM_AES_ENCRYPT(keywrapkey, iv_start, data_start, r-plain);
-        log_i1905_d("AP settings after  encryption (%d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", (int)(r-plain), data_start[0], data_start[1], data_start[2], data_start[(r-plain)-3], data_start[(r-plain)-2], data_start[(r-plain)-1]);
+        log_i1905_t("AP settings before encryption (%d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", (int)(r-plain), data_start[0], data_start[1], data_start[2], data_start[(r-plain)-3], data_start[(r-plain)-2], data_start[(r-plain)-1]);
+        log_i1905_t("IV (%d bytes)                           : 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", AES_BLOCK_SIZE, iv_start[0], iv_start[1], iv_start[2], iv_start[AES_BLOCK_SIZE-3], iv_start[AES_BLOCK_SIZE-2], iv_start[AES_BLOCK_SIZE-1]);
+        if (PLATFORM_AES_ENCRYPT(keywrapkey, iv_start, data_start, r-plain) != 1) {
+            log_i1905_e("PLATFORM_AES_ENCRYPT failed");
+            goto fail;
+        }
+        log_i1905_t("AP settings after  encryption (%d bytes): 0x%02x, 0x%02x, 0x%02x, ..., 0x%02x, 0x%02x, 0x%02x", (int)(r-plain), data_start[0], data_start[1], data_start[2], data_start[(r-plain)-3], data_start[(r-plain)-2], data_start[(r-plain)-1]);
     }
 
     /* AUTHENTICATOR */
@@ -1589,20 +1679,28 @@ uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_siz
         len[0]  = m1_size;
         len[1]  = p-buffer;
 
-        PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 2, addr, len, hash);
+        if (PLATFORM_HMAC_SHA256(authkey, WPS_AUTHKEY_LEN, 2, addr, len, hash) != 1) {
+            log_i1905_e("PLATFORM_HMAC_SHA256 failed");
+            goto fail;
+        }
 
         aux16 = ATTR_AUTHENTICATOR;                                       _I2B(&aux16,         &p);
         aux16 = 8;                                                        _I2B(&aux16,         &p);
                                                                           _InB( hash,          &p,  8);
     }
 
+    PLATFORM_FREE_1905_INTERFACE_INFO(x);
+
     *m2      = buffer;
     *m2_size = p-buffer;
 
-CLEANUP:
-    PLATFORM_FREE_1905_INTERFACE_INFO(x);
+    return 1;
 
-    return status;
+fail:
+    PLATFORM_FREE_1905_INTERFACE_INFO(x);
+    free(buffer);
+
+    return 0;
 }
 
 uint8_t wscFreeM2(uint8_t *m, uint16_t m_size)

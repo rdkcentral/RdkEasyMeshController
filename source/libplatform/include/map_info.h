@@ -29,6 +29,10 @@
 
 #define MAP_ONBOARD_DEP_BITMASK (MAP_RADIO_M1_RECEIVED | MAP_RADIO_CONFIGURED | MAP_RADIO_OPER_CHAN_REPORT_RECEIVED | MAP_RADIO_POLICY_CONFIG_ACK_RECEIVED | MAP_RADIO_AP_CAPABILITY_REPORT_RECEIVED)
 
+typedef enum _map_bss_states {
+    MAP_BSS_ACTIVE                            = 0x0001,
+} map_bss_states_t;
+
 typedef enum _map_radio_states {
     MAP_RADIO_ON                              = 0x0001,
     MAP_RADIO_FREQUENCY_SUPPORTED             = 0x0002,
@@ -69,6 +73,11 @@ static inline int is_state_bit_set(uint16_t state, uint16_t bit)
     return 0;
 }
 
+/* BSS state macros */
+#define set_bss_state_active(bss_state) (set_state_bit(bss_state,MAP_BSS_ACTIVE))
+#define is_bss_active(bss_state) (is_state_bit_set(bss_state,MAP_BSS_ACTIVE))
+
+/* Radio state macros */
 #define MUTUALLY_EXCLUSIVE_RADIO_STATES (MAP_RADIO_CONFIGURED | MAP_RADIO_M1_SENT | \
                                          MAP_RADIO_M1_RECEIVED | MAP_RADIO_M2_SENT)
 
@@ -167,12 +176,18 @@ static inline int is_state_bit_set(uint16_t state, uint16_t bit)
 #define set_ale_state_bhsta_cap_report_not_received(ale_state) \
                                  (reset_state_bit(ale_state, MAP_ALE_BHSTA_CAPABILITY_REPORT_RECEIVED))
 
+/* Init */
+int map_info_init(void);
+
+/* Fini */
+void map_info_fini(void);
+
 /* Get the frequency type from operating class. */
 int8_t map_get_frequency_type(uint8_t op_class, map_channel_set_t *channels,
                               uint8_t *freq_type, uint16_t *band_type_5G);
 
 /* Get first found op class for control channel, bw and channel_frequency */
-uint8_t map_get_op_class(uint8_t channel, uint8_t bw, uint8_t ch_freq);
+uint8_t map_get_op_class(uint8_t channel, uint16_t bw, uint8_t ch_freq);
 
 /* Get first found 20MHz op class for control channel */
 uint8_t map_get_op_class_20MHz(uint8_t channel, uint8_t ch_freq);
@@ -186,17 +201,20 @@ bool map_is_5g_high_op_class(uint8_t op_class);
 /* Check if channel is in operating class */
 bool map_is_channel_in_op_class(uint8_t op_class, uint8_t channel);
 
-/* Get center channel for 80 and 160MHz (and 40 in 6G) operating classes */
-uint8_t map_get_center_channel(uint8_t op_class, uint8_t channel);
+/* Get center channel from ctl_channel for operating classes that use center channels */
+int map_get_center_channel(uint8_t op_class, uint8_t ctl_channel, uint8_t *center_channel);
+
+/* Get first ctl channel from center_channel for op_class that uses center channels */
+int map_get_first_ctl_channel(uint8_t op_class, uint8_t center_channel, uint8_t *ctl_channel);
 
 /* Get extension channel type */
 int map_get_ext_channel_type(uint8_t op_class);
 
 /* Get 20MHz subband range (only works for 80 and 160MHz) */
-int map_get_subband_channel_range(uint8_t channel, uint8_t op_class, uint8_t *from, uint8_t *to);
+int map_get_subband_channel_range(uint8_t op_class, uint8_t channel, uint8_t *from, uint8_t *to);
 
 /* Get bandwidth from operating class */
-int map_get_bw_from_op_class(uint8_t op_class, uint8_t *bw);
+int map_get_bw_from_op_class(uint8_t op_class, uint16_t *bw);
 
 /* Get band from operating class */
 int map_get_band_from_op_class(uint8_t op_class, uint8_t *band);
@@ -204,8 +222,11 @@ int map_get_band_from_op_class(uint8_t op_class, uint8_t *band);
 /* Get is_center_channel from operating class (80/160 MHz and 40MHz in 6G band) */
 int map_get_is_center_channel_from_op_class(uint8_t op_class, bool *is_center_channel);
 
-/* Get channel set from operating class */
+/* Get control channel set from operating class */
 int map_get_channel_set_from_op_class(uint8_t op_class, map_channel_set_t *ch_set);
+
+/* Get center channel set from operating class (only for center channel operating classes) */
+int map_get_center_channel_set_from_op_class(uint8_t op_class, map_channel_set_t *ch_set);
 
 /* Control channel utility functions */
 bool map_is_ctl_channel(uint8_t channel, uint8_t ch_freq);
@@ -216,6 +237,21 @@ bool map_is_2G_ctl_channel(uint8_t channel);
 /* Check if channel is a 5G control channel */
 bool map_is_5G_ctl_channel(uint8_t channel);
 
+/* Check if channel is a 5G "low" control channel */
+bool map_is_5G_low_ctl_channel(uint8_t channel);
+
+/* Check if channel is a 5G "high" control channel */
+bool map_is_5G_high_ctl_channel(uint8_t channel);
+
+/* Get number of operating classes that contain weatherband channels */
+int map_get_5G_weatherband_op_class_nr(void);
+
+/* Check if op_class contains weatherband channels */
+bool map_is_5G_weatherband_op_class(uint8_t op_class);
+
+/* Check if channel is a 5G weatherband control or center channel */
+bool map_is_5G_weatherband_channel(uint8_t op_class, uint8_t ctl_or_center_channel);
+
 /* Check if channel is a 6G control channel */
 bool map_is_6G_ctl_channel(uint8_t channel);
 
@@ -225,11 +261,23 @@ void map_get_2G_ctl_channel_set(map_channel_set_t *ch_set);
 /* Get channel set containing all 5G control channels */
 void map_get_5G_ctl_channel_set(map_channel_set_t *ch_set);
 
+/* Get channel set containing all 5G "low" control channels */
+void map_get_5G_low_ctl_channel_set(map_channel_set_t *ch_set);
+
+/* Get channel set containing all 5G "high" control channels */
+void map_get_5G_high_ctl_channel_set(map_channel_set_t *ch_set);
+
+/* Get channel set containing all 5G weatherband channels */
+void map_get_5G_weatherband_channel_set(map_channel_set_t *ch_set);
+
 /* Get channel set containing all 6G control channels */
 void map_get_6G_ctl_channel_set(map_channel_set_t *ch_set);
 
 /* Get channel set containing all 6G PSC channels */
 void map_get_6G_psc_channel_set(map_channel_set_t *ch_set);
+
+/* Get channel set containing all control channels for a band */
+void map_get_ctl_channel_set(map_channel_set_t *ch_set, uint8_t band);
 
 /* Get frequency band as string */
 char *map_get_freq_band_str(uint8_t freq_band);

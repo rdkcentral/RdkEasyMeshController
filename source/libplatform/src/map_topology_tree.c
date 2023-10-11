@@ -136,44 +136,26 @@ int8_t topology_tree_insert(map_ale_info_t* parent, map_ale_info_t* child)
     return 1;
 }
 
-void get_node_type_str(uint32_t color, char* type_str)
+static char* get_node_type_str(tree_node_type_t type)
 {
-    switch(color) {
-        case AL_ENTITY:
-            strcpy(type_str,"ALE");
-        break;
-        case STATION:
-            strcpy(type_str,"STA");
-        break;
-        default:
-        break;
+    switch (type) {
+        case AL_ENTITY: return "ALE";
+        case STATION:   return "STA";
+        default:        return "UNKNOWN";
     }
 }
 
 void print_node_info(map_ale_info_t* child, uint32_t height, uint32_t color, map_printf_cb_t print_cb)
 {
     mac_addr_str mac_str;
-    char node_type_str[MAX_TYPE_STRING_LEN] = {0};
+    char *node_type_str = get_node_type_str(color);
+    int spaces = height * 8;
 
-    get_node_type_str(color, node_type_str);
+    acu_mac_to_string(child->al_mac, mac_str);
 
-    char* align = (char*)calloc(1,(height * sizeof(char))+1);
-
-    if (align) {
-        while (height > 0) {
-            strcat(align,"\t");
-            height--;
-        }
-
-        // Convert the MAC into string and print
-        acu_mac_to_string(child->al_mac, mac_str);
-
-        print_cb("%s|-------------------------------|\n",align);
-        print_cb("%s| %s MAC  : %s                   \n",align,node_type_str,mac_str);
-        print_cb("%s|-------------------------------|\n\n",align);
-
-        free(align);
-    }
+    print_cb("%*s|-------------------------------|\n",   spaces, "");
+    print_cb("%*s| %s MAC  : %s                   \n",   spaces, "", node_type_str, mac_str);
+    print_cb("%*s|-------------------------------|\n\n", spaces, "");
 }
 
 void display_topology_tree(k_tree_node* parent_node, map_printf_cb_t print_cb)

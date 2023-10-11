@@ -126,95 +126,6 @@ char *DMmacToInterfaceName(uint8_t *mac_address);
 uint8_t *DMinterfaceNameToMac(char *interface_name);
 
 
-/* Returns a list of 6 bytes arrays with the AL MACs of all neighbors (on the
-*  provided interface) from where a "topology discovery" message has been
-*  received.
-*
-*  The returned pointer, once it is no longer needed, must be freed by the
-*  caller with "PLATFORM_FREE()"
-*/
-uint8_t (*DMgetListOfInterfaceNeighbors(char *local_interface_name, uint8_t *al_mac_addresses_nr))[6];
-
-/* Returns a list of 6 bytes arrays with the AL MACs of all neighbors (from
-*  *all* interfaces) from where a "topology discovery" message has been
-*  received.
-*
-*  Each neighbor is reported at most once, even if it is reachable from
-*  different interfaces. Thus the returned list does not contain repeated
-*  elements.
-*
-*  The returned pointer, once it is no longer needed, must be freed by the
-*  caller with "PLATFORM_FREE()"
-*/
-uint8_t (*DMgetListOfNeighbors(uint8_t *al_mac_addresses_nr))[6];
-
-/* A given neighbor might be "reachable" in several ways:
-*    - Just from one local interface (typical case)
-*    - From one local interface *but* in two remote interfaces (ex: the remote
-*      interface is connected to a HUB where two remote interfaces from one same
-*      neighbor are connected)
-*    - From several interfaces, each of them connected with one or more remote
-*      interfaces.
-*
-*  This function returns all the ways a neighbor is reachable:
-*    - The output argument 'links_nr' contains the number of ways the neighbor
-*      can be reached.
-*    - The output argument 'interfaces' is an array of 'links_nr' pointers to
-*      strings, each of them containing the name of a local interface (ex:
-*      "eth0")
-*    - The returned pointer contains 'links_nr' MAC addresses that correspond to
-*      interfaces in the provided neighbour.
-*
-*   So, for example, if we have this:
-*
-*       eth0 -------------- eth0
-*     A                          B
-*       eth1 ---- HUB ----- eth1
-*                  |
-*                  |
-*                  --------- eth0
-*                                 C
-*                            eth1
-*
-*   ...and we are "A", then the following calls will return the following
-*   results:
-*
-*     - DMgetListOfLinkswithNeighbor(B):
-*         ret        = [<B_eth0_addr>, <B_eth1_addr>]
-*         interfaces = ["eth0",        "eth1"]
-*         links_nr   = 2
-*
-*     - DMgetListOfLinkswithNeighbor(C):
-*         ret        = [<C_eth0_addr>]
-*         interfaces = ["eth1"]
-*         links_nr   = 1
-*
-*
-*  The returned pointers, once they are no longer needed, must be freed by the
-*  caller with "DMfreeListOfLinksWithNeighbor()". Example:
-*
-*    uint8_t (*ret)[6];
-*    char **interfaces;
-*    uint8_t links_nr;
-*
-*    ret = DMgetListOfLinksWithNeighbor(neighbor_al_mac_address, &interfaces, &links_nr);
-*
-*    <use it...>
-*
-*    DMfreeListOfLinksWithNeighbor(ret, interfaces, links_nr);
-*
-*  If there is a problem, this function returns NULL and nothing needs to be
-*  freed by the caller
-*/
-uint8_t (*DMgetListOfLinksWithNeighbor(uint8_t *neighbor_al_mac_address, char ***interfaces, uint8_t *links_nr))[6];
-
-/* Use this to free the two pointers returned by
-*  "DMgetListOfInterfaceNeighbors()" (ie. the "interfaces" pointer and the
-*  returned value pointer)
-*/
-void DMfreeListOfLinksWithNeighbor(uint8_t (*p)[6], char **interfaces, uint8_t links_nr);
-
-
 /*#######################################################################
 # (Local / interface level) topology discovery related functions        #
 ########################################################################*/
@@ -238,7 +149,7 @@ void DMfreeListOfLinksWithNeighbor(uint8_t (*p)[6], char **interfaces, uint8_t l
 */
 #define TIMESTAMP_TOPOLOGY_DISCOVERY  0
 #define TIMESTAMP_BRIDGE_DISCOVERY    1
-uint8_t DMupdateDiscoveryTimeStamps(uint8_t *receiving_interface_addr, uint8_t *al_mac_address, uint8_t *mac_address, uint8_t timestamp_type, uint32_t *ellapsed);
+uint8_t DMupdateDiscoveryTimeStamps(uint8_t *receiving_interface_addr, uint8_t *al_mac_address, uint8_t *mac_address, uint8_t timestamp_type, uint64_t *ellapsed);
 
 /* These functions returns "1" or "0" according to the "bridge flag" rules
 *  detailed in "IEEE Std 1905.1-2013 Section 8.1"

@@ -104,63 +104,97 @@ void map_free_bridging_cap_tlv(i1905_device_bridging_cap_tlv_t *bridging_cap_tlv
     }
 }
 
-int map_get_1905_neighbor_tlvs(i1905_neighbor_device_list_tlv_t *neighbor_1905_tlvs, int *neighbor_count)
+static size_t count_neighbors(map_ale_info_t *ale)
 {
-    map_ale_info_t* neighbor_ale = NULL;
-    map_ale_info_t* root_ale     = NULL;
-    int tlv_already_added = 0;
-    int status = 0;
-    int count  = 0;
-    int i      = 0;
+    map_ale_info_t *neighbor_ale;
+    size_t          count = 0;
 
-    do {
-        if (!neighbor_1905_tlvs || !neighbor_count) {
-            log_ctrl_e("neighbor_1905_tlvs or neighbor_count is NULL");
-            break;
-        }
+    foreach_neighbors_of(ale, neighbor_ale) {
+        count++;
+    }
 
-        root_ale = get_root_ale_node();
-        if (root_ale) {
-            foreach_neighbors_of(root_ale, neighbor_ale) {
-                if (neighbor_ale) {
-                    for (i = 0; i < count; i++) {
-                        if (0 == maccmp(neighbor_1905_tlvs[i].local_mac_address, neighbor_ale->upstream_remote_iface_mac)) {
-                            tlv_already_added = 1;
-                            break;
-                        }
-                    }
-                    if (i < MAX_INTERFACE_COUNT) {
-                        i1905_neighbor_device_list_tlv_t *neigh = &neighbor_1905_tlvs[i];
-                        if (!tlv_already_added) {
-                            /* Add a tlv for this new interface */
-                            neigh->tlv_type = TLV_TYPE_NEIGHBOR_DEVICE_LIST;
-                            maccpy(neigh->local_mac_address, neighbor_ale->upstream_remote_iface_mac);
-                            neigh->neighbors_nr = 0;
-                            neigh->neighbors = calloc(1, sizeof(i1905_neighbor_entry_t));
-                            count++;
-                        } else {
-                            /* Tlv for this interface already exits, hence update */
-                            neigh->neighbors = realloc(neigh->neighbors, sizeof(i1905_neighbor_entry_t) * (neigh->neighbors_nr + 1));
-                        }
-                        maccpy(neigh->neighbors[neigh->neighbors_nr].mac_address, neighbor_ale->al_mac);
-                        neigh->neighbors[neigh->neighbors_nr].bridge_flag = 0;
-                        neigh->neighbors_nr++;
-                    }
-                }
-                tlv_already_added = 0;
-            }
-            *neighbor_count = count;
-        }
-    } while (0);
-
-    return status;
+    return count;
 }
 
-void map_free_1905_neighbor_tlv(i1905_neighbor_device_list_tlv_t *neighbor_1905_tlv)
+int map_get_1905_neighbor_tlvs(i1905_neighbor_device_list_tlv_t **ret_tlvs, size_t *ret_tlvs_nr)
 {
-    if (neighbor_1905_tlv) {
-        free(neighbor_1905_tlv->neighbors);
+    i1905_neighbor_device_list_tlv_t *tlvs;
+    map_ale_info_t                   *neighbor_ale;
+    map_ale_info_t                   *root_ale;
+    bool                              break_loop = false;
+    size_t                            tlvs_nr    = 0;
+    size_t                            total_nb_nr;
+    size_t                            i;
+
+    if (!ret_tlvs || !ret_tlvs_nr) {
+        log_ctrl_e("ret_tlvs or ret_tlvs_nr is NULL");
+        return -1;
     }
+
+    if (!(root_ale = get_root_ale_node())) {
+        return -1;
+    }
+
+    total_nb_nr = count_neighbors(root_ale);
+
+    /* Allocate worst case number of TLVs (all behind a different interface) */
+    if (!(tlvs = calloc(total_nb_nr, sizeof(i1905_neighbor_device_list_tlv_t)))) {
+        return -1;
+    }
+
+    foreach_neighbors_of(root_ale, neighbor_ale) {
+        i1905_neighbor_device_list_tlv_t *neigh = NULL;
+
+        /* NOTE: it is not allowed to break out of this loop -> on error just iterate until the end... */
+        if (break_loop || !neighbor_ale) {
+            continue;
+        }
+
+        /* Check if interface is already added */
+        for (i = 0; i < tlvs_nr; i++) {
+            if (0 == maccmp(tlvs[i].local_mac_address, neighbor_ale->upstream_remote_iface_mac)) {
+                neigh = &tlvs[i];
+                break;
+            }
+        }
+
+        if (!neigh) {
+            neigh = &tlvs[tlvs_nr];
+            neigh->tlv_type = TLV_TYPE_NEIGHBOR_DEVICE_LIST;
+            maccpy(neigh->local_mac_address, neighbor_ale->upstream_remote_iface_mac);
+            neigh->neighbors_nr = 0;
+            /* Allocate worst case number of neighbors (all behind this interface) */
+            if (!(neigh->neighbors = calloc(total_nb_nr, sizeof(i1905_neighbor_entry_t)))) {
+                break_loop = true;
+                continue;
+            }
+            tlvs_nr++;
+        }
+        maccpy(neigh->neighbors[neigh->neighbors_nr].mac_address, neighbor_ale->al_mac);
+        neigh->neighbors[neigh->neighbors_nr].bridge_flag = 0;
+        neigh->neighbors_nr++;
+    }
+
+    if (break_loop) {
+        map_free_1905_neighbor_tlv(tlvs, tlvs_nr);
+        tlvs = NULL;
+        tlvs_nr = 0;
+    }
+
+    *ret_tlvs = tlvs;
+    *ret_tlvs_nr = tlvs_nr;
+
+    return break_loop ? -1 : 0;
+}
+
+void map_free_1905_neighbor_tlv(i1905_neighbor_device_list_tlv_t *tlvs, size_t tlvs_nr)
+{
+    size_t i;
+
+    for (i = 0; i < tlvs_nr; i++) {
+        free(tlvs[i].neighbors);
+    }
+    free(tlvs);
 }
 
 map_error_code_tlv_t *map_get_error_code_tlv(mac_addr sta_mac, uint8_t reason_code)
@@ -271,23 +305,18 @@ i1905_transmitter_link_metric_tlv_t *map_get_transmitter_link_metric_tlv(mac_add
    return tlv;
 }
 
-
 /* pref_type:
     - MAP_CHAN_SEL_PREF_CONTROLLER: use controller preference "ctrl_pref_op_class_list"
     - MAP_CHAN_SEL_PREF_AGENT:      use agent preference "pref_op_class_list"
-    - MAP_CHAN_SEL_PERF_MERGED:     merge controller and agent preference (lowest pref of each per op_class/channel)
+    - MAP_CHAN_SEL_PERF_MERGED:     use merged preference "merged_pref_op_class_list"
 */
 void map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radio_info_t *radio, uint8_t pref_type)
 {
-    map_op_class_list_t *op_class_list = &radio->ctrl_pref_op_class_list; /* default and MAP_CHAN_SEL_PREF_CONTROLLER */
-    map_op_class_list_t  merged_list   = {0};
+    map_op_class_list_t *op_class_list = &radio->merged_pref_op_class_list; /* default and MAP_CHAN_SEL_PREF_MERGED */
     uint8_t              i;
 
-    if (pref_type == MAP_CHAN_SEL_PREF_MERGED) {
-        if (!map_merge_pref_op_class_list(&merged_list, &radio->cap_op_class_list,
-                                          &radio->ctrl_pref_op_class_list, &radio->pref_op_class_list)) {
-            op_class_list = &merged_list;
-        }
+    if (pref_type == MAP_CHAN_SEL_PREF_CONTROLLER) {
+        op_class_list = &radio->ctrl_pref_op_class_list;
     } else if (pref_type == MAP_CHAN_SEL_PREF_AGENT) {
         op_class_list = &radio->pref_op_class_list;
     }
@@ -306,8 +335,6 @@ void map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radi
     }
 
     tlv->op_classes_nr = i;
-
-    free(merged_list.op_classes);
 }
 
 void map_fill_transmit_power_tlv(map_transmit_power_limit_tlv_t *tlv, map_radio_info_t *radio)
@@ -339,7 +366,7 @@ void map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_
     for (i = 0; i < radio->scan_caps.op_class_list.op_classes_nr && rsri->op_classes_nr < MAX_OP_CLASS; i++) {
         map_op_class_t     *op_class     = &radio->scan_caps.op_class_list.op_classes[i];
         map_tlv_op_class_t *tlv_op_class = &rsri->op_classes[rsri->op_classes_nr];
-        uint8_t             bw;
+        uint16_t            bw;
 
         if (0 != map_get_bw_from_op_class(op_class->op_class, &bw) || 20 != bw) {
             continue;
@@ -401,6 +428,11 @@ void map_fill_traffic_separation_policy_tlv(map_controller_cfg_t *cfg, uint16_t 
     /* Loop over all profiles and add vlans */
     for (i = 0; i < cfg->num_profiles && tlv->ssids_nr < MAX_TRAFFIC_SEP_SSID; i++) {
         map_profile_cfg_t *profile = &cfg->profiles[i];
+
+        /* Don't add disabled ones */
+        if (!profile->enabled) {
+            continue;
+        }
 
         /* Never add dedicated BH... */
         if (!(profile->bss_state & MAP_FRONTHAUL_BSS)) {

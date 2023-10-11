@@ -20,20 +20,21 @@ set(FACTORY_INCLUDES
 
 set(SYSTEM_INCLUDES
     PRIVATE ${CMAKE_SOURCE_DIR}/source/libplatform/include
-    PUBLIC ${LIBUBOX_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/source/ssp
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/ccsp/custom
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/ccsp/include
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/ccsp/components/common/MessageBusHelper/include
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/ccsp/components/include
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/cosa/include
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/cosa/include/linux
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/cosa/package/slap/include
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/debug_api/include
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/util_api/ansc/include
-    /opt/home/airties/rpi3b/rdkb/components/opensource/ccsp/CcspCommonLibrary/source/util_api/http/include
-    /opt/home/airties/rpi3b/build-raspberrypi-rdk-broadband/tmp/work/cortexa7t2hf-neon-vfpv4-rdk-linux-gnueabi/dbus/1.12.16-r0/dbus-1.12.16
-    /opt/home/airties/rpi3b/build-raspberrypi-rdk-broadband/tmp/work/cortexa7t2hf-neon-vfpv4-rdk-linux-gnueabi/dbus/1.12.16-r0/sysroot-destdir/usr/lib/dbus-1.0/include
+    PUBLIC ${LIBUBOX_INCLUDE_DIRS}
+    PUBLIC ${BSP_SYSROOTS_DIR}/usr/include/ccsp
+    PUBLIC ${BSP_SYSROOTS_DIR}/usr/include/dbus-1.0
+    PUBLIC ${BSP_SYSROOTS_DIR}/usr/lib/dbus-1.0/include
+)
+
+add_compile_options(
+    -Wall
+    -Wextra
+    -Werror
+    -fPIC
+    -ffunction-sections
+    -fdata-sections
+    -fvisibility=hidden
 )
 
 add_definitions("-DMULTIAP")

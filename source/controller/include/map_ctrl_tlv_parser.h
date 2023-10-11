@@ -35,6 +35,9 @@ int map_parse_neighbor_device_list_tlv(map_ale_info_t *ale, i1905_neighbor_devic
 /*#######################################################################
 #                       MAP R1 TLV HANDLERS                             #
 ########################################################################*/
+/* MAP_R1 17.2.1 */
+int map_parse_ap_supported_service_tlv(map_ale_info_t *ale, map_supported_service_tlv_t* tlv, bool *is_controller, bool *is_agent, bool *is_em_plus);
+
 /* MAP_R1 17.2.4 */
 int map_parse_ap_operational_bss_tlv(map_ale_info_t *ale, map_ap_operational_bss_tlv_t* tlv);
 
@@ -124,12 +127,22 @@ int map_parse_backhaul_sta_radio_capability_tlv(map_ale_info_t *ale, map_backhau
 ########################################################################*/
 /* MAP_R3 17.2.72 */
 int map_parse_ap_wifi6_cap_tlv(map_ale_info_t *ale, map_ap_wifi6_cap_tlv_t *tlv);
+
+/* MAP_R3 17.2.73 */
+int map_parse_assoc_wifi6_sta_status_tlv(map_ale_info_t *ale, map_assoc_wifi6_sta_status_tlv_t *tlv);
+
 /* MAP_R3 17.2.76 */
 int map_parse_device_inventory_tlv(map_ale_info_t *ale, map_device_inventory_tlv_t *tlv);
+
 /* MAP_R3 17.2.79 */
 int map_parse_1905_encap_dpp_tlv(map_ale_info_t *ale, map_1905_encap_dpp_tlv_t *tlv);
+
+/* MAP_R3 17.2.80 */
+int map_parse_1905_encap_eapol_tlv(map_ale_info_t *ale, map_1905_encap_eapol_tlv_t *tlv);
+
 /* MAP_R3 17.2.83 */
 int map_parse_dpp_chirp_value_tlv(map_ale_info_t *ale, map_dpp_chirp_value_tlv_t *tlv);
+
 /* MAP_R3 17.2.86 */
 int map_parse_dpp_message_tlv(map_ale_info_t *ale, map_dpp_message_tlv_t *tlv);
 

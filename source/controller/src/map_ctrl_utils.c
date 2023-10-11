@@ -37,7 +37,7 @@
 #                       PRIVATE FUNCTIONS                               #
 ########################################################################*/
 /* Find op_class that matches op_class_nr/channel
-   Note: channel is center channel for 80/160MHz
+   Note: channel is center channel for 80/160/320MHz
 */
 static map_op_class_t *find_op_class(map_op_class_list_t *list, uint8_t op_class_nr, uint8_t channel, bool in_channel_list)
 {
@@ -65,7 +65,7 @@ static uint8_t get_channel_pref(map_op_class_list_t *list, uint8_t op_class_nr, 
     /* Empty channel list or channel must be in channel list */
     map_op_class_t *op_class = find_op_class(list, op_class_nr, channel, true);
 
-    return op_class ? op_class->pref : PREF_SCORE_15;
+    return op_class ? op_class->pref : MAP_PREF_SCORE_15;
 }
 
 /* Check if op_class_nr/channel is supported in op_class */
@@ -95,7 +95,7 @@ static void check_add_op_class_channel(map_op_class_list_t *merged_list, map_op_
     pref = min(op_class->pref, other_pref);
 
     /* Do not add max pref */
-    if (pref == PREF_SCORE_15) {
+    if (pref == MAP_PREF_SCORE_15) {
         return;
     }
 
@@ -141,8 +141,12 @@ static void merge_pref_op_class_list_add(map_op_class_list_t *merged_list, map_o
             }
 
             map_cs_foreach(&ch_set, channel) {
-                /* Use center channel for 40(6G)/80/160 MHz */
-                uint8_t channel2 = is_center_channel ? map_get_center_channel(op_class->op_class, channel) : channel;
+                /* Use center channel for 40(6G)/80/160/320 MHz */
+                uint8_t channel2 = channel;
+
+                if (is_center_channel && map_get_center_channel(op_class->op_class, channel, &channel2)) {
+                    continue;
+                }
 
                 check_add_op_class_channel(merged_list, cap_list, other_list, op_class, channel2);
             }
@@ -162,6 +166,42 @@ static int comp_op_class(const void *obj1, const void *obj2)
 
     /* op_class: low->high, pref: low->high */
     return (a->op_class == b->op_class) ? a->pref - b->pref : a->op_class - b->op_class;
+}
+
+static void map_cs_bw_set_with_bandlock_check(map_channel_bw_set_t *s, uint8_t bw, uint8_t c, bool is_5g_low_high, uint8_t bandlock_action)
+{
+    if (!is_5g_low_high ||
+        (bandlock_action == MAP_BANDLOCK_5G_DISABLED) ||
+        ((bandlock_action == MAP_BANDLOCK_5G_LOW)  && map_is_5G_low_ctl_channel(c)) ||
+        ((bandlock_action == MAP_BANDLOCK_5G_HIGH) && map_is_5G_high_ctl_channel(c))) {
+        map_cs_bw_set(s, bw, c);
+    }
+}
+
+static void map_cs_bw_unset_range(map_channel_bw_set_t *s, uint8_t bw, uint8_t c, uint8_t op_class)
+{
+    bool is_center_channel;
+
+    if (map_get_is_center_channel_from_op_class(op_class, &is_center_channel)) {
+        return;
+    }
+
+    if (is_center_channel) {
+        /* unset range of channels in this operating class */
+        uint8_t ctl_c, sub_chan, sub_from, sub_to;
+
+        if (map_get_first_ctl_channel(op_class, c, &ctl_c) ||
+            map_get_subband_channel_range(op_class, ctl_c, &sub_from, &sub_to)) {
+            return;
+        }
+
+        for (sub_chan = sub_from; sub_chan <= sub_to; sub_chan++) {
+            map_cs_bw_unset(s, bw, sub_chan);
+        }
+    } else {
+        /* unset "this" channel only */
+        map_cs_bw_unset(s, bw, c);
+    }
 }
 
 /*#######################################################################
@@ -252,7 +292,7 @@ void map_reset_agent_node_onboarding_status(map_ale_info_t *ale)
     /* REIMPLEMENT the channel selection request retrigger restriction logic to reset its state as per
         map_refresh_radio_data */
     if (ale->first_chan_sel_req_done) {
-        last_chan_sel_req=get_clock_diff_secs(get_current_time(), ale->last_chan_sel_req_time);
+        last_chan_sel_req = acu_timestamp_delta_sec(ale->last_chan_sel_req_time);
     }
 
     map_dm_foreach_radio(ale, radio) {
@@ -380,6 +420,10 @@ map_profile_cfg_t *map_get_profile_from_bss(map_bss_info_t *bss)
         map_profile_cfg_t *profile = &cfg->profiles[i];
         int                ssid_len = strlen(profile->bss_ssid);
 
+        if (!profile->enabled) {
+            continue;
+        }
+
         if (WFA_CERT() && memcmp(profile->al_mac, ale->al_mac, MAC_ADDR_LEN)) {
             continue;
         }
@@ -404,6 +448,55 @@ map_profile_cfg_t *map_get_profile_from_bss(map_bss_info_t *bss)
     return NULL;
 }
 
+/* Check if this radio has a profile with a wanted bss state (MAP_xxx_BSS).
+   Using same logic as in map_get_m2_config.
+*/
+bool map_radio_has_profile_with_bss_state(map_radio_info_t *radio, uint8_t bss_state)
+{
+    map_controller_cfg_t *cfg = get_controller_cfg();
+    map_ale_info_t       *ale;
+    uint16_t              freq_bands;
+    bool                  is_gateway;
+    size_t                i;
+
+    if (!radio || !(ale = radio->ale)) {
+        return false;
+    }
+
+    freq_bands = map_get_freq_bands(radio);
+    is_gateway = map_is_local_agent(ale);
+
+    for (i = 0; i < cfg->num_profiles; i++) {
+        map_profile_cfg_t *profile = &cfg->profiles[i];
+
+        if (!profile->enabled) {
+            continue;
+        }
+
+        if (WFA_CERT() && maccmp(profile->al_mac, ale->al_mac)) {
+            continue;
+        }
+
+        if ((is_gateway  && !profile->gateway) ||
+            (!is_gateway && !profile->extender)) {
+            continue;
+        }
+
+        if (!(profile->bss_freq_bands & freq_bands)) {
+            continue;
+        }
+
+        if (!(profile->bss_state & bss_state)) {
+            continue;
+        }
+
+        /* FOUND */
+        return true;
+    }
+
+    return false;
+}
+
 uint8_t *map_get_wsc_attr(uint8_t *message, uint16_t message_size, uint16_t attr_type, uint16_t *attr_len)
 {
     uint8_t *p = message;
@@ -424,19 +517,22 @@ uint8_t *map_get_wsc_attr(uint8_t *message, uint16_t message_size, uint16_t attr
 }
 
 /* Check if channel is in op class and not its non operable list */
-bool map_is_channel_in_cap_op_class(map_op_class_t *cap_op_class, int channel)
+bool map_is_channel_in_cap_op_class(map_op_class_t *cap_op_class, uint8_t channel)
 {
-    int  check_channel;
-    bool is_center_channel;
+    uint8_t check_channel = channel;
+    bool    is_center_channel;
 
     if (map_get_is_center_channel_from_op_class(cap_op_class->op_class, &is_center_channel)) {
         return false;  /* Error in oper class table... */
     }
 
     /* For 20 and 40MHz (2G and 5G) op classes -> beacon channel
-       For for 40MHz (6G), 80 and 160MHz op classes (128, 129, 130, 132, 133, 134) -> center channel
+       For for 40MHz (6G), 80, 160 and 320MHz op classes (128, 129, 130, 132, 133, 134, 137) -> center channel
     */
-    check_channel = is_center_channel ? map_get_center_channel(cap_op_class->op_class, channel) : channel;
+    if (is_center_channel && map_get_center_channel(cap_op_class->op_class, channel, &check_channel)) {
+        return false;
+    }
+
     if (map_is_channel_in_op_class(cap_op_class->op_class, check_channel) &&
         !map_cs_is_set(&cap_op_class->channels, check_channel)) {
         return true;
@@ -444,22 +540,35 @@ bool map_is_channel_in_cap_op_class(map_op_class_t *cap_op_class, int channel)
     return false;
 }
 
+uint8_t map_get_channel_pref(map_op_class_list_t *list, uint8_t op_class, uint8_t channel)
+{
+    return get_channel_pref(list, op_class, channel);
+}
+
 void map_update_radio_channels(map_radio_info_t *radio)
 {
-    map_controller_cfg_t *cfg               = get_controller_cfg();
-    bandlock_5g_t         bandlock_5g       = cfg->bandlock_5g;
-    bool                  is_5g_low_high    = map_is_5g_low_high(radio);
-    map_op_class_list_t  *cap_op_class_list = &radio->cap_op_class_list;
-    map_channel_set_t     ch_set;
-    int                   i;
-    uint8_t               bw, band, channel;
 
+    map_chan_sel_cfg_t  *cfg               = &get_controller_cfg()->chan_sel;
+    bandlock_5g_t        bandlock_5g       = cfg->bandlock_5g;
+    bool                 is_5g_low_high    = map_is_5g_low_high(radio);
+    map_op_class_list_t *cap_op_class_list = &radio->cap_op_class_list;
+    int                  i;
+
+    map_cs_unset_all(&radio->cap_ctl_channels);
     map_cs_unset_all(&radio->ctl_channels);
     map_cs_bw_unset_all(&radio->channels_with_bandwidth);
 
-    /* Fill supported channel set based on 20MHz operating classes */
+    /* Go over all capable operating classes:
+       - fill capable control channel set based on 20MHz operating classes
+       - fill allowed control channel set based on 20MHz operating classes + config restrictions
+       - fill channels_with_bandwidth based on any operating class
+    */
     for (i = 0; i < cap_op_class_list->op_classes_nr; i++) {
-        map_op_class_t *op_class = &cap_op_class_list->op_classes[i];
+        map_op_class_t    *op_class        = &cap_op_class_list->op_classes[i];
+        bandlock_5g_t      bandlock_action = MAP_BANDLOCK_5G_DISABLED;
+        map_channel_set_t  ch_set;
+        uint16_t           bw;
+        uint8_t            band, channel;
 
         if (0 != map_get_bw_from_op_class(op_class->op_class, &bw)) {
             continue;
@@ -476,28 +585,32 @@ void map_update_radio_channels(map_radio_info_t *radio)
         if (is_5g_low_high && bandlock_5g != MAP_BANDLOCK_5G_DISABLED) {
             if ((bandlock_5g == MAP_BANDLOCK_5G_LOW  && !map_is_5g_low_op_class(op_class->op_class)) ||
                 (bandlock_5g == MAP_BANDLOCK_5G_HIGH && !map_is_5g_high_op_class(op_class->op_class))) {
-                continue;
+                bandlock_action = bandlock_5g;
             }
         }
 
         /* Set all channels from operclass that are allowed by config... */
         map_cs_foreach(&ch_set, channel) {
+            if (bw == 20) {
+                map_cs_set(&radio->cap_ctl_channels, channel);
+            }
             if ((band == IEEE80211_FREQUENCY_BAND_2_4_GHZ && map_cs_is_set(&cfg->allowed_channel_set_2g, channel)) ||
                 (band == IEEE80211_FREQUENCY_BAND_5_GHZ   && map_cs_is_set(&cfg->allowed_channel_set_5g, channel)) ||
                 (band == IEEE80211_FREQUENCY_BAND_6_GHZ   && map_cs_is_set(&cfg->allowed_channel_set_6g, channel))) {
-                if(20 == bw) {
+                if (bw == 20 && (!is_5g_low_high || bandlock_action == MAP_BANDLOCK_5G_DISABLED)) {
                     map_cs_set(&radio->ctl_channels, channel);
                 }
-                map_cs_bw_set(&radio->channels_with_bandwidth, bw, channel);
+                map_cs_bw_set_with_bandlock_check(&radio->channels_with_bandwidth, bw, channel, is_5g_low_high, bandlock_action);
             }
         }
 
         /* ...and unset non operable channels */
         map_cs_foreach(&op_class->channels, channel) {
-            if(20 == bw) {
+            if (bw == 20) {
+                map_cs_unset(&radio->cap_ctl_channels, channel);
                 map_cs_unset(&radio->ctl_channels, channel);
             }
-            map_cs_bw_unset(&radio->channels_with_bandwidth, bw, channel);
+            map_cs_bw_unset_range(&radio->channels_with_bandwidth, bw, channel, op_class->op_class);
         }
     }
 }
@@ -546,8 +659,12 @@ void map_optimize_pref_op_class_list(map_op_class_list_t *list, map_op_class_lis
         }
 
         map_cs_foreach(&ch_set, channel) {
-            /* Use center channel for 40(6G)/80/160 MHz */
-            uint8_t channel2 = is_center_channel ? map_get_center_channel(op_class->op_class, channel) : channel;
+            /* Use center channel for 40(6G)/80/160/320 MHz */
+            uint8_t channel2 = channel;
+
+            if (is_center_channel && map_get_center_channel(op_class->op_class, channel, &channel2)) {
+                continue;
+            }
 
             /* Skip static non operable channels */
             if (!is_channel_operable(cap_list, op_class->op_class, channel2)) {
@@ -573,7 +690,7 @@ bool map_is_no_subband_channel_set(map_channel_set_t *channels, uint8_t chan, ui
 {
     uint8_t sub_chan, sub_from, sub_to;
 
-    if (!map_get_subband_channel_range(chan, op_class, &sub_from, &sub_to)) {
+    if (!map_get_subband_channel_range(op_class, chan, &sub_from, &sub_to)) {
         for (sub_chan = sub_from; sub_chan <= sub_to; sub_chan += 4) {
             if (map_cs_is_set(channels, sub_chan)) {
                 return false;
@@ -591,7 +708,7 @@ bool map_is_all_subband_channel_set(map_channel_set_t *channels, uint8_t chan, u
 {
     uint8_t sub_chan, sub_from, sub_to;
 
-    if (!map_get_subband_channel_range(chan, op_class, &sub_from, &sub_to)) {
+    if (!map_get_subband_channel_range(op_class, chan, &sub_from, &sub_to)) {
         /* iterate over all subband channels */
         /* for 2.4GHz: primary and secondary channel are also 4 channels separated from each other */
         for (sub_chan = sub_from; sub_chan <= sub_to; sub_chan += 4) {
@@ -680,13 +797,16 @@ map_backhaul_sta_iface_t *map_find_bhsta_iface_from_ale(map_ale_info_t *ale, mac
     return NULL;
 }
 
-map_backhaul_sta_iface_t *map_find_bhsta_iface_gbl(mac_addr sta_mac)
+map_backhaul_sta_iface_t *map_find_bhsta_iface_gbl(mac_addr sta_mac, map_ale_info_t **ret_ale)
 {
     map_ale_info_t              *ale;
     map_backhaul_sta_iface_t    *bhsta_iface;
 
     map_dm_foreach_agent_ale(ale) {
         if ((bhsta_iface = map_find_bhsta_iface_from_ale(ale, sta_mac))) {
+            if (ret_ale) {
+                *ret_ale = ale;
+            }
             return bhsta_iface;
         }
     }
@@ -710,21 +830,24 @@ void map_update_radio_caps(map_radio_info_t *radio)
     map_radio_ht_capability_t  *ht_caps  = radio->ht_caps;
     map_radio_he_capability_t  *he_caps  = radio->he_caps;
     bool                        is_2g    = radio->supported_freq == IEEE80211_FREQUENCY_BAND_2_4_GHZ;
+    bool                        is_5g    = radio->supported_freq == IEEE80211_FREQUENCY_BAND_5_GHZ;
     bool                        is_6g    = radio->supported_freq == IEEE80211_FREQUENCY_BAND_6_GHZ;
-
-    /* Note: only use vht_caps for 5G (and not for proprietary VHT support on 2.4G) */
 
     /* Standard (forget about 11B) */
 
-    /* hardcoded 11ax for 6GHz */
-    caps->supported_standard = is_6g ? STD_80211_AX : 
-                               (!is_2g && he_caps && vht_caps && ht_caps) ? STD_80211_ANACAX:
-                               (!is_2g && he_caps && vht_caps) ? STD_80211_ACAX:
-                               (!is_2g && he_caps && ht_caps) ? STD_80211_ANAX:
-                               (!is_2g && vht_caps) ? STD_80211_AC :
-                               (is_2g && he_caps) ? STD_80211_NAX :
-                               ht_caps             ? STD_80211_N  :
-                               is_2g               ? STD_80211_G  : STD_80211_A;
+    if (is_6g) {
+        /* hardcoded 11ax for 6GHz */
+        caps->supported_standard = STD_80211_AX;
+    } else if (is_5g) {
+        caps->supported_standard = (he_caps && vht_caps && ht_caps) ? STD_80211_ANACAX :
+                                   (he_caps && vht_caps) ? STD_80211_ACAX :
+                                   (he_caps && ht_caps) ? STD_80211_ANAX :
+                                   (vht_caps) ? STD_80211_AC :
+                                   (ht_caps) ? STD_80211_N : STD_80211_A;
+    } else { /* 2.4ghz */
+        caps->supported_standard = he_caps ? STD_80211_NAX :
+                                   ht_caps ? STD_80211_N : STD_80211_G;
+    }
 
     /* Defaults */
     caps->max_tx_spatial_streams = 1;

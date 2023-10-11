@@ -290,7 +290,7 @@ uint8_t compare_lldp_TLV_structures(uint8_t *memory_structure_1, uint8_t *memory
 *      structure traversing order)
 */
 void visit_lldp_TLV_structure(uint8_t *memory_structure, void (*callback)(void (*write_function)(const char *fmt, ...),
-                              const char *prefix, uint8_t size, const char *name, const char *fmt, void *p),
+                              const char *prefix, size_t size, const char *name, const char *fmt, void *p),
                               void (*write_function)(const char *fmt, ...), const char *prefix);
 
 

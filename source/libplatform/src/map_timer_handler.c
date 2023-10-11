@@ -98,7 +98,7 @@ int map_timer_handler_init(void)
     return 0;
 }
 
-int map_timer_register_callback(uint16_t    frequency_sec,
+int map_timer_register_callback(uint32_t    frequency_sec,
                                 const char *timer_id,
                                 void       *args,
                                 timer_cb_t  cb)
@@ -215,7 +215,7 @@ int map_timer_restart_callback(const char* timer_id)
     return status;
 }
 
-int map_timer_change_callback(const char *timer_id, uint16_t frequency_sec, void *args)
+int map_timer_change_callback(const char *timer_id, uint32_t frequency_sec, void *args)
 {
     int status = 0;
     timer_cb_data_t *timer_data;
@@ -231,6 +231,33 @@ int map_timer_change_callback(const char *timer_id, uint16_t frequency_sec, void
         } else {
             acu_evloop_timer_change_period(timer_data->evloop_timer, SEC_TO_MSEC(frequency_sec));
             timer_data->args = args;
+        }
+    } while (0);
+
+    return status;
+}
+
+int map_timer_remaining(const char *timer_id, uint32_t *remaining_sec)
+{
+    int status = 0;
+    timer_cb_data_t *timer_data;
+    uint32_t remaining_msec;
+
+    do {
+        if (timer_id == NULL || remaining_sec == NULL) {
+            ERROR_EXIT(status)
+        }
+
+        *remaining_sec = 0;
+
+        if (!(timer_data = find_object(g_registered_callbacks, (void*)timer_id, compare_timer_node))) {
+            log_lib_e("timer [%s] isn't registered yet", timer_id);
+            ERROR_EXIT(status)
+        } else if (acu_evloop_timer_remaining(timer_data->evloop_timer, &remaining_msec)) {
+            log_lib_e("failed to get timer remaining");
+            ERROR_EXIT(status)
+        } else {
+            *remaining_sec = MSEC_TO_SEC(remaining_msec);
         }
     } while (0);
 

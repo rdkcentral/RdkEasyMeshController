@@ -199,7 +199,7 @@ static packet_socket_t *packet_socket_list_add(const char *if_name, int if_index
 
     if (sock) {
         if (if_name) {
-            strncpy(sock->if_name, if_name, sizeof(sock->if_name) - 1);
+            acu_strlcpy(sock->if_name, if_name, sizeof(sock->if_name));
         }
         sock->if_index = if_index;
         sock->fd       = fd;
@@ -260,7 +260,7 @@ static void packet_socket_remove(const char* if_name, int type)
     packet_socket_t *sock = packet_socket_list_get(if_name, type);
 
     if (sock != NULL) {
-        log_i1905_i("removing socket ifname[%s] ifdx[%d] type[%s] fd[%d]",
+        log_i1905_d("removing socket ifname[%s] ifdx[%d] type[%s] fd[%d]",
                     if_name, sock->if_index, packet_socket_type_str(type), sock->fd);
 
         packet_socket_list_remove(sock);
@@ -284,7 +284,7 @@ static int packet_socket_create(const char *if_name, int if_index, int type)
             break;
         }
 
-        log_i1905_i("creating socket ifname[%s] ifidx[%d] type[%s] fd[%d]",
+        log_i1905_d("creating socket ifname[%s] ifidx[%d] type[%s] fd[%d]",
                     if_name, if_index, packet_socket_type_str(type), fd);
 
         flags = fcntl(fd, F_GETFL, 0);
@@ -382,7 +382,7 @@ static void get_power_state(const char *if_name, uint8_t *power_state)
     struct ifreq ifr;
 
     memset(&ifr, 0, sizeof(struct ifreq));
-    strncpy(ifr.ifr_name, if_name, sizeof(ifr.ifr_name) - 1);
+    acu_strlcpy(ifr.ifr_name, if_name, sizeof(ifr.ifr_name));
 
     if (0 == ioctl(g_send_ioctl_fd, SIOCGIFFLAGS, &ifr)) {
         *power_state = (ifr.ifr_flags & IFF_RUNNING) ? INTERFACE_POWER_STATE_ON : INTERFACE_POWER_STATE_OFF;
@@ -397,7 +397,7 @@ static void get_mac(const char *if_name, mac_addr mac)
     struct ifreq ifr;
 
     memset(&ifr, 0, sizeof(struct ifreq));
-    strncpy(ifr.ifr_name, if_name, sizeof(ifr.ifr_name) - 1);
+    acu_strlcpy(ifr.ifr_name, if_name, sizeof(ifr.ifr_name));
 
     if (0 == ioctl(g_send_ioctl_fd, SIOCGIFHWADDR, &ifr)) {
         maccpy(mac, ifr.ifr_addr.sa_data);
@@ -434,9 +434,10 @@ static int fill_interface_data(const char *if_name, i1905_interface_info_t *info
 
 static void create_primary_vlan_if_name(char *vlan_if_name, const char *if_name, int len)
 {
-    const char *pattern = map_cfg_get()->primary_vlan_pattern;
-    int         pvid    = map_cfg_get()->primary_vlan_id;
-    int         pos     = 0;
+    const char *pattern     = map_cfg_get()->primary_vlan_pattern;
+    int         pvid        = map_cfg_get()->primary_vlan_id;
+    int         vid_offset  = map_cfg_get()->vlan_ifname_offset;
+    int         pos         = 0;
 
     while (*pattern && pos < len) {
         if (!strncasecmp(pattern, "${ifname}", 9)) {
@@ -445,6 +446,9 @@ static void create_primary_vlan_if_name(char *vlan_if_name, const char *if_name,
         } else if (!strncasecmp(pattern, "${pvid}", 7)) {
             pos += snprintf(&vlan_if_name[pos], len - pos, "%d", pvid);
             pattern += 7;
+        } else if (!strncasecmp(pattern, "${pvid_with_offset}", 19)) {
+            pos += snprintf(&vlan_if_name[pos], len - pos, "%d", pvid+vid_offset);
+            pattern += 19;
         } else {
             pos += snprintf(&vlan_if_name[pos], len - pos, "%c", *pattern);
             pattern++;
@@ -456,10 +460,10 @@ static interface_t *interface_add(const char *if_name, int if_index, bool is_vla
 {
     interface_t *interface = calloc(1, sizeof(interface_t));
 
-    log_i1905_i("add interface %s%s", if_name, is_vlan ? " [vlan]" : "");
+    log_i1905_n("add interface %s%s", if_name, is_vlan ? " [vlan]" : "");
 
     if (interface) {
-        strncpy(interface->if_name, if_name, sizeof(interface->if_name) - 1);
+        acu_strlcpy(interface->if_name, if_name, sizeof(interface->if_name));
 
         if (TS_ENABLED_VLAN_PATTERN() && !is_vlan) {
             create_primary_vlan_if_name(interface->vlan_if_name, if_name, sizeof(interface->vlan_if_name));
@@ -508,7 +512,7 @@ static interface_t *interface_get_phys(const char *vlan_if_name)
 
 static void interface_remove(interface_t *interface)
 {
-    log_i1905_i("remove interface %s", interface->if_name);
+    log_i1905_n("remove interface %s", interface->if_name);
     list_del(&interface->list);
     free(interface);
 }
@@ -805,7 +809,7 @@ static void parse_nested_rtattr(struct rtattr *tb[], int max, struct rtattr *rta
 }
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0) */
 
-static void parse_if_info_state(struct nlmsghdr *h, struct ifinfomsg *ifi, char *if_name, uint8_t* port_state)
+static void parse_if_info_state(struct nlmsghdr *h, struct ifinfomsg *ifi, char *if_name, size_t if_name_len, uint8_t* port_state)
 {
     struct rtattr *ifla[__IFLA_MAX];
 
@@ -813,7 +817,7 @@ static void parse_if_info_state(struct nlmsghdr *h, struct ifinfomsg *ifi, char 
 
     /* get interface name */
     if (ifla[IFLA_IFNAME]) {
-        strncpy(if_name, RTA_DATA(ifla[IFLA_IFNAME]), IFNAMSIZ);
+        acu_strlcpy(if_name, RTA_DATA(ifla[IFLA_IFNAME]), if_name_len);
     }
 
 /* Getting bridge port state is only supported from kernel 3.8.0.
@@ -837,7 +841,7 @@ static void parse_if_info_state(struct nlmsghdr *h, struct ifinfomsg *ifi, char 
 static void netlink_event_newlink(struct nlmsghdr *h, size_t len)
 {
     struct ifinfomsg *ifi;
-    char              if_name[IFNAMSIZ];
+    char              if_name[IFNAMSIZ] = { 0 };
     uint8_t           port_state = 0;
 
     if (len < sizeof(*ifi)) {
@@ -849,7 +853,7 @@ static void netlink_event_newlink(struct nlmsghdr *h, size_t len)
         return;
     }
 
-    parse_if_info_state(h, ifi, if_name, &port_state);
+    parse_if_info_state(h, ifi, if_name, sizeof(if_name), &port_state);
 
     interface_updated_event(if_name, ifi->ifi_index, ifi->ifi_flags, port_state);
 }
@@ -857,7 +861,7 @@ static void netlink_event_newlink(struct nlmsghdr *h, size_t len)
 static void netlink_event_dellink(struct nlmsghdr *h, size_t len)
 {
     struct ifinfomsg *ifi;
-    char              if_name[IFNAMSIZ];
+    char              if_name[IFNAMSIZ] = { 0 };
     uint8_t           port_state = 0;
 
     if (len < sizeof(*ifi)) {
@@ -869,7 +873,7 @@ static void netlink_event_dellink(struct nlmsghdr *h, size_t len)
         return;
     }
 
-    parse_if_info_state(h, ifi, if_name, &port_state);
+    parse_if_info_state(h, ifi, if_name, sizeof(if_name), &port_state);
 
     interface_removed_event(if_name);
 }
@@ -878,7 +882,7 @@ static void netlink_event_newroute(struct nlmsghdr *h, size_t len)
 {
     int rc = 0;
     struct rtmsg *rtmsg;
-    struct rtattr *rtattr[RTA_MAX];
+    struct rtattr *rtattr[__RTA_MAX];
     char gw_ip[32] = {0};
     char gw_mac_str[32];
 
@@ -1045,7 +1049,7 @@ char **PLATFORM_OS_GET_LIST_OF_1905_INTERFACES(uint8_t *nr)
     }
 
     /* Allocate memory for both char** and if names */
-    if ((interfaces = malloc(count * (sizeof(char**) + IFNAMSIZ)))) {
+    if ((interfaces = malloc(count * (sizeof(char**) + IFNAMSIZ) + 1))) { /* + 1 to avoid malloc(0) */
         p = (char*) interfaces;
         p += count * sizeof(char**);
         list_for_each_entry(interface, &g_interface_list, list) {
@@ -1054,7 +1058,7 @@ char **PLATFORM_OS_GET_LIST_OF_1905_INTERFACES(uint8_t *nr)
                 continue;
             }
             interfaces[idx] = p;
-            strcpy(p, interface->if_name);
+            acu_strlcpy(p, interface->if_name, IFNAMSIZ);
             idx++;
             p += IFNAMSIZ;
 
@@ -1115,9 +1119,9 @@ int PLATFORM_OS_GET_RAW_SEND_FD(void)
     return g_send_ioctl_fd;
 }
 
-bool PLATFORM_OS_LOG_LEVEL_DEBUG(void)
+bool PLATFORM_OS_LOG_LEVEL_TRACE(void)
 {
-    return map_cfg_get()->ieee1905_log_level >= LOG_DEBUG;
+    return map_cfg_get()->ieee1905_log_level >= LOG_TRACE;
 }
 
 mac_addr* PLATFORM_OS_GET_GATEWAY_MAC(void)

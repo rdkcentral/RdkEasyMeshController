@@ -134,7 +134,7 @@ int i1905_set(UNUSED char *ifname, i1905_param_t param, void *data, UNUSED size_
 
 int i1905_send(i1905_cmdu_t *cmdu, mac_addr dmac, uint16_t *mid)
 {
-    log_i1905_d("send packet on %s", cmdu->interface_name);
+    log_i1905_t("send packet on %s", cmdu->interface_name);
 
     if (mid && *mid) {
        cmdu->message_id = *mid;
@@ -149,17 +149,23 @@ int i1905_send(i1905_cmdu_t *cmdu, mac_addr dmac, uint16_t *mid)
         uint8_t   ifcount = 0, i;
         char    **if_list = PLATFORM_GET_LIST_OF_1905_INTERFACES(&ifcount);
 
+        if (!if_list) {
+            log_i1905_e("Could not get list of 1905 interfaces");
+            return -1;
+        }
+
         for (i = 0; i < ifcount; i++) {
             if (!PLATFORM_OS_IS_INTERFACE_UP(if_list[i])) {
                 continue;
             }
             if (0 == send1905RawPacket(if_list[i], cmdu->message_id, dmac, cmdu)) {
-                continue;
+                log_i1905_e("send1905RawPacket() on interface %s failed", if_list[i]);
             }
         }
         PLATFORM_FREE_LIST_OF_1905_INTERFACES(if_list, ifcount);
     } else if (PLATFORM_OS_IS_INTERFACE_UP(cmdu->interface_name)) {
         if (0 == send1905RawPacket(cmdu->interface_name, cmdu->message_id, dmac, cmdu)) {
+            log_i1905_e("send1905RawPacket() on interface %s failed", cmdu->interface_name);
             return -1;
         }
     }
@@ -169,11 +175,16 @@ int i1905_send(i1905_cmdu_t *cmdu, mac_addr dmac, uint16_t *mid)
 
 int i1905_send_raw(char *ifname, mac_addr dmac, mac_addr smac, uint16_t eth_type, uint8_t *data, uint16_t data_len)
 {
-    log_i1905_d("interface Name in Send (raw): '%s'", ifname);
+    log_i1905_t("interface Name in Send (raw): '%s'", ifname);
 
     if (strcmp(ifname, "all") == 0) {
         uint8_t   ifcount = 0, i;
         char    **if_list = PLATFORM_GET_LIST_OF_1905_INTERFACES(&ifcount);
+
+        if (!if_list) {
+            log_i1905_e("Could not get list of 1905 interfaces");
+            return -1;
+        }
 
         for (i = 0; i < ifcount; i++) {
             if (!PLATFORM_OS_IS_INTERFACE_UP(if_list[i])) {
@@ -181,7 +192,6 @@ int i1905_send_raw(char *ifname, mac_addr dmac, mac_addr smac, uint16_t eth_type
             }
             if (0 == PLATFORM_SEND_RAW_PACKET(if_list[i], dmac, smac, eth_type, data, data_len)) {
                 log_i1905_e("failed to send raw message to interface '%s'", if_list[i]);
-                continue;
             }
         }
         PLATFORM_FREE_LIST_OF_1905_INTERFACES(if_list, ifcount);
@@ -192,7 +202,7 @@ int i1905_send_raw(char *ifname, mac_addr dmac, mac_addr smac, uint16_t eth_type
         }
     }
 
-    log_i1905_d("managed to send raw message via '%s'", ifname);
+    log_i1905_t("managed to send raw message via '%s'", ifname);
 
     return 0;
 }

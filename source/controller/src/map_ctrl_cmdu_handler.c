@@ -21,12 +21,14 @@
 
 #include "map_ctrl_cmdu_handler.h"
 #include "map_ctrl_tlv_parser.h"
+#include "map_ctrl_emex_tlv_handler.h"
 #include "map_ctrl_cmdu_tx.h"
 #include "map_ctrl_onboarding_handler.h"
 #include "map_ctrl_post_onboarding_handler.h"
 #include "map_ctrl_topology_tree.h"
 #include "map_ctrl_utils.h"
 #include "map_ctrl_defines.h"
+#include "map_ctrl_chan_sel.h"
 
 #include "map_info.h"
 #include "map_retry_handler.h"
@@ -76,6 +78,8 @@ static void get_m1_attributes(map_ale_info_t *ale, uint8_t *m1, uint16_t m1_size
     uint16_t           len;
     uint8_t           *p;
 
+    memset(&d, 0, sizeof(map_device_info_t));
+
     if ((p = map_get_wsc_attr(m1, m1_size, WSC_ATTR_OS_VERSION, &len)) && len == 4) {
         _E4B(&p, &d.os_version);
         os_version_to_str(&d);
@@ -106,6 +110,7 @@ static void refresh_radio_data(map_ale_info_t *ale, map_radio_info_t *radio)
     }
 
     /* Renew operating channel & channel preference info */
+    map_agent_cancel_channel_selection(ale);
     set_radio_state_channel_preference_query_not_sent(&radio->state);
     set_radio_state_channel_pref_report_not_received(&radio->state);
     set_radio_state_oper_chan_report_not_received(&radio->state);
@@ -245,7 +250,7 @@ static void map_parse_tx_link_metrics_tlv(i1905_transmitter_link_metric_tlv_t *t
             // Update the TX metrics into the metrics object
             map_update_tx_params(tx_tlv, link_metrics);
 
-            // Store the newly created link mertics
+            // Store the newly created link metrics
             map_cache_updated_link_metrics(link_metrics_cache_list, link_metrics);
 
             *ale = current_ale;
@@ -306,7 +311,7 @@ static void map_parse_rx_link_metrics_tlv(i1905_receiver_link_metric_tlv_t *rx_t
             /* Update the RX metrics into the metrics object */
             map_update_rx_params(rx_tlv, link_metrics);
 
-            /* Store the newly created link mertics */
+            /* Store the newly created link metrics */
             map_cache_updated_link_metrics(link_metrics_cache_list, link_metrics);
 
             *ale = current_ale;
@@ -341,7 +346,7 @@ static void map_remove_old_link_metrics(map_ale_info_t *ale, array_list_t *new_l
     /* array of array_list_t * with size as (MAX_BSS_PER_AGENT) + 1 (Arraylist for ethernet devices) */
     array_list_t               *link_metrics_list[MAX_BSS_PER_AGENT + 1] = {0};
     map_neighbor_link_metric_t *existing_link_metrics;
-    list_iterator_t             iter;
+    list_iterator_t             iter = {0};
     size_t                      list_count, i;
 
     list_count = map_get_all_iface_link_metrics_list(ale, link_metrics_list);
@@ -374,6 +379,11 @@ static int handle_1905_dev(i1905_cmdu_t *cmdu, bool topo_discovery)
     i1905_al_mac_address_tlv_t *al_mac_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_AL_MAC_ADDRESS, cmdu);
     map_1905_dev_info_t        *dev;
 
+    if (!al_mac_tlv) {
+        /* Already checked in map_ctrl_cmdu_validator.c */
+        return -1;
+    }
+
     /* Send topology query as soon as we see a 1905 device */
     map_send_topology_query_with_al_mac(al_mac_tlv->al_mac_address, cmdu->interface_name, MID_NA);
 
@@ -403,7 +413,9 @@ static int map_handle_topology_response_ale(map_ale_info_t *ale, i1905_cmdu_t *c
     i1905_non_1905_neighbor_device_list_tlv_t   *non_1905_neighbor_dev_tlv;
     i1905_neighbor_device_list_tlv_t            *neighbor_dev_tlvs[MAX_ALE_NEIGHBOR_COUNT] = {NULL};
     i1905_non_1905_neighbor_device_list_tlv_t   *non_1905_neighbor_dev_tlvs[MAX_ALE_NEIGHBOR_COUNT] = {NULL};
+    i1905_vendor_specific_tlv_t                 *vendor_tlv;
     size_t                                       neighbor_dev_tlvs_nr = 0, non_1905_neighbor_dev_tlvs_nr = 0, tlv_idx;
+    bool                                         update_dm = false;
 
     if (!dev_info_tlv) {
         return -1; /* Not possble - checked during validate */
@@ -465,8 +477,21 @@ static int map_handle_topology_response_ale(map_ale_info_t *ale, i1905_cmdu_t *c
     }
     map_dm_remove_marked_stas(ale, 30 /* seconds */);
 
+    /* Handle emex tlvs */
+    map_emex_handle_cmdu_pre(ale, cmdu);
+    i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_VENDOR_SPECIFIC, vendor_tlv, cmdu, tlv_idx) {
+        if (map_emex_is_valid_tlv(vendor_tlv)) {
+            map_emex_parse_tlv(ale, vendor_tlv);
+            update_dm = true;
+        }
+    }
+    map_emex_handle_cmdu_post(ale, cmdu);
+    if (update_dm) {
+        map_dm_ale_eth_update(ale);
+    }
+
     /* Store the last received topology response message */
-    ale->keep_alive_time = get_current_time();
+    ale->keep_alive_time = acu_get_timestamp_sec();
 
     return 0;
 }
@@ -522,29 +547,42 @@ int map_handle_topology_discovery(i1905_cmdu_t *cmdu)
 /* 1905.1 6.3.2 (type 0x0001) */
 int map_handle_topology_query(i1905_cmdu_t *cmdu)
 {
-    /* Should we add ale from here too? */
-    return map_send_topology_response(cmdu);
+    uint8_t        *src_mac = cmdu->cmdu_stream.src_mac_addr;
+    map_ale_info_t *ale     = map_dm_get_ale_from_src_mac(src_mac);
+
+    /* Answer to topology query also when device is not in DM.
+
+       1905 standard requires to use AL_MAC as source MAC but
+       in that case fallback to incoming source MAC
+       (which might or might not be the same)
+    */
+
+    return map_send_topology_response(ale ? ale->al_mac : src_mac, cmdu);
 }
 
 /* 1905.1 6.3.3 (type 0x0002) */
 int map_handle_topology_response(i1905_cmdu_t *cmdu)
 {
     i1905_device_information_tlv_t *dev_info_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_DEVICE_INFORMATION, cmdu); /* Mandatory */
+    map_supported_service_tlv_t    *ss_tlv       = i1905_get_tlv_from_cmdu(TLV_TYPE_SUPPORTED_SERVICE,  cmdu); /* Optional  */
     uint8_t                        *src_mac      = cmdu->cmdu_stream.src_mac_addr;
     map_ale_info_t                 *ale          = NULL;
     map_1905_dev_info_t            *dev          = NULL;
     mac_addr_str                    mac_str;
+    bool                            ale_is_controller = false, ale_is_agent = false, ale_is_em_plus = false;
 
     if (!dev_info_tlv) {
         return -1; /* Not possible - checked during validate */
     }
+
+    map_parse_ap_supported_service_tlv(NULL, ss_tlv, &ale_is_controller, &ale_is_agent, &ale_is_em_plus);
 
     if (NULL != (ale = map_dm_get_ale(dev_info_tlv->al_mac_address))) {
         return map_handle_topology_response_ale(ale, cmdu);
     }
 
     if (NULL != (dev = map_stglist_get_1905_dev(dev_info_tlv->al_mac_address))) {
-        if (!(ale = map_handle_new_agent_onboarding(map_stglist_get_1905_dev_al_mac(dev), cmdu->interface_name))) {
+        if (!(ale = map_handle_new_agent_onboarding(map_stglist_get_1905_dev_al_mac(dev), cmdu->interface_name, ale_is_em_plus))) {
             log_ctrl_e("%s: new agent onboarding failed", __FUNCTION__);
             return -1;
         }
@@ -647,13 +685,14 @@ int map_handle_ap_autoconfig_search(i1905_cmdu_t *cmdu)
     map_1905_dev_info_t         *dev;
     map_ale_info_t              *ale;
     mac_addr                     mac_tlv_mac;
-    bool                         ale_is_agent = false;
+    bool                         ale_is_controller = false, ale_is_agent = false, ale_is_em_plus = false;
     bool                         topo_discovery_is_rcvd = false;
-    uint8_t                      i;
 
     if (!al_mac_tlv) {
         return -1; /* Not possble - checked during validate */
     }
+
+    map_parse_ap_supported_service_tlv(NULL, ss_tlv, &ale_is_controller, &ale_is_agent, &ale_is_em_plus);
 
     if (!ss_tlv) {
         /* non-EM 1905 device */
@@ -668,13 +707,6 @@ int map_handle_ap_autoconfig_search(i1905_cmdu_t *cmdu)
         map_stglist_remove_1905_dev(dev);
     }
 
-    if (ss_tlv) {
-        for (i = 0; i < ss_tlv->services_nr; i++) {
-            if (ss_tlv->services[i] == MAP_SERVICE_AGENT) {
-                ale_is_agent = true;
-            }
-        }
-    }
 
     if (!ale_is_agent) {
         goto response;
@@ -682,7 +714,7 @@ int map_handle_ap_autoconfig_search(i1905_cmdu_t *cmdu)
 
     /* Check if this is a new ale */
     if (!(ale = map_dm_get_ale(al_mac_tlv->al_mac_address))) {
-        if (!(ale = map_handle_new_agent_onboarding(al_mac_tlv->al_mac_address, cmdu->interface_name))) {
+        if (!(ale = map_handle_new_agent_onboarding(al_mac_tlv->al_mac_address, cmdu->interface_name, ale_is_em_plus))) {
             log_ctrl_e("%s: new agent onboarding failed", __FUNCTION__);
             return -1;
         }
@@ -698,7 +730,7 @@ int map_handle_ap_autoconfig_search(i1905_cmdu_t *cmdu)
     /* If agent, restart topology discovery to speed up discovery
        of controller by the agent (which might have been restarted).
     */
-    map_restart_topology_discovery();
+    map_restart_topology_discovery(cmdu->interface_name);
 
 response:
     return map_send_autoconfig_response(cmdu, ale_is_agent);
@@ -726,7 +758,7 @@ int map_handle_ap_autoconfig_wsc(i1905_cmdu_t *cmdu)
 
     /* Onboard agent if it is not known yet */
     if (!(ale = map_dm_get_ale(al_mac))) {
-        if (!(ale = map_handle_new_agent_onboarding(al_mac, cmdu->interface_name))) {
+        if (!(ale = map_handle_new_agent_onboarding(al_mac, cmdu->interface_name, true))) {
             log_ctrl_e("%s: agent onboarding failed", __FUNCTION__);
             return -1;
         }
@@ -794,10 +826,8 @@ int map_handle_ap_autoconfig_wsc(i1905_cmdu_t *cmdu)
 /* 1905.1 6.3.13 (type 0x0004) */
 int map_handle_vendor_specific(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
-    (void) ale;
-
     /* Send 1905 Ack  */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
@@ -905,7 +935,7 @@ int map_handle_channel_preference_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu
     size_t            idx;
 
     /* Send 1905 Ack  */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
@@ -918,16 +948,22 @@ int map_handle_channel_preference_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu
         radio->op_restriction_list.op_classes_nr = 0;
     }
 
+    /* Mark channel preference report as received for all radios
+       (tlv can be omitted when it would contain 0 op_classes)
+    */
+    map_dm_foreach_radio(ale, radio) {
+        set_radio_state_channel_pref_report_received(&radio->state);
+    }
+
     i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
         switch (*tlv) {
             case TLV_TYPE_CHANNEL_PREFERENCE: {
                 map_channel_preference_tlv_t *pref_tlv = (map_channel_preference_tlv_t *)tlv;
 
-                if (map_parse_channel_preference_tlv(ale, pref_tlv) == 0) {
+                if (map_parse_channel_preference_tlv(ale, pref_tlv) != 0) {
+                    /* Parsing failed -> reset received state */
                     if ((radio = map_dm_get_radio(ale, pref_tlv->radio_id))) {
-                        if (!is_radio_state_channel_pref_report_received(radio->state)) {
-                            set_radio_state_channel_pref_report_received(&radio->state);
-                        }
+                        set_radio_state_channel_pref_report_not_received(&radio->state);
                     }
                 }
                 break;
@@ -948,6 +984,11 @@ int map_handle_channel_preference_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu
         }
     }
 
+    /* Update channel preference for all radios */
+    map_dm_foreach_radio(ale, radio) {
+        map_ctrl_chan_sel_update(radio);
+    }
+
     return 0;
 }
 
@@ -959,7 +1000,7 @@ int map_handle_channel_selection_response(UNUSED map_ale_info_t *ale, i1905_cmdu
 
     i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_CHANNEL_SELECTION_RESPONSE, tlv, cmdu, idx) {
        if (tlv->channel_selection_response == MAP_CHAN_SEL_RESPONSE_ACCEPTED) {
-           log_ctrl_i("channel selection for radio[%s] completed", mac_string(tlv->radio_id));
+           log_ctrl_n("channel selection for radio[%s] completed", mac_string(tlv->radio_id));
        } else {
            log_ctrl_e("channel selection for radio[%s] failed. Reason[%d]",
                       mac_string(tlv->radio_id), tlv->channel_selection_response);
@@ -981,7 +1022,7 @@ int map_handle_operating_channel_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     size_t                              tlv_idx;
 
     /* Send 1905 Ack */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
@@ -989,21 +1030,37 @@ int map_handle_operating_channel_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_OPERATING_CHANNEL_REPORT, tlv, cmdu, tlv_idx) {
         if (tlv->op_classes_nr > 0 && NULL != (radio = map_dm_get_radio(ale, tlv->radio_id))) {
             uint8_t idx = 0, min_bw_idx = 0, max_bw_idx = 0;
-            uint8_t bw, min_bw = 160, max_bw = 20;
+            uint16_t bw, min_bw = 320, max_bw = 20;
+
+            SFREE(radio->curr_op_class_list.op_classes);
+            if (!(radio->curr_op_class_list.op_classes = calloc(tlv->op_classes_nr, sizeof(map_op_class_t)))) {
+                log_ctrl_e("%s: memory allocation failed", __FUNCTION__);
+                radio->curr_op_class_list.op_classes_nr = 0;
+                return -1;
+            }
+            radio->curr_op_class_list.op_classes_nr = tlv->op_classes_nr;
 
             for (idx = 0; idx < tlv->op_classes_nr; idx++) {
-                map_get_bw_from_op_class(tlv->op_classes[idx].op_class, &bw);
-                if (bw < min_bw) {
-                    min_bw = bw;
-                    min_bw_idx = idx;
-                }
-                if (bw > max_bw) {
-                    max_bw = bw;
-                    max_bw_idx = idx;
+                map_op_class_t *op_class = &radio->curr_op_class_list.op_classes[idx];
+
+                /* One channel per operating class, transmit power is common */
+                op_class->op_class = tlv->op_classes[idx].op_class;
+                op_class->eirp     = tlv->transmit_power_eirp;
+                map_cs_set(&op_class->channels, tlv->op_classes[idx].channel);
+
+                if (!map_get_bw_from_op_class(tlv->op_classes[idx].op_class, &bw)) {
+                    if (bw < min_bw) {
+                        min_bw = bw;
+                        min_bw_idx = idx;
+                    }
+                    if (bw > max_bw) {
+                        max_bw = bw;
+                        max_bw_idx = idx;
+                    }
                 }
             }
 
-            /* Update channel related parameters in DM
+            /* Update channel related parameters and current operating classes in DM
                - use op_class with the maximum bw to be able to get operating bw correctly
                - use op_class with the minimum bw to get control channel
             */
@@ -1011,7 +1068,7 @@ int map_handle_operating_channel_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
                                      tlv->op_classes[min_bw_idx].channel,
                                      max_bw, tlv->transmit_power_eirp);
 
-            log_ctrl_i("updated channel/bw for radio[%s] op_class[%d] channel[%d] bw[%d] from %s",
+            log_ctrl_n("updated channel/bw for radio[%s] op_class[%d] channel[%d] bw[%d] from %s",
                        mac_string(radio->radio_id), radio->current_op_class, radio->current_op_channel, max_bw,
                        i1905_tlv_type_to_string(tlv->tlv_type));
 
@@ -1087,6 +1144,16 @@ int map_handle_ap_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
             case TLV_TYPE_ASSOCIATED_STA_EXTENDED_LINK_METRICS:
                 map_parse_assoc_sta_ext_link_metrics_tlv(ale, (map_assoc_sta_ext_link_metrics_tlv_t *)tlv);
             break;
+            case TLV_TYPE_VENDOR_SPECIFIC: {
+                i1905_vendor_specific_tlv_t *vs_tlv = (i1905_vendor_specific_tlv_t *)tlv;
+                if (map_emex_is_valid_tlv(vs_tlv)) {
+                    map_emex_parse_tlv(ale, vs_tlv);
+                }
+                break;
+            }
+            case TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT:
+                map_parse_assoc_wifi6_sta_status_tlv(ale, (map_assoc_wifi6_sta_status_tlv_t *)tlv);
+                break;
             default:
             break;
         }
@@ -1132,7 +1199,7 @@ int map_handle_unassoc_sta_link_metrics_response(map_ale_info_t *ale, i1905_cmdu
     }
 
     /* Send 1905 ACK */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
@@ -1170,25 +1237,68 @@ int map_handle_unassoc_sta_link_metrics_response(map_ale_info_t *ale, i1905_cmdu
         log_ctrl_d("------> uplink rcpi    %d", tlv->stas[i].rcpi_uplink);
     }
 
+    map_dm_ale_update_unassoc_sta_link_metrics(ale);
+
     return 0;
 }
 
 /* MAP_R1 17.1.23 (type 0x8012) */
 int map_handle_beacon_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
-    (void) ale;
-
     map_beacon_metrics_response_tlv_t *tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_BEACON_METRICS_RESPONSE, cmdu); /* Mandatory */
+    map_sta_info_t                    *sta;
+    uint8_t                            i;
 
     if (!tlv) {
         return -1; /* Not possble - checked during validate */
     }
 
     /* Send 1905 ACK */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
+
+    if (!(sta = map_dm_get_sta_from_ale(ale, tlv->sta_mac))) {
+        log_ctrl_e("%s: sta[%s] not found", __FUNCTION__, mac_string(tlv->sta_mac));
+        return -1;
+    }
+
+    /* update the beacon metrics in data model */
+    if (sta->beacon_metrics != NULL) {
+        while (list_get_size(sta->beacon_metrics) > 0) {
+            free(remove_last_object(sta->beacon_metrics));
+        }
+    }
+
+    for (i = 0; i < tlv->elements_nr; i++) {
+        map_beacon_metrics_response_tlv_element_t *element;
+        map_sta_beacon_metrics_t                  *beacon_metrics;
+        size_t                                     elem_len, subelem_len;
+
+        /* Combine element with subelements into beacon metrics */
+        element = &tlv->elements[i];
+        beacon_metrics = calloc(1, element->length + 2);
+        if (beacon_metrics == NULL) {
+            /* Already created ones will be freed later */
+            log_ctrl_e("%s: unable to create beacon metrics object", __FUNCTION__);
+            return -1;
+        }
+
+        elem_len = MAP_BEACON_REPORT_ELEMENT_SIZE;
+        subelem_len = element->length + 2 - elem_len;
+
+        memcpy(beacon_metrics, element, elem_len);
+        if (subelem_len) {
+            uint8_t *bm = (uint8_t *)beacon_metrics + elem_len;
+            memcpy(bm, element->subelements, subelem_len);
+        }
+
+        insert_last_object(sta->beacon_metrics, beacon_metrics);
+    }
+
+    sta->bmquery_status = tlv->status_code;
+    map_dm_sta_beacon_metrics_completed(sta);
 
     return 0;
 }
@@ -1196,40 +1306,48 @@ int map_handle_beacon_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 /* MAP_R1 17.1.26 (type 0x8015) */
 int map_handle_client_steering_btm_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
-    (void) ale;
-
     map_steering_btm_report_tlv_t *tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_STEERING_BTM_REPORT, cmdu); /* Mandatory */
+    map_sta_info_t                *sta = NULL;
 
     if (!tlv) {
-        return -1; /* Not possble - checked during validate */
+        return -1; /* Not possible - checked during validate */
     }
 
     /* Send 1905 ACK */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
+
+    if (!(sta = map_dm_get_sta_from_ale(ale, tlv->sta_mac))) {
+        log_ctrl_e("%s: sta[%s] not found", __FUNCTION__, mac_string(tlv->sta_mac));
+        return -1;
+    }
+
+    map_dm_sta_steering_btm_report(sta, tlv->btm_status_code, (tlv->target_bssid_present ? tlv->target_bssid : NULL));
 
     return 0;
 }
 
 /* MAP_R1 17.1.28 (type 0x8017) */
-int map_handle_steering_completed(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+int map_handle_steering_completed(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
     /* Send 1905 ACK */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
+
+    map_dm_sta_steering_completed(ale);
 
     return 0;
 }
 
 /* MAP_R1 17.1.30 (type 0x801A) */
-int map_handle_backhaul_steering_response(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+int map_handle_backhaul_steering_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
     /* Send 1905 Ack  */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
@@ -1243,11 +1361,11 @@ int map_handle_higher_layer_data(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     map_higher_layer_data_tlv_t *tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_HIGHER_LAYER_DATA, cmdu); /* Mandatory */
 
     if (!tlv) {
-        return -1; /* Not possble - checked during validate */
+        return -1; /* Not possible - checked during validate */
     }
 
     /* Send 1905 Ack  */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
@@ -1315,11 +1433,13 @@ int map_handle_channel_scan_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
             if (!is_radio_initial_scan_results_received(radio->state) && !need_retry) {
                 set_radio_state_initial_scan_results_received(&radio->state);
             }
+
+            map_dm_radio_scan_result(radio);
         }
     }
 
     /* Send 1905 Ack  */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
@@ -1344,11 +1464,13 @@ int map_handle_assoc_status_notification(UNUSED map_ale_info_t *ale, i1905_cmdu_
 /* MAP_R2 17.1.40 (type 0x8026) */
 static int update_tunneled_message(map_ale_info_t *ale, map_tunneled_tlv_t *tunneled_tlv, mac_addr src_mac, uint8_t msg_type)
 {
-
-    map_sta_info_t *sta = map_dm_get_sta_from_ale(ale, src_mac);
+    map_sta_info_t      *sta      = map_dm_get_sta_from_ale(ale, src_mac);
+    map_tunneled_msg_t  *tm       = NULL;
+    uint8_t            **body     = NULL;
+    uint16_t            *body_len = NULL;
 
     if (!sta) {
-        log_ctrl_e("%s: ale[%s] type[%d]: sta[%s] not found", __FUNCTION__, ale->al_mac_str, msg_type, mac_string(src_mac));
+        log_ctrl_i("%s: ale[%s] type[%d]: sta[%s] not found", __FUNCTION__, ale->al_mac_str, msg_type, mac_string(src_mac));
         goto fail;
     }
 
@@ -1356,10 +1478,7 @@ static int update_tunneled_message(map_ale_info_t *ale, map_tunneled_tlv_t *tunn
         log_ctrl_e("%s: could not allocated tunneled msg", __FUNCTION__);
         goto fail;
     }
-
-    map_tunneled_msg_t  *tm = sta->tunneled_msg;
-    uint8_t            **body;
-    uint16_t            *body_len;
+    tm = sta->tunneled_msg;
 
     switch (msg_type) {
         case TUNNELED_MSG_PAYLOAD_ASSOC_REQ:
@@ -1397,7 +1516,6 @@ static int update_tunneled_message(map_ale_info_t *ale, map_tunneled_tlv_t *tunn
     }
     memcpy(*body, tunneled_tlv->frame_body, tunneled_tlv->frame_body_len);
     *body_len = tunneled_tlv->frame_body_len;
-
     return 0;
 fail:
     return -1;
@@ -1415,7 +1533,7 @@ int map_handle_tunneled_msg(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     }
 
     /* Send 1905 ACK */
-    if (map_send_ack(cmdu)) {
+    if (map_send_ack(ale, cmdu)) {
         log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
         return -1;
     }
@@ -1447,14 +1565,14 @@ int map_handle_client_disassoc_stats(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     /* update reason code of disassociated STA in data model */
     sta->last_disassoc_reason_code = reason_tlv->reason_code;
 
-    log_ctrl_i("--------------------------");
-    log_ctrl_i("client is disassociated");
-    log_ctrl_i("reason code: 0x%02x", reason_tlv->reason_code);
-    log_ctrl_i("sta mac:     %s",     mac_string(sta->mac));
-    log_ctrl_i("ale mac:     %s",     mac_string(ale->al_mac));
-    log_ctrl_d("radio id:    %s",     mac_string(sta->bss->radio->radio_id));
-    log_ctrl_d("bssid:       %s",     mac_string(sta->bss->bssid));
-    log_ctrl_i("--------------------------");
+    log_ctrl_n("--------------------------");
+    log_ctrl_n("client is disassociated");
+    log_ctrl_n("reason code: 0x%02x", reason_tlv->reason_code);
+    log_ctrl_n("sta mac:     %s",     mac_string(sta->mac));
+    log_ctrl_n("ale mac:     %s",     mac_string(ale->al_mac));
+    log_ctrl_i("radio id:    %s",     mac_string(sta->bss->radio->radio_id));
+    log_ctrl_i("bssid:       %s",     mac_string(sta->bss->bssid));
+    log_ctrl_n("--------------------------");
 
     return 0;
 }
@@ -1505,6 +1623,9 @@ int map_handle_failed_connection(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     }
     log_ctrl_d("--------------------------");
 
+    map_dm_create_failconn(sta_mac_tlv->sta_mac, bssid_tlv ? bssid_tlv->bssid : NULL,
+        status_tlv->status_code, reason_tlv ? reason_tlv->reason_code : 0);
+
     return 0;
 }
 
@@ -1527,6 +1648,19 @@ int map_handle_proxied_encap_dpp(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     }
 
     return map_parse_1905_encap_dpp_tlv(ale, encap_tlv);
+}
+
+/* MAP_R3 17.1.49 (type 0x8030) */
+int map_handle_1905_encap_eapol(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    map_1905_encap_eapol_tlv_t  *eapol_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_1905_ENCAP_EAPOL,  cmdu); /* Mandatory */
+
+    if (!eapol_tlv) {
+        log_ctrl_e("Cannot get a valid 1905 Encap EAPOL TLV!");
+        return -1;
+    }
+
+    return map_parse_1905_encap_eapol_tlv(ale, eapol_tlv);
 }
 
 /* MAP_R3 17.1.52 (type 0x802f) */

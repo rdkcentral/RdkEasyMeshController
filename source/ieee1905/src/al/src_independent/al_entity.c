@@ -272,13 +272,13 @@ static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t
     uint8_t             *p = &packet_buffer[sizeof(struct ether_header)]; /* After ethernet header */
 
     len -= sizeof(struct ether_header);
-    log_i1905_d("Parse Stream Length From Reassembly:%d", len);
+    log_i1905_t("Parse Stream Length From Reassembly:%d", len);
 
     if (0 == parse_1905_CMDU_header_from_packet(p, &mid, &fragment_id, &last_fragment_indicator)) {
         log_i1905_e("Could not retrieve CMDU header from bit stream");
         return NULL;
     }
-    log_i1905_d("mid = 0x%x, fragment_id = %d, last_fragment_indicator = %d", mid, fragment_id, last_fragment_indicator);
+    log_i1905_t("mid = 0x%x, fragment_id = %d, last_fragment_indicator = %d", mid, fragment_id, last_fragment_indicator);
 
     /* Find the set of streams associated to this 'mid' and add the just
     *  received stream to its set of streams
@@ -422,7 +422,7 @@ static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t
 
         for (j = 0; j <= g_reassemble.mids_in_flight[i].last_fragment; j++) {
             if (0 == g_reassemble.mids_in_flight[i].fragments[j]) {
-                log_i1905_d("We still have to wait for more fragments to complete the CMDU message");
+                log_i1905_t("We still have to wait for more fragments to complete the CMDU message");
                 return NULL;
             }
         }
@@ -432,7 +432,7 @@ static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t
         if (NULL == c) {
             log_i1905_e("parse_1905_CMDU_header_from_packet() failed");
         } else {
-            log_i1905_d("All fragments belonging to this CMDU have already been received and the CMDU structure is ready");
+            log_i1905_t("All fragments belonging to this CMDU have already been received and the CMDU structure is ready");
             maccpy(c->cmdu_stream.src_mac_addr, src_addr);
         }
 
@@ -444,7 +444,7 @@ static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t
         return c;
     }
 
-    log_i1905_d("The last fragment has not yet been received");
+    log_i1905_t("The last fragment has not yet been received");
     return NULL;
 }
 
@@ -621,13 +621,18 @@ static void check_forwarding(char *receiving_interface_name, uint8_t *destinatio
         uint8_t  ifs_nr;
 
         if (map_is_loopback_iface(receiving_interface_name)) {
-            log_i1905_d("Do not relay packet from lo interface");
+            log_i1905_t("Do not relay packet from lo interface");
             return;
         }
 
-        log_i1905_d("Relay multicast flag set. Forwarding...");
+        log_i1905_t("Relay multicast flag set. Forwarding...");
 
         ifs_names = PLATFORM_GET_LIST_OF_1905_INTERFACES(&ifs_nr);
+        if (!ifs_names) {
+            log_i1905_e("Could not get list of 1905 interfaces");
+            return;
+        }
+
         for (i = 0; i < ifs_nr; i++) {
             uint8_t authenticated;
             uint8_t power_state;
@@ -652,7 +657,7 @@ static void check_forwarding(char *receiving_interface_name, uint8_t *destinatio
                 /* Forward packets only to interfaces other than lo */
                 (map_is_loopback_iface(ifs_names[i]))) {
                 /* Do not forward the message on this interface */
-                log_i1905_d("Do not forward the message on this interface: %s",ifs_names[i]);
+                log_i1905_t("Do not forward the message on this interface: %s",ifs_names[i]);
                 if (NULL != x) {
                     PLATFORM_FREE_1905_INTERFACE_INFO(x);
                 }
@@ -664,7 +669,7 @@ static void check_forwarding(char *receiving_interface_name, uint8_t *destinatio
             }
 
             /* Retransmit message */
-            log_i1905_d("--> %s (forwarding from %s to %s)", convert_1905_CMDU_type_to_string(c->message_type),
+            log_i1905_t("--> %s (forwarding from %s to %s)", convert_1905_CMDU_type_to_string(c->message_type),
                         receiving_interface_name, ifs_names[i]);
 
             if (0 == forward1905RawPacket(ifs_names[i], c->message_id, destination_mac_addr, c, GET_SRC_MAC_FRM_STREAM)) {
@@ -710,10 +715,10 @@ static void packet_cb(char *if_name, uint8_t *packet, uint16_t packet_len)
     }
     PLATFORM_FREE_1905_INTERFACE_INFO(x);
 
-    log_i1905_d("New queue message arrived: packet captured on interface %s", if_name);
-    log_i1905_d("    Dst address: %s", acu_mac_string(dst_addr));
-    log_i1905_d("    Src address: %s", acu_mac_string(src_addr));
-    log_i1905_d("    Ether type : 0x%04x", ether_type);
+    log_i1905_t("New queue message arrived: packet captured on interface %s", if_name);
+    log_i1905_t("    Dst address: %s", acu_mac_string(dst_addr));
+    log_i1905_t("    Src address: %s", acu_mac_string(src_addr));
+    log_i1905_t("    Ether type : 0x%04x", ether_type);
 
     /* packets captured from lo interface may not be destined to my AL MAC */
     if (maccmp(dst_addr, DMalMacGet()) && maccmp(dst_addr, g_mcast_mac_1905) && maccmp(dst_addr, g_mcast_mac_lldp)) {
@@ -725,15 +730,15 @@ static void packet_cb(char *if_name, uint8_t *packet, uint16_t packet_len)
         case ETHERTYPE_LLDP: {
             i1905_lldp_payload_t *payload;
 
-            log_i1905_d("LLDP message received.");
+            log_i1905_t("LLDP message received.");
 
             payload = parse_lldp_PAYLOAD_from_packet(/* remove eth header */ &packet[sizeof(struct ethhdr)]);
 
             if (NULL == payload) {
                 log_i1905_w("Invalid bridge discovery message. Ignoring...");
             } else {
-                if (PLATFORM_OS_LOG_LEVEL_DEBUG()) {
-                    log_i1905_d("LLDP message contents:");
+                if (PLATFORM_OS_LOG_LEVEL_TRACE()) {
+                    log_i1905_t("LLDP message contents:");
                     visit_lldp_PAYLOAD_structure(payload, print_callback, PLATFORM_PRINTF, "");
                 }
 
@@ -745,7 +750,7 @@ static void packet_cb(char *if_name, uint8_t *packet, uint16_t packet_len)
         }
         case ETHERTYPE_1905: {
             i1905_cmdu_t *c;
-            log_i1905_d("CMDU message received. Reassembling...");
+            log_i1905_t("CMDU message received. Reassembling...");
 
             c = reassemble_fragmented_cmdu(packet, packet_len);
 

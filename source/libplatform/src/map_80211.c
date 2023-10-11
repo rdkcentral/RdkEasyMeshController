@@ -106,12 +106,20 @@
 #define IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ BIT(3)
 #define IEEE80211_VHT_CAP_SHORT_GI_80                     BIT(5)
 #define IEEE80211_VHT_CAP_SHORT_GI_160                    BIT(6)
+#define IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE           BIT(11)
+#define IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE           BIT(19)
 
 /* HE Cap */
 #define IEEE80211_HE_CAP_PHY_CAP_40MHZ_24G                BIT(1)
 #define IEEE80211_HE_CAP_PHY_CAP_40MHZ_80MGHZ_5G_6G       BIT(2)
 #define IEEE80211_HE_CAP_PHY_CAP_160MHZ_5G_6G             BIT(3)
 #define IEEE80211_HE_CAP_PHY_CAP_8080MHZ_5G_6G            BIT(4)
+
+#define IEEE80211_HE_CAP_PHY_CAP_FULL_BANDWIDTH_UL_MU_MIMO    BIT(6) /* PHY_CAP B22 - Byte 2 Bit 6 */
+#define IEEE80211_HE_CAP_PHY_CAP_PARTIAL_BANDWIDTH_UL_MU_MIMO BIT(7) /* PHY_CAP B23 - Byte 2 Bit 7 */
+#define IEEE80211_HE_CAP_PHY_CAP_SU_BEAMFORMER                BIT(7) /* PHY_CAP B31 - Byte 3 Bit 7 */
+#define IEEE80211_HE_CAP_PHY_CAP_MU_BEAMFORMER                BIT(1) /* PHY_CAP B33 - Byte 4 Bit 1 */
+#define IEEE80211_HE_CAP_PHY_CAP_PARTIAL_BANDWIDTH_DL_MU_MIMO BIT(6) /* PHY_CAP B54 - Byte 6 Bit 6 */
 
 /* MAP IE */
 #define WFA_OUI_BYTE_0                   0x50
@@ -599,6 +607,49 @@ int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int bo
         caps->sgi_support = vht_cap_info & (IEEE80211_VHT_CAP_SHORT_GI_80 | IEEE80211_VHT_CAP_SHORT_GI_160) ? 1 : 0;
     } else if (ht_cap) {
         caps->sgi_support = ht_cap_info & (IEEE80211_HT_CAP_INFO_SHORT_GI20MHZ | IEEE80211_HT_CAP_INFO_SHORT_GI40MHZ) ? 1 : 0;
+    }
+
+    if (ht_cap) {
+        caps->ht_caps.max_supported_rx_streams = ht_mcs_set_to_ss(ht_cap->supported_mcs_set);
+        caps->ht_caps.max_supported_tx_streams = ht_mcs_set_to_ss(ht_cap->supported_mcs_set); /* ?? - actually gives rx set */
+        caps->ht_caps.gi_support_20mhz = ht_cap_info & IEEE80211_HT_CAP_INFO_SHORT_GI20MHZ ? 1 : 0;
+        caps->ht_caps.gi_support_40mhz = ht_cap_info & IEEE80211_HT_CAP_INFO_SHORT_GI40MHZ ? 1 : 0;
+        caps->ht_caps.ht_support_40mhz = ht_cap_info & IEEE80211_HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
+    }
+    if (supported_freq != IEEE80211_FREQUENCY_BAND_2_4_GHZ && vht_cap) {
+        caps->vht_caps.supported_tx_mcs = vht_cap->vht_supported_mcs_set.tx_map; /* put as LE */
+        caps->vht_caps.supported_rx_mcs = vht_cap->vht_supported_mcs_set.rx_map; /* put as LE */
+        caps->vht_caps.max_supported_tx_streams = vht_he_mcs_map_to_ss(map_le_to_host16(vht_cap->vht_supported_mcs_set.tx_map));
+        caps->vht_caps.max_supported_rx_streams = vht_he_mcs_map_to_ss(map_le_to_host16(vht_cap->vht_supported_mcs_set.rx_map));
+        caps->vht_caps.gi_support_80mhz = (vht_cap_info & IEEE80211_VHT_CAP_SHORT_GI_80) ? 1 : 0;
+        caps->vht_caps.gi_support_160mhz = (vht_cap_info & IEEE80211_VHT_CAP_SHORT_GI_160) ? 1 : 0;
+        caps->vht_caps.support_80_80_mhz = (vht_cap_info & IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ) ? 1 : 0;
+        caps->vht_caps.support_160mhz = (vht_cap_info & IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160MHZ) ? 1 : 0;
+        caps->vht_caps.su_beamformer_capable = (vht_cap_info & IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE) ? 1 : 0;
+        caps->vht_caps.mu_beamformer_capable = (vht_cap_info & IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE) ? 1 : 0;
+    }
+    if (he_cap) {
+        /* mcs maps size is fixed length for now as ieee80211_he_cap struct currently only has the first two rx/tx mcs fields */
+        caps->he_caps.supported_mcs_length = 4;
+        caps->he_caps.supported_tx_rx_mcs[0] = he_cap->rx_mcs_map_80; /* put as LE */
+        caps->he_caps.supported_tx_rx_mcs[1] = he_cap->tx_mcs_map_80; /* put as LE */
+        caps->he_caps.max_supported_tx_streams = vht_he_mcs_map_to_ss(map_le_to_host16(he_cap->tx_mcs_map_80));
+        caps->he_caps.max_supported_rx_streams = vht_he_mcs_map_to_ss(map_le_to_host16(he_cap->rx_mcs_map_80));
+        if (supported_freq != IEEE80211_FREQUENCY_BAND_2_4_GHZ) {
+            caps->he_caps.support_80_80_mhz = (he_cap->phy_cap_info[0] & IEEE80211_HE_CAP_PHY_CAP_8080MHZ_5G_6G) ? 1 : 0;
+            caps->he_caps.support_160mhz = (he_cap->phy_cap_info[0] & IEEE80211_HE_CAP_PHY_CAP_160MHZ_5G_6G) ? 1 : 0;
+        } else {
+            caps->he_caps.support_80_80_mhz = 0;
+            caps->he_caps.support_160mhz = 0;
+        }
+        caps->he_caps.su_beamformer_capable = (IEEE80211_HE_CAP_PHY_CAP_SU_BEAMFORMER & he_cap->phy_cap_info[3]) ? 1 : 0;
+        caps->he_caps.mu_beamformer_capable = (IEEE80211_HE_CAP_PHY_CAP_MU_BEAMFORMER & he_cap->phy_cap_info[4]) ? 1 : 0;
+        caps->he_caps.ul_mimo_capable = (IEEE80211_HE_CAP_PHY_CAP_FULL_BANDWIDTH_UL_MU_MIMO & he_cap->phy_cap_info[2]) ? 1 : 0;
+        caps->he_caps.ul_mimo_ofdma_capable = (IEEE80211_HE_CAP_PHY_CAP_PARTIAL_BANDWIDTH_UL_MU_MIMO & he_cap->phy_cap_info[2]) ? 1 : 0;
+        caps->he_caps.dl_mimo_ofdma_capable = (IEEE80211_HE_CAP_PHY_CAP_PARTIAL_BANDWIDTH_DL_MU_MIMO & he_cap->phy_cap_info[6]) ? 1 : 0;
+        /* UL/DL OFDMA is mandatory in 11ax, however it may not be implemented in pre-final 11ax implementations */
+        caps->he_caps.ul_ofdma_capable = 1;
+        caps->he_caps.dl_ofdma_capable = 1;
     }
 
     /* 11K */

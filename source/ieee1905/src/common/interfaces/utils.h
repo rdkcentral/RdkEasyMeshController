@@ -72,6 +72,6 @@
 *  functions should do and look like.
 */
 
-void print_callback (void (*write_function)(const char *fmt, ...), const char *prefix, uint8_t size, const char *name, const char *fmt, void *p);
+void print_callback (void (*write_function)(const char *fmt, ...), const char *prefix, size_t size, const char *name, const char *fmt, void *p);
 
 #endif /* UTILS_H */

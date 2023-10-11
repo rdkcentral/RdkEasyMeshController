@@ -28,8 +28,6 @@
 
 #include <libubox/list.h>
 
-#include "ssp_global.h"
-
 #include "acu_utils.h"
 
 #include "map_common_defines.h"
@@ -46,7 +44,9 @@
 #error Neither little nor big endian
 #endif
 
+#ifndef ARRAY_SIZE
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
+#endif
 
 #define STRUCT_PACKED __attribute__ ((packed))
 
@@ -131,12 +131,6 @@ static inline void get_mac_as_str(uint8_t* mac, char* mac_str, UNUSED int length
 }
 
 
-/* Time */
-struct timespec get_current_time();
-
-uint64_t get_clock_diff_secs(struct timespec new_time, struct timespec old_time);
-
-
 /* Logging */
 #ifdef LOG_TAG
   #define _LOG_TAG "[" LOG_TAG "]"
@@ -144,10 +138,15 @@ uint64_t get_clock_diff_secs(struct timespec new_time, struct timespec old_time)
   #define _LOG_TAG ""
 #endif
 
+#ifndef LOG_TRACE
+#define LOG_TRACE LOG_DEBUG + 1
+#endif
+
 typedef enum {
     MAP_LIBRARY,
     MAP_IEEE1905,
     MAP_CONTROLLER,
+    MAP_SSP,
     MAP_TEST
 } map_log_source_t;
 
@@ -161,20 +160,34 @@ void map_vlog_ext(int module, int level, bool check_level, const char *format, v
 
 #define log_i1905_e(...) map_log(MAP_IEEE1905,   LOG_ERR,     "[i1905]" _LOG_TAG " " __VA_ARGS__);
 #define log_i1905_w(...) map_log(MAP_IEEE1905,   LOG_WARNING, "[i1905]" _LOG_TAG " " __VA_ARGS__);
+#define log_i1905_n(...) map_log(MAP_IEEE1905,   LOG_NOTICE,  "[i1905]" _LOG_TAG " " __VA_ARGS__);
 #define log_i1905_i(...) map_log(MAP_IEEE1905,   LOG_INFO,    "[i1905]" _LOG_TAG " " __VA_ARGS__);
 #define log_i1905_d(...) map_log(MAP_IEEE1905,   LOG_DEBUG,   "[i1905]" _LOG_TAG " " __VA_ARGS__);
+#define log_i1905_t(...) map_log(MAP_IEEE1905,   LOG_TRACE,   "[i1905]" _LOG_TAG " " __VA_ARGS__);
 #define log_lib_e(...)   map_log(MAP_LIBRARY,    LOG_ERR,     "[lib]"   _LOG_TAG " " __VA_ARGS__);
 #define log_lib_w(...)   map_log(MAP_LIBRARY,    LOG_WARNING, "[lib]"   _LOG_TAG " " __VA_ARGS__);
+#define log_lib_n(...)   map_log(MAP_LIBRARY,    LOG_NOTICE,  "[lib]"   _LOG_TAG " " __VA_ARGS__);
 #define log_lib_i(...)   map_log(MAP_LIBRARY,    LOG_INFO,    "[lib]"   _LOG_TAG " " __VA_ARGS__);
 #define log_lib_d(...)   map_log(MAP_LIBRARY,    LOG_DEBUG,   "[lib]"   _LOG_TAG " " __VA_ARGS__);
+#define log_lib_t(...)   map_log(MAP_LIBRARY,    LOG_TRACE,   "[lib]"   _LOG_TAG " " __VA_ARGS__);
 #define log_ctrl_e(...)  map_log(MAP_CONTROLLER, LOG_ERR,     "[ctrl]"  _LOG_TAG " " __VA_ARGS__);
 #define log_ctrl_w(...)  map_log(MAP_CONTROLLER, LOG_WARNING, "[ctrl]"  _LOG_TAG " " __VA_ARGS__);
+#define log_ctrl_n(...)  map_log(MAP_CONTROLLER, LOG_NOTICE,  "[ctrl]"  _LOG_TAG " " __VA_ARGS__);
 #define log_ctrl_i(...)  map_log(MAP_CONTROLLER, LOG_INFO,    "[ctrl]"  _LOG_TAG " " __VA_ARGS__);
 #define log_ctrl_d(...)  map_log(MAP_CONTROLLER, LOG_DEBUG,   "[ctrl]"  _LOG_TAG " " __VA_ARGS__);
+#define log_ctrl_t(...)  map_log(MAP_CONTROLLER, LOG_TRACE,   "[ctrl]"  _LOG_TAG " " __VA_ARGS__);
+#define log_ssp_e(...)   map_log(MAP_SSP,        LOG_ERR,     "[ssp]"   _LOG_TAG " " __VA_ARGS__);
+#define log_ssp_w(...)   map_log(MAP_SSP,        LOG_WARNING, "[ssp]"   _LOG_TAG " " __VA_ARGS__);
+#define log_ssp_n(...)   map_log(MAP_SSP,        LOG_NOTICE,  "[ssp]"   _LOG_TAG " " __VA_ARGS__);
+#define log_ssp_i(...)   map_log(MAP_SSP,        LOG_INFO,    "[ssp]"   _LOG_TAG " " __VA_ARGS__);
+#define log_ssp_d(...)   map_log(MAP_SSP,        LOG_DEBUG,   "[ssp]"   _LOG_TAG " " __VA_ARGS__);
+#define log_ssp_t(...)   map_log(MAP_SSP,        LOG_TRACE,   "[ssp]"   _LOG_TAG " " __VA_ARGS__);
 #define log_test_e(...)  map_log(MAP_TEST,       LOG_ERR,     "[test]"  _LOG_TAG " " __VA_ARGS__);
 #define log_test_w(...)  map_log(MAP_TEST,       LOG_WARNING, "[test]"  _LOG_TAG " " __VA_ARGS__);
+#define log_test_n(...)  map_log(MAP_TEST,       LOG_NOTICE,  "[test]"  _LOG_TAG " " __VA_ARGS__);
 #define log_test_i(...)  map_log(MAP_TEST,       LOG_INFO,    "[test]"  _LOG_TAG " " __VA_ARGS__);
 #define log_test_d(...)  map_log(MAP_TEST,       LOG_DEBUG,   "[test]"  _LOG_TAG " " __VA_ARGS__);
+#define log_test_t(...)  map_log(MAP_TEST,       LOG_TRACE,   "[test]"  _LOG_TAG " " __VA_ARGS__);
 
 
 /* Ebtables */
@@ -187,5 +200,7 @@ bool map_is_loopback_iface(const char *ifname);
 bool map_is_ethernet_iface(const char *ifname);
 
 #define map_strlcpy(dst, src, max_len) acu_strlcpy(dst, src, max_len)
+
+uint8_t map_count_bits_16(uint16_t n);
 
 #endif /* MAP_UTILS_H_ */

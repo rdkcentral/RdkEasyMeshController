@@ -33,7 +33,7 @@
 
 #include <libubox/uloop.h>
 
-#include "ssp_global.h"
+#include "ccsp_trace.h"
 
 #include "map_utils.h"
 #include "map_config.h"
@@ -53,39 +53,6 @@ mac_addr g_zero_mac     = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 mac_addr g_wildcard_mac = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
 /*#######################################################################
-#                       TIME                                            #
-########################################################################*/
-struct timespec get_current_time()
-{
-    struct timespec boottime = {0};
-    clockid_t clocktype = CLOCK_MONOTONIC;
-#ifdef CLOCK_BOOTTIME
-    clocktype = CLOCK_BOOTTIME;
-#endif
-    clock_gettime(clocktype, &boottime);
-
-    return boottime;
-}
-
-uint64_t get_clock_diff_secs(struct timespec new_time, struct timespec old_time)
-{
-    uint64_t old_ms  = 0;
-    uint64_t new_ms  = 0;
-    uint64_t diff = 0;
-
-    old_ms = (old_time.tv_sec * 1000) + (old_time.tv_nsec / 1000000);
-    new_ms = (new_time.tv_sec * 1000) + (new_time.tv_nsec / 1000000);
-
-    diff = ((new_ms - old_ms + 500)/1000);   /* 500 added To round off
-                                                Eg: 4999 milliseconds will be 4.999 seconds
-                                                So adding 500 will behave as a round() func.
-                                                We are not using math.round() here because
-                                                it mandates to include -lm library */
-
-    return diff;
-}
-
-/*#######################################################################
 #                       LOGGING                                         #
 ########################################################################*/
 static int get_module_loglevel(map_cfg_t *cfg, int module)
@@ -94,6 +61,7 @@ static int get_module_loglevel(map_cfg_t *cfg, int module)
         case MAP_LIBRARY:        return cfg->library_log_level;
         case MAP_IEEE1905:       return cfg->ieee1905_log_level;
         case MAP_CONTROLLER:     return cfg->controller_log_level;
+        case MAP_SSP:            return cfg->ssp_log_level;
         default:                 return LOG_INFO;
     }
 }
@@ -110,10 +78,14 @@ static void map_vlog_file(int level, const char *format, va_list args)
         case LOG_WARNING:
             CcspTraceWarning(("%s\n", buffer));
             break;
+        case LOG_NOTICE:
+            CcspTraceNotice(("%s\n", buffer));
+            break;
         case LOG_INFO:
             CcspTraceInfo(("%s\n", buffer));
             break;
         case LOG_DEBUG:
+        case LOG_TRACE:
             CcspTraceDebug(("%s\n", buffer));
             break;
         default:
@@ -237,4 +209,15 @@ bool map_is_ethernet_iface(const char *ifname)
 
     close(sockfd);
     return true;
+}
+
+uint8_t map_count_bits_16(uint16_t n)
+{
+        uint8_t c = 0;
+
+        for (; n; ++c) {
+                n &= n - 1;
+        }
+
+        return c;
 }

@@ -142,7 +142,7 @@
 void PLATFORM_PRINTF(const char *format, ...);
 
 /* Return the number of milliseconds ellapsed since the program started */
-uint32_t PLATFORM_GET_TIMESTAMP(void);
+uint64_t PLATFORM_GET_TIMESTAMP(void);
 
 
 /*#######################################################################

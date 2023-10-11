@@ -37,19 +37,27 @@
 #define min(a,b) ((a) < (b) ? (a) : (b))
 
 /*#######################################################################
+#                       GLOBALS                                         #
+########################################################################*/
+/* "Empty" profile used for teardown */
+static const map_profile_cfg_t g_teardown_profile;
+
+/*#######################################################################
 #                       HELP FUNCTIONS                                  #
 ########################################################################*/
-static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio, uint8_t *config_count,
-                           map_profile_cfg_t *m2_config, map_traffic_separation_policy_tlv_t *tsp_tlv)
+static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio,
+                           i1905_wsc_m2_cfg_t *m2_profiles, uint8_t max_m2_profiles, uint8_t *ret_m2_profiles_nr,
+                           map_traffic_separation_policy_tlv_t *tsp_tlv)
 {
-    map_controller_cfg_t *cfg         = get_controller_cfg();
-    uint16_t              freq_bands  = map_get_freq_bands(radio);
-    bool                  is_gateway  = map_is_local_agent(ale); /* Note: at this moment, the controller is expected to run on a gateway */
-    bool                  is_extender = !is_gateway;
-    int                   prim_vid    = map_cfg_get()->primary_vlan_id;
+    map_controller_cfg_t *cfg            = get_controller_cfg();
+    uint16_t              freq_bands     = map_get_freq_bands(radio);
+    bool                  is_gateway     = map_is_local_agent(ale); /* Note: at this moment, the controller is expected to run on a gateway */
+    bool                  is_extender    = !is_gateway;
+    int                   prim_vid       = map_cfg_get()->primary_vlan_id;
+    uint8_t               m2_profiles_nr = 0;
     unsigned int          i, j;
 
-    log_ctrl_i("[get_m2_profiles] configure ale[%s] gw[%d] ext[%d] radio[%s] max_bss[%d] max_vid[%d] band[%s%s%s%s]",
+    log_ctrl_n("[get_m2_profiles] configure ale[%s] gw[%d] ext[%d] radio[%s] max_bss[%d] max_vid[%d] band[%s%s%s%s]",
                ale->al_mac_str, is_gateway ? 1 : 0, is_extender ? 1 : 0,
                radio->radio_id_str, radio->max_bss, ale->agent_capability.max_vid_count,
                freq_bands & MAP_M2_BSS_RADIO2G  ? "2G "  : "",
@@ -57,9 +65,15 @@ static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio, uint8_t
                freq_bands & MAP_M2_BSS_RADIO5GU ? "5GH " : "",
                freq_bands & MAP_M2_BSS_RADIO6G  ? "6G"  : "");
 
-    for (i = 0; (i < cfg->num_profiles) && (*config_count < radio->max_bss) && (*config_count < MAX_BSS_PER_RADIO); i++) {
-        map_profile_cfg_t *profile = &cfg->profiles[i];
-        uint8_t            bss_state;
+    for (i = 0; (i < cfg->num_profiles) && (m2_profiles_nr < radio->max_bss) && (m2_profiles_nr < max_m2_profiles); i++) {
+        i1905_wsc_m2_cfg_t *m2_cfg =  &m2_profiles[m2_profiles_nr];
+        map_profile_cfg_t  *profile = &cfg->profiles[i];
+        uint8_t             bss_state;
+
+        /* Skip disabled profile */
+        if (!profile->enabled) {
+            continue;
+        }
 
         /* In case of wfa certification, profiles are configured per ALE */
         if (WFA_CERT() && memcmp(profile->al_mac, ale->al_mac, MAC_ADDR_LEN)) {
@@ -107,23 +121,34 @@ static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio, uint8_t
             continue;
         }
 
-        map_profile_clone(&m2_config[*config_count], profile);
-        m2_config[*config_count].bss_state = bss_state;
+        m2_cfg->profile  = profile;
+        m2_cfg->map_ext  = 0;
+        m2_cfg->map_ext |= (bss_state & MAP_FRONTHAUL_BSS) ? WSC_WFA_MAP_ATTR_FLAG_FRONTHAUL_BSS : 0;
+        m2_cfg->map_ext |= (bss_state & MAP_BACKHAUL_BSS)  ? WSC_WFA_MAP_ATTR_FLAG_BACKHAUL_BSS  : 0;
 
-        log_ctrl_i("[get_m2_profiles] Use cred[%d] for bss[%d]", i, *config_count);
+        log_ctrl_n("[get_m2_profiles] use profile idx[%d] and map_ext[0x%02x] for bss[%d]",
+                    profile->profile_idx, m2_cfg->map_ext, m2_profiles_nr);
 
-        (*config_count)++;
+        m2_profiles_nr++;
     }
 
     /* We do not have a profile for reported radio frequency band. Send the
        configuration to tear down the radio
     */
-    if (*config_count == 0) {
+    if (m2_profiles_nr == 0) {
         /* Setting the SSID to NULL will build a WSC TLV with TEAR-DOWN bit set. */
-        log_ctrl_i("[get_m2_profiles] teardown radio (no bss configured)");
-        m2_config->bss_ssid[0] = '\0';
-        *config_count = 1;
+        log_ctrl_n("[get_m2_profiles] teardown radio (no bss configured)");
+        goto teardown;
     }
+
+    *ret_m2_profiles_nr = m2_profiles_nr;
+
+    return 0;
+
+teardown:
+    m2_profiles[0].profile = &g_teardown_profile;
+    m2_profiles[0].map_ext = WSC_WFA_MAP_ATTR_FLAG_TEARDOWN;
+    *ret_m2_profiles_nr = 1;
 
     return 0;
 }
@@ -374,26 +399,24 @@ int map_send_topology_query(void *args, uint16_t *mid)
 }
 
 /* 1905.1 6.3.3 (type 0x0002) */
-int map_send_topology_response(i1905_cmdu_t *recv_cmdu)
+int map_send_topology_response(mac_addr src_mac, i1905_cmdu_t *recv_cmdu)
 {
 #define BASIC_TLVS_FOR_TOPOLOGY_RESP 5 /* DEVICE INFO + SUPPORTED SERVICE + AP OPERATIONAL + MAP PROFILE + NULL tlv */
-    i1905_cmdu_t                     cmdu                   = {0};
-    i1905_device_information_tlv_t   device_info_tlv        = {0};
-    i1905_device_bridging_cap_tlv_t  bridge_info_tlv        = {0};
-    i1905_neighbor_device_list_tlv_t neighbor_1905_tlvs[MAX_INTERFACE_COUNT];
-    map_supported_service_tlv_t      supported_service_tlv  = {0};
-    map_ap_operational_bss_tlv_t     ap_operational_bss_tlv = {0};
-    map_multiap_profile_tlv_t        map_profile_tlv        = {0};
-    int                              neighbor_count         = 0;
-    int                              status                 = -1;
-    uint16_t                         tlvs_nr                = 0;
-    uint16_t                         tlv_count              = 0;
-    uint8_t                          i                      = 0;
-
-    memset(neighbor_1905_tlvs, 0, sizeof(neighbor_1905_tlvs));
+    i1905_cmdu_t                      cmdu                   = {0};
+    i1905_device_information_tlv_t    device_info_tlv        = {0};
+    i1905_device_bridging_cap_tlv_t   bridge_info_tlv        = {0};
+    i1905_neighbor_device_list_tlv_t *neighbor_dev_tlvs      = NULL;
+    map_supported_service_tlv_t       supported_service_tlv  = {0};
+    map_ap_operational_bss_tlv_t      ap_operational_bss_tlv = {0};
+    map_multiap_profile_tlv_t         map_profile_tlv        = {0};
+    size_t                            neighbor_dev_tlvs_nr   = 0;
+    int                               status                 = -1;
+    uint16_t                          tlvs_nr                = 0;
+    uint16_t                          tlv_count              = 0;
+    size_t                            i                      = 0;
 
     do {
-        if (recv_cmdu == NULL) {
+        if (src_mac == NULL || recv_cmdu == NULL) {
             break;
         }
 
@@ -410,15 +433,16 @@ int map_send_topology_response(i1905_cmdu_t *recv_cmdu)
         }
 
         /* Neighbor TLVs */
-        if (map_get_1905_neighbor_tlvs(neighbor_1905_tlvs, &neighbor_count)) {
+        if (map_get_1905_neighbor_tlvs(&neighbor_dev_tlvs, &neighbor_dev_tlvs_nr)) {
             log_ctrl_e("get_neighbor_tlvs failed");
             break;
         }
 
         /* Supported service TLV */
         supported_service_tlv.tlv_type    = TLV_TYPE_SUPPORTED_SERVICE;
-	supported_service_tlv.services_nr = 1;
-	supported_service_tlv.services[0] = MAP_SERVICE_CONTROLLER;
+        supported_service_tlv.services_nr = 2;
+        supported_service_tlv.services[0] = MAP_SERVICE_CONTROLLER;
+        supported_service_tlv.services[1] = MAP_SERVICE_EMEX_CONTROLLER;
 
         /* AP Operational BSS TLV */
         ap_operational_bss_tlv.tlv_type  = TLV_TYPE_AP_OPERATIONAL_BSS;
@@ -429,7 +453,7 @@ int map_send_topology_response(i1905_cmdu_t *recv_cmdu)
         map_profile_tlv.map_profile = get_controller_cfg()->map_profile;
 
         /* Intilise list of tlvs */
-        tlvs_nr = BASIC_TLVS_FOR_TOPOLOGY_RESP + neighbor_count;
+        tlvs_nr = BASIC_TLVS_FOR_TOPOLOGY_RESP + neighbor_dev_tlvs_nr;
 
         if (bridge_info_tlv.bridging_tuples_nr > 0) {
             tlvs_nr++; /*Increment for bridge tlv */
@@ -453,8 +477,8 @@ int map_send_topology_response(i1905_cmdu_t *recv_cmdu)
             cmdu.list_of_TLVs[tlv_count++] = (uint8_t *)&bridge_info_tlv;       /* Bridge Info tlv */
         }
 
-        for (i = 0; i < neighbor_count; i++) {
-            cmdu.list_of_TLVs[tlv_count++] = (uint8_t *)&neighbor_1905_tlvs[i]; /* 1905 Neighbor tlvs */
+        for (i = 0; i < neighbor_dev_tlvs_nr; i++) {
+            cmdu.list_of_TLVs[tlv_count++] = (uint8_t *)&neighbor_dev_tlvs[i];  /* 1905 Neighbor tlvs */
         }
 
         cmdu.list_of_TLVs[tlv_count++] = (uint8_t *)&supported_service_tlv;     /* Supported Service tlv */
@@ -467,7 +491,7 @@ int map_send_topology_response(i1905_cmdu_t *recv_cmdu)
             break;
         }
 
-        if (map_send_cmdu(recv_cmdu->cmdu_stream.src_mac_addr, &cmdu, &cmdu.message_id)) {
+        if (map_send_cmdu(src_mac, &cmdu, &cmdu.message_id)) {
             break;
         }
 
@@ -481,9 +505,7 @@ int map_send_topology_response(i1905_cmdu_t *recv_cmdu)
     map_free_bridging_cap_tlv(&bridge_info_tlv);
 
     /* Free 1905 neighbor tlvs */
-    for (i = 0; i < neighbor_count; i++) {
-        map_free_1905_neighbor_tlv(&neighbor_1905_tlvs[i]);
-    }
+    map_free_1905_neighbor_tlv(neighbor_dev_tlvs, neighbor_dev_tlvs_nr);
 
     free(cmdu.list_of_TLVs);
 
@@ -658,7 +680,7 @@ int map_send_autoconfig_wsc_m2(map_ale_info_t *ale, map_radio_info_t *radio, i19
     uint8_t                              wsc_tlv_count                 = 0;
     uint8_t                              current_tlv                   = 0;
     uint8_t                              i;
-    map_profile_cfg_t                    m2_profiles[MAX_BSS_PER_RADIO];
+    i1905_wsc_m2_cfg_t                   m2_profiles[MAX_BSS_PER_RADIO];
     i1905_wsc_data_t                     wsc_params;
 
     memset(m2_profiles, 0, sizeof(m2_profiles));
@@ -687,7 +709,7 @@ int map_send_autoconfig_wsc_m2(map_ale_info_t *ale, map_radio_info_t *radio, i19
         }
 
         /* Get to be configured profiles */
-        if (get_m2_profiles(ale, radio, &wsc_tlv_count, m2_profiles,
+        if (get_m2_profiles(ale, radio, m2_profiles, MAX_BSS_PER_RADIO, &wsc_tlv_count,
                             add_ts_tlv ? &traffic_separation_policy_tlv : NULL)) {
             ERROR_EXIT(status)
         }
@@ -725,7 +747,7 @@ int map_send_autoconfig_wsc_m2(map_ale_info_t *ale, map_radio_info_t *radio, i19
         wsc_params.m1.wsc_frame      = wsc_m1_tlv->wsc_frame;
 
         for (i = 0; i < wsc_tlv_count; i++) {
-            wsc_params.m2_config = &m2_profiles[i];
+            wsc_params.m2_cfg = &m2_profiles[i];
             if (get_wsc_m2_tlv(recv_cmdu->interface_name, &wsc_params, &wsc_m2_tlv[i])) {
                 ERROR_EXIT(status)
             }
@@ -737,7 +759,7 @@ int map_send_autoconfig_wsc_m2(map_ale_info_t *ale, map_radio_info_t *radio, i19
             break;
         }
 
-        if (map_send_cmdu(recv_cmdu->cmdu_stream.src_mac_addr, &cmdu, mid)) {
+        if (map_send_cmdu(ale->al_mac, &cmdu, mid)) {
             ERROR_EXIT(status)
         }
 
@@ -892,7 +914,7 @@ cleanup:
 #                       MAP R1 CMDU                                     #
 ########################################################################*/
 /* MAP_R1 17.1 (type 0x8000) */
-int map_send_ack(i1905_cmdu_t *recv_cmdu)
+int map_send_ack(map_ale_info_t *ale, i1905_cmdu_t *recv_cmdu)
 {
     i1905_cmdu_t  cmdu   = {0};
     uint8_t     *tlvs[1] = {0};
@@ -905,11 +927,11 @@ int map_send_ack(i1905_cmdu_t *recv_cmdu)
     cmdu.list_of_TLVs    = tlvs;
     map_strlcpy(cmdu.interface_name, recv_cmdu->interface_name, sizeof(cmdu.interface_name));
 
-    return map_send_cmdu(recv_cmdu->cmdu_stream.src_mac_addr, &cmdu, &cmdu.message_id);
+    return map_send_cmdu(ale->al_mac, &cmdu, &cmdu.message_id);
 }
 
 /* MAP_R1 17.1 (type 0x8000) */
-int map_send_ack_sta_error(i1905_cmdu_t *recv_cmdu, mac_addr *sta_macs, int sta_mac_nr, uint8_t error_code)
+int map_send_ack_sta_error(map_ale_info_t *ale, i1905_cmdu_t *recv_cmdu, mac_addr *sta_macs, int sta_mac_nr, uint8_t error_code)
 {
     i1905_cmdu_t   cmdu = {0};
     uint8_t      **tlvs;
@@ -936,18 +958,19 @@ int map_send_ack_sta_error(i1905_cmdu_t *recv_cmdu, mac_addr *sta_macs, int sta_
     cmdu.list_of_TLVs    = tlvs;
     map_strlcpy(cmdu.interface_name, recv_cmdu->interface_name, sizeof(cmdu.interface_name));
 
-    if (map_send_cmdu(recv_cmdu->cmdu_stream.src_mac_addr, &cmdu, &cmdu.message_id)) {
+    if (map_send_cmdu(ale->al_mac, &cmdu, &cmdu.message_id)) {
         goto cleanup;
     }
 
     ret = 0;
 
 cleanup:
-    for (i = 0; i < sta_mac_nr; i++) {
-        free_1905_TLV_structure(tlvs[i]);
+    if (tlvs) {
+        for (i = 0; i < sta_mac_nr; i++) {
+            free_1905_TLV_structure(tlvs[i]);
+        }
+        free(tlvs);
     }
-
-    free(tlvs);
 
     return ret;
 }
@@ -1450,6 +1473,12 @@ int map_send_proxied_encap_dpp(map_ale_info_t *ale, map_1905_encap_dpp_tlv_t *en
     return map_send_cmdu(ale->al_mac, &cmdu, mid);
 }
 
+/* MAP_R3 17.1.49 (type 0x8030) */
+int map_send_1905_encap_eapol(map_ale_info_t *ale, map_1905_encap_eapol_tlv_t *encap_eapol_tlv, uint16_t *mid)
+{
+    return send_cmdu_one_tlv(ale, CMDU_TYPE_MAP_1905_ENCAP_EAPOL, TLV_TYPE_1905_ENCAP_EAPOL, encap_eapol_tlv, mid);
+}
+
 /* MAP_R3 17.1.51 (type 0x801D) */
 int map_send_dpp_cce_indication(map_ale_info_t *ale, uint8_t advertise, uint16_t *mid)
 {
@@ -1490,6 +1519,12 @@ int map_send_dpp_chirp_notification(map_dpp_chirp_value_tlv_t *chirp_value_tlv_l
 
     free(tlvs);
     return ret;
+}
+
+/* MAP_R3 17.1.56 (type 0x802A) */
+int map_send_direct_encap_dpp(map_ale_info_t *ale, map_dpp_message_tlv_t *dpp_message_tlv, uint16_t *mid)
+{
+    return send_cmdu_one_tlv(ale, CMDU_TYPE_MAP_DIRECT_ENCAP_DPP, TLV_TYPE_DPP_MESSAGE, dpp_message_tlv, mid);
 }
 
 /*#######################################################################

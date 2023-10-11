@@ -79,7 +79,7 @@ typedef struct PAYLOAD {
                                              *  The "end of lldppdu" TLV is not included
                                              *  in this list.
                                              */
-                                   
+
 } i1905_lldp_payload_t;
 
 
@@ -90,20 +90,20 @@ typedef struct PAYLOAD {
 /* This function receives a pointer to a streams containing ETH layer packet
 *  data (ie. offset +14 in a raw network packet, just after the source MAC
 *  address, destination MAC address and ETH type fields).
-* 
+*
 *  The payload of this stream must contain a LLDP bridge discovery message, as
 *  detailed in "IEEE Std 1905.1-2013, Section 6.1"
-* 
+*
 *  The following types of TLVs will be extracted from the contents of the
 *  packet, parsed, and returned inside a PAYLOAD structure:
-* 
+*
 *    - TLV_TYPE_CHASSIS_ID
 *    - TLV_TYPE_PORT_ID
 *    - TLV_TYPE_TIME_TO_LIVE
-* 
+*
 *  The stream must always finish with a "TLV_TYPE_END_OF_LLDPPDU" TLV, but this
 *  one won't be contained in the returned PAYLOAD structure.
-* 
+*
 *  If any type of error/inconsistency is found, a NULL pointer is returned
 *  instead, otherwise remember to free the received structure once you don't
 *  need it anymore (using the "free_lldp_PAYLOAD_structure()" function)
@@ -114,25 +114,25 @@ i1905_lldp_payload_t *parse_lldp_PAYLOAD_from_packet(uint8_t *packet_stream);
 /* This is the opposite of "parse_lldp_PAYLOAD_from_packet_from_packets()": it
 *  receives a pointer to a PAYLOAD structure and then returns a pointer to a
 *  packet stream.
-* 
+*
 *  'len' is also an output argument containing the length of the returned
 *  stream.
-* 
+*
 *  The provided 'memory_structure' must have its fields properly filled or else
 *  this function will return an error (ie. a NULL pointer).
 *  What does this mean? Easy: only those TLVs detailed in "IEEE Std
 *  1905.1-2013, Section 6.1" can appear inside the PAYLOAD structure.
-* 
+*
 *    NOTE: Notice how, in "parse_lldp_PAYLOAD_from_packets()", unexpected TLVs
 *          are discarded, but here they produce an error. This is expected!
-* 
+*
 *  One more thing: the provided 'memory_structure' is not freed by this
 *  function, thus, once this function returns, you will be responsible for
 *  freeing three things:
-* 
+*
 *    - The 'memory_structure' PAYLOAD structure (you were already responsible
 *      for), that you can free with 'free_lldp_PAYLOAD_structure()'
-* 
+*
 *    - The returned stream, which can be freed with 'free_lldp_PAYLOAD_packet()'
 */
 uint8_t *forge_lldp_PAYLOAD_from_structure(i1905_lldp_payload_t *memory_structure, uint16_t *len);
@@ -162,10 +162,10 @@ uint8_t compare_lldp_PAYLOAD_structures(i1905_lldp_payload_t *memory_structure_1
 
 /* The next function is used to call function "callback()" on each element of
 *  the "memory_structure" structure
-* 
+*
 *  "memory_structure" must point to a structure of one of the types returned by
 *  "parse_1905_PAYLOAD_from_packets()"
-* 
+*
 *  It takes four arguments:
 *    - The structure whose elements are going to be visited
 *    - A callback function that will be executed on each element with the
@@ -187,7 +187,7 @@ uint8_t compare_lldp_PAYLOAD_structures(i1905_lldp_payload_t *memory_structure_1
 *      structure traversing order)
 */
 void visit_lldp_PAYLOAD_structure(i1905_lldp_payload_t *memory_structure, void (*callback)(void (*write_function)(const char *fmt, ...),
-                                  const char *prefix, uint8_t size, const char *name, const char *fmt, void *p),
+                                  const char *prefix, size_t size, const char *name, const char *fmt, void *p),
                                   void (*write_function)(const char *fmt, ...), const char *prefix);
 
 #endif /* LLDP_PAYLOAD_H_ */

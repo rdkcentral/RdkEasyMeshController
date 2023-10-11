@@ -121,8 +121,13 @@ int map_validate_failed_connection(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 ########################################################################*/
 /* MAP_R3 17.1.48 (type 0x8029) */
 int map_validate_proxied_encap_dpp(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
+/* MAP_R3 17.1.49 (type 0x8030) */
+int map_validate_1905_encap_eapol(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
 /* MAP_R3 17.1.52 (type 0x802f) */
 int map_validate_chirp_notification(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
 /* MAP_R3 17.1.56 (type 0x802a) */
 int map_validate_direct_encap_dpp(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 #endif /* MAP_CTRL_CMDU_VALIDATOR_H_ */

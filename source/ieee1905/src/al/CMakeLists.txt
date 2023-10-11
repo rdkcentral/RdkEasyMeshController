@@ -48,23 +48,13 @@ set(AL_PLATFORM_INCLUDES
     PRIVATE ${OPENSSL_INCLUDE_DIR}
 )
 
-set(AL_COMPILE_OPTIONS
-	-fPIC
-    -ffunction-sections
-    -fdata-sections
-    -fvisibility=hidden
-)
-
 set(AL_LIBRARIES
     ${OPENSSL_LIBRARIES}
     -Wl,--gc-sections
-# uncomment if you want to see which symbols are GC'd
-#    -Wl,--print-gc-sections
 )
 
 # Library objects
 add_library(AL_INDEPENDENT-objs OBJECT ${AL_INDEPENDENT_SOURCES})
-target_compile_options(AL_INDEPENDENT-objs PRIVATE ${AL_COMPILE_OPTIONS})
 target_include_directories(AL_INDEPENDENT-objs ${AL_INDEPENDENT_INCLUDES})
 get_property(dirs TARGET AL_INDEPENDENT-objs PROPERTY INCLUDE_DIRECTORIES)
 foreach(dir ${dirs})
@@ -73,7 +63,6 @@ endforeach()
 
 # Library objects
 add_library(AL_PLATFORM-objs OBJECT ${AL_PLATFORM_SOURCES})
-target_compile_options(AL_PLATFORM-objs PRIVATE ${AL_COMPILE_OPTIONS})
 target_include_directories(AL_PLATFORM-objs ${AL_PLATFORM_INCLUDES})
 get_property(dirs TARGET AL_PLATFORM-objs PROPERTY INCLUDE_DIRECTORIES)
 foreach(dir ${dirs})
@@ -96,17 +85,4 @@ add_library(${ALSTATIC}
 )
 set_target_properties(${ALSTATIC} PROPERTIES OUTPUT_NAME ${AL})
 target_link_libraries(${ALSTATIC} ${AL_LIBRARIES})
-
-# Install header file(s)
-#install(DIRECTORY
-#    ${PROJECT_SOURCE_DIR}/src_independent/extensions/map
-#    DESTINATION include/ieee1905
-#)
-
-# Install library
-#install(TARGETS ${LIBSTATIC}
-#    RUNTIME DESTINATION bin
-#    LIBRARY DESTINATION lib
-#    ARCHIVE DESTINATION lib
-#)
 

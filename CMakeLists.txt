@@ -14,8 +14,9 @@ project(em-ctl
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 find_package(OpenSSL REQUIRED)
-find_package(ZLIB REQUIRED)
 find_package(LibUbox REQUIRED)
 find_package(LibJsonC REQUIRED)
+
+add_compile_definitions(_GNU_SOURCE)
 
 add_subdirectory(source)

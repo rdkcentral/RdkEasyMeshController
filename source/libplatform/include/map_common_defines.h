@@ -24,6 +24,10 @@
 #define MAP_DEFAULT_FREQ_5_GHZ                      1
 #define MAP_DEFAULT_FREQ_6_GHZ                      1
 #define MAP_DEFAULT_TOPOLOGY_DISCOVERY_INTERVAL     60
+#define MAP_DEFAULT_TOPOLOGY_QUERY_INTERVAL         60
+#define MAP_DEFAULT_LINK_METRICS_QUERY_INTERVAL     20
+#define MAP_DEFAULT_AP_CAPABILITY_QUERY_INTERVAL    60
+#define MAP_DEFAULT_DEAD_AGENT_DETECTION_INTERVAL   30
 #define MAP_DEFAULT_LLDP_BRIDGE_DISCOVERY_INTERVAL  3
 #define MAP_DEFAULT_UCI_MGMT_IPC_REPORT_INTERVAL    5
 #define MAP_DEFAULT_CHANNEL_SELECTION_ENABLED       1
@@ -35,13 +39,10 @@
 #define MAP_MAX_MAC_HASH            17 /* Number of buckets for sta hash table (must be prime) */
 
 #define MAX_IFACE_NAME_LEN          17 /* Length = 16 + 1 for Null character at the end */
-#define MAX_INTERFACE_COUNT         32
 #define MAX_RADIO_NAME_LEN          32
 #define MAC_ADDR_LEN                6
 #define MAX_MAC_STRING_LEN          18 /* sizeof("00:00:00:00:00:00") */
 #define MAX_TIMER_ID_STRING_LENGTH  80 /* including NULL char */
-
-#define MAX_NUM_PROFILES            16
 
 #define MAX_BSS_PER_RADIO           16
 #define MAX_RADIO_PER_AGENT         4
@@ -69,25 +70,16 @@
 #define MAX_SCAN_STATUS_STR_LEN     25 /* "FRESH SCAN NOT SUPPORTED" + null */
 #define MAX_SCAN_TYPE_STR_LEN       9  /* "PASSIVE" + null */
 #define MAX_PROFILE_LABEL_LEN       65 /* Length = 64 + 1 for Null character at the end */
+#define MAX_IPADDR_STR_LEN          129 /* Length = 128 + 1 for Null character at the end */
+#define MAX_SECRET_STR_LEN          129 /* Length = 128 + 1 for Null character at the end */
 #define NUM_FREQ_BANDS              5  /* 2.4G, 5G, 60G, 6G*/
+#define ETH_DEVICE_HISTORY_LEN      3
 
 /* Flags for MultiAp extension subelement  */
 #define MAP_TEAR_DOWN               0x10 /* Bit 4 */
 #define MAP_FRONTHAUL_BSS           0x20 /* Bit 5 */
 #define MAP_BACKHAUL_BSS            0x40 /* Bit 6 */
 #define MAP_BACKHAUL_STA            0x80 /* Bit 7 */
-
-#define HASH_KEY_LEN                22  /* sizeof("ALE:00:00:00:00:00:00") */
-#define MAC_ADDR_START_OFFSET       4
-
-#define MAX_TIME_LEN                50
-
-#define PREF_SCORE_0                0
-#define PREF_SCORE_15               15
-
-#define PREF_REASON_UNSPECFIED                 0
-#define PREF_REASON_RADAR_DETECT               7
-#define PREF_REASON_EXT_NETWORK_INTERFERENCE   3
 
 #define TLV_TYPE_FIELD   1
 #define TLV_LENGTH_FIELD 2
@@ -98,12 +90,13 @@
 #define STD_80211_N      3
 #define STD_80211_AC     4
 #define STD_80211_AX     5
-#define STD_80211_AN     6
-#define STD_80211_ANAC   7
-#define STD_80211_NAX    8
-#define STD_80211_ANACAX 9
-#define STD_80211_ANAX   10
-#define STD_80211_ACAX   11
+#define STD_80211_BE     6
+#define STD_80211_AN     7
+#define STD_80211_ANAC   8
+#define STD_80211_NAX    9
+#define STD_80211_ANACAX 10
+#define STD_80211_ANAX   11
+#define STD_80211_ACAX   12
 
 #define WIFI_AC_BE       0  /* Best effort Access class */
 #define WIFI_AC_BK       1  /* Background Access class */
@@ -116,18 +109,15 @@
 #define MAP_ASSOC_STA_TRAFFIC_STA_INCLUSION_POLICY  (1<<7)
 
 /* Use below keys prepended with ALE MAC address of the agent */
-#define ONBOARDING_STATUS_TIMER_ID          "ONBOARDING-STATUS-TIMER"
-#define MCAST_CONFIG_RENEW_TIMER_ID         "MCAST-CONFIG-RENEW-TIMER"
-#define BLOCKLIST_REFRESH_TIMER_ID          "BLOCKLIST-REFRESH-TIMER"
+#define ONBOARDING_STATUS_TIMER_ID  "ONBOARDING-STATUS-TIMER"
+#define ETH_DEVICE_TIMER_ID         "ETH-DEVICE-TIMER"
+#define BLOCKLIST_AGE_TIMER_ID      "BLOCKLIST-AGE-TIMER"
 
 #define AP_CAPS_QUERY_RETRY_ID      "AP-CAPS-QUERY"
 #define BHSTA_CAP_QUERY_RETRY_ID    "BHSTA-CAP-QUERY"
-#define CHAN_PREF_QUERY_RETRY_ID    "AP-CHAN-PREF-QUERY"
-#define CHAN_SELEC_REQ_RETRY_ID     "AP-CHAN-SELC_REQ"
+#define CHAN_PREF_QUERY_RETRY_ID    "CHAN-PREF-QUERY"
+#define CHAN_SELECT_REQ_RETRY_ID    "CHAN-SEL_REQ"
 #define TOPOLOGY_QUERY_RETRY_ID     "TOPOLOGY-QUERY"
-#define BEACON_METRICS_RETRY_ID     "BEACON-METRICS-RESP"
-#define AUTOCONFIG_RESP_RETRY_ID    "AUTOCONFIG-RESP"
-#define UCAST_CONFIG_RENEW_RETRY_ID "UCAST-CONFIG-RENEW"
 #define ASSOC_CONTROL_RETRY_ID      "ASSOC-CONTROL"
 
 /* Use below keys prepended with RADIO MAC address */
@@ -136,7 +126,6 @@
 
 /* Use below keys prepended with STA MAC address */
 #define CLIENT_CAPS_QUERY_RETRY_ID  "CLIENT-CAPS-QUERY"
-#define CLIENT_ASSOC_FRAME_RETRY_ID "CLIENT-ASSOC-FRAME"
 
 #define MAP_RETRY_STATUS_SUCCESS     0
 #define MAP_RETRY_STATUS_TIMEOUT   (-1)
@@ -156,6 +145,7 @@ enum {
 
 #define MAP_ASSOC_TS_DELTA            65536 /* Max assoc time in Associated Clients TLV */
 
+#define ENCRYPTION_TX_COUNTER_LEN 6
 
 /* TODO: also defines in 1905_tlvs.h */
 #ifndef IEEE80211_FREQUENCY_BAND_2_4_GHZ
@@ -166,11 +156,37 @@ enum {
   #define IEEE80211_FREQUENCY_BAND_UNKNOWN 0xFF
 #endif
 
+/* Shorter notation */
+#define BAND_2G      IEEE80211_FREQUENCY_BAND_2_4_GHZ
+#define BAND_5G      IEEE80211_FREQUENCY_BAND_5_GHZ
+#define BAND_60G     IEEE80211_FREQUENCY_BAND_60_GHZ
+#define BAND_6G      IEEE80211_FREQUENCY_BAND_6_GHZ
+#define BAND_UNKNOWN IEEE80211_FREQUENCY_BAND_UNKNOWN
+
+#define MAX_NUM_TID 16     /* Number of possible TID values */
+
 enum map_m2_bss_freq_band {
     MAP_M2_BSS_RADIO2G  = 0x10,
     MAP_M2_BSS_RADIO5GU = 0x20,
     MAP_M2_BSS_RADIO5GL = 0x40,
     MAP_M2_BSS_RADIO6G  = 0x80,
+};
+
+#define MAP_FREQ_BAND_2G    MAP_M2_BSS_RADIO2G
+#define MAP_FREQ_BAND_5G    (MAP_M2_BSS_RADIO5GL | MAP_M2_BSS_RADIO5GU)
+#define MAP_FREQ_BANDS_ALL  (MAP_FREQ_BAND_2G | MAP_FREQ_BAND_5G)
+
+enum ieee80211_btm_status {
+    IEEE80211_BTM_STATUS_UNKNOWN = -1,
+    IEEE80211_BTM_STATUS_ACCEPT = 0x0,
+    IEEE80211_BTM_STATUS_REJECT_UNSPECIFIED,
+    IEEE80211_BTM_STATUS_REJECT_INSUFFICIENT_BEACON,
+    IEEE80211_BTM_STATUS_REJECT_INSUFFICIENT_CAPACITY,
+    IEEE80211_BTM_STATUS_REJECT_BSS_TERMINATION_UNDESIRED,
+    IEEE80211_BTM_STATUS_REJECT_BSS_TERMINATION_DELAY_REQUESTED,
+    IEEE80211_BTM_STATUS_REJECT_STA_BSS_TRANSITION_CANDIDATE_LIST_PROVIDED,
+    IEEE80211_BTM_STATUS_REJECT_NO_SUITABLE_BSS_TRANSITION_CANDIDATES,
+    IEEE80211_BTM_STATUS_REJECT_LEAVING_ESS
 };
 
 #endif /* MAP_COMMON_DEFINES_H_ */

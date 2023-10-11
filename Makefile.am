@@ -4,4 +4,6 @@
 # Licensed under the BSD+Patent License.
 ##########################################################################
 
+ACLOCAL_AMFLAGS = -I m4
+
 SUBDIRS = source

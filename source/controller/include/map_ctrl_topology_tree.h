@@ -53,10 +53,21 @@ void map_build_topology_tree(map_ale_info_t *ale, i1905_neighbor_device_list_tlv
  *  This function registers to a retry timer to send topology query
  *  until we get a topology response
  *
- *  @param ale pointer to ALE node to check for local agent
+ *  @param ale pointer to ALE node
  *  @return The 0- Expired , 1 - Query required
  */
 void map_register_topology_query_retry(map_ale_info_t *ale);
+
+/** @brief This function create a retry timer to send topology query after a delay
+ *
+ *  This function registers to a retry timer to send topology query after a delay
+ *  until we get a topology response
+ *
+ *  @param ale        pointer to ALE node
+ *  @param delay_sec  delay in seconds
+ *  @return The 0- Expired , 1 - Query required
+ */
+void map_register_delayed_topology_query_retry(map_ale_info_t *ale, uint32_t delay_sec);
 
 /** @brief This function will remove the dead ALE from controller DM
  *

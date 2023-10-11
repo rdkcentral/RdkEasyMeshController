@@ -55,8 +55,8 @@ static int chan_sel_query_compl_cb(int status, void *args, UNUSED void *opaque_c
     return 0;
 }
 
-static uint8_t onboarding_status_check_timer_cb(UNUSED char* timer_id, void *ale_object) {
-
+static uint8_t onboarding_status_check_timer_cb(UNUSED char* timer_id, void *ale_object)
+{
     map_ale_info_t *ale = ale_object;
 
     if (!ale || WFA_CERT()) {
@@ -212,7 +212,7 @@ int map_build_and_send_initial_channel_scan_req(void *args, UNUSED uint16_t *mid
         return -1;
     }
 
-    radio->last_scan_info.last_scan_req_time = get_current_time();
+    radio->last_scan_info.last_scan_req_time = acu_get_timestamp_sec();
 
     return 0;
 }
@@ -281,34 +281,38 @@ int map_agent_handle_channel_selection(map_ale_info_t *ale, map_radio_info_t *ra
                     ERROR_EXIT(status)
                 }
             }
-        } else if(action == MAP_CHAN_SEL_REQUEST) {
+        } else if (action == MAP_CHAN_SEL_REQUEST) {
             /* Retry Channel selection request untill we get a response.
                This memory will be freed by cleanup_retry_args during retry completion handler
             */
-            map_chan_select_pref_type_t *pref_type = calloc(1, sizeof(map_chan_select_pref_type_t));
 
-            if (pref_type) {
+            if (radio) {
+                map_dm_get_radio_timer_id(retry_id, radio, CHAN_SELECT_REQ_RETRY_ID);
+            } else {
+                map_dm_get_ale_timer_id(retry_id, ale, CHAN_SELECT_REQ_RETRY_ID);
+            }
+
+            /* Check if already active */
+            if (!map_is_timer_registered(retry_id)) {
+                map_chan_select_pref_type_t *pref_type = calloc(1, sizeof(map_chan_select_pref_type_t));
+
+                if (!pref_type) {
+                    log_ctrl_e("failed to allocate memory");
+                    ERROR_EXIT(status)
+                }
+
                 pref_type->ale   = ale;
                 pref_type->radio = radio;
                 pref_type->pref  = MAP_CHAN_SEL_PREF_MERGED;
 
                 ale->first_chan_sel_req_done = 1;
-                ale->last_chan_sel_req_time  = get_current_time();
+                ale->last_chan_sel_req_time  = acu_get_timestamp_sec();
 
-                if (radio) {
-                    map_dm_get_radio_timer_id(retry_id, radio, CHAN_SELEC_REQ_RETRY_ID);
-                } else {
-                    map_dm_get_ale_timer_id(retry_id, ale, CHAN_SELEC_REQ_RETRY_ID);
+                if (map_register_retry(retry_id, 10, 10, pref_type, map_cleanup_retry_args, map_send_channel_selection_request)) {
+                    log_ctrl_e("failed Registering retry timer[%s]", retry_id);
+                    free(pref_type);
+                    ERROR_EXIT(status)
                 }
-                if (!map_is_timer_registered(retry_id)) {
-                    if (map_register_retry(retry_id, 10, 10, pref_type, map_cleanup_retry_args, map_send_channel_selection_request)) {
-                        log_ctrl_e("failed Registering retry timer[%s]", retry_id);
-                        ERROR_EXIT(status)
-                    }
-                }
-            } else {
-                log_ctrl_e("failed to allocate memory");
-                ERROR_EXIT(status)
             }
         }
     } while (0);
@@ -327,14 +331,14 @@ int map_agent_cancel_channel_selection(map_ale_info_t *ale)
         map_unregister_retry(retry_id);
     }
 
-    map_dm_get_ale_timer_id(retry_id, ale, CHAN_SELEC_REQ_RETRY_ID);
+    map_dm_get_ale_timer_id(retry_id, ale, CHAN_SELECT_REQ_RETRY_ID);
     if (map_is_timer_registered(retry_id)) {
         map_unregister_retry(retry_id);
     }
 
     /* Stop per RADIO select timer */
     map_dm_foreach_radio(ale, radio) {
-        map_dm_get_radio_timer_id(retry_id, radio, CHAN_SELEC_REQ_RETRY_ID);
+        map_dm_get_radio_timer_id(retry_id, radio, CHAN_SELECT_REQ_RETRY_ID);
         if (map_is_timer_registered(retry_id)) {
             map_unregister_retry(retry_id);
         }

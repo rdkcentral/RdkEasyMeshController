@@ -1,8 +1,15 @@
-.deps
 *~
+.cproject
+.project
+.settings
+.vscode/
+*.code-workspace
+build/
+dist/
 *.o
 *.la
 *.lo
+.deps
 .libs
 INSTALL
 aclocal.m4
@@ -24,3 +31,4 @@ missing
 Makefile
 Makefile.in
 stamp-h1
+ssp/

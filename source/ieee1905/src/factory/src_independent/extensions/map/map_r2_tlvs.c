@@ -74,6 +74,8 @@
 /*#######################################################################
 #                       INCLUDES                                        #
 ########################################################################*/
+#define TLV_STRUCT_NAME_PREFIX TLV_STRUCT_NAME_PREFIX_MAP
+
 #include "1905_tlvs.h"
 #include "packet_tools.h"
 #include "map_tlvs.h"
@@ -84,6 +86,8 @@
 /*#######################################################################
 # Channel scan reporting policy TLV ("Section 17.2.37")                 #
 ########################################################################*/
+TLV_FREE_FUNCTION(channel_scan_reporting_policy) {}
+
 static uint8_t* parse_channel_scan_reporting_policy_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_channel_scan_reporting_policy_tlv_t *ret;
@@ -98,7 +102,7 @@ static uint8_t* parse_channel_scan_reporting_policy_tlv(uint8_t *packet_stream, 
     _E1B(&p, &byte);
     ret->report_independent_ch_scans = (byte & BIT_MASK_7) ? SET_BIT : RESET_BIT;
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(channel_scan_reporting_policy)
     PARSE_RETURN
 }
 
@@ -119,12 +123,12 @@ static uint8_t* forge_channel_scan_reporting_policy_tlv(void *memory_structure, 
     FORGE_RETURN
 }
 
-static void free_channel_scan_reporting_policy_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Channel scan capabilities TLV ("Section 17.2.38")                     #
 ########################################################################*/
-static uint8_t* parse_channel_scan_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(channel_scan_cap) {}
+
+static uint8_t* parse_channel_scan_cap_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_channel_scan_cap_tlv_t *ret;
     uint8_t i, j, k, byte, channels_nr, channel;
@@ -160,11 +164,11 @@ static uint8_t* parse_channel_scan_capabilities_tlv(uint8_t *packet_stream, uint
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(channel_scan_cap)
     PARSE_RETURN
 }
 
-static uint8_t* forge_channel_scan_capabilities_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_channel_scan_cap_tlv(void *memory_structure, uint16_t *len)
 {
     map_channel_scan_cap_tlv_t *m = memory_structure;
     uint16_t  tlv_length;
@@ -208,11 +212,11 @@ static uint8_t* forge_channel_scan_capabilities_tlv(void *memory_structure, uint
     FORGE_RETURN
 }
 
-static void free_channel_scan_capabilities_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Channel scan request TLV ("Section 17.2.39")                          #
 ########################################################################*/
+TLV_FREE_FUNCTION(channel_scan_request) {}
+
 static uint8_t* parse_channel_scan_request_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_channel_scan_request_tlv_t *ret;
@@ -246,7 +250,7 @@ static uint8_t* parse_channel_scan_request_tlv(uint8_t *packet_stream, uint16_t 
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(channel_scan_request)
     PARSE_RETURN
 }
 
@@ -291,11 +295,14 @@ static uint8_t* forge_channel_scan_request_tlv(void *memory_structure, uint16_t 
     FORGE_RETURN
 }
 
-static void free_channel_scan_request_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Channel scan result TLV ("Section 17.2.40")                           #
 ########################################################################*/
+TLV_FREE_FUNCTION(channel_scan_result)
+{
+    SFREE(m->neighbors);
+}
+
 static uint8_t* parse_channel_scan_result_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_channel_scan_result_tlv_t *ret;
@@ -317,7 +324,7 @@ static uint8_t* parse_channel_scan_result_tlv(uint8_t *packet_stream, uint16_t l
     }
 
     _E1B(&p, &ret->timestamp_len);
-    PARSE_LIMIT_N_DROP(ret->timestamp_len, MAX_1905_TIMESTAMP_LEN)
+    PARSE_LIMIT_N_DROP(channel_scan_result, ret->timestamp_len, MAX_1905_TIMESTAMP_LEN)
 
     _EnB(&p, &ret->timestamp, ret->timestamp_len);
     _E1B(&p, &ret->utilization);
@@ -334,12 +341,12 @@ static uint8_t* parse_channel_scan_result_tlv(uint8_t *packet_stream, uint16_t l
         for (i = 0; i < ret->neighbors_nr; i++) {
             _EnB(&p, ret->neighbors[i].bssid, 6);
             _E1B(&p, &ret->neighbors[i].ssid_len);
-            PARSE_LIMIT_N_DROP(ret->neighbors[i].ssid_len, (MAX_SSID_LEN - 1))
+            PARSE_LIMIT_N_DROP(channel_scan_result, ret->neighbors[i].ssid_len, (MAX_SSID_LEN - 1))
 
             _EnB(&p, ret->neighbors[i].ssid, ret->neighbors[i].ssid_len);
             _E1B(&p, &ret->neighbors[i].rcpi);
             _E1B(&p, &ret->neighbors[i].ch_bw_len);
-            PARSE_LIMIT_N_DROP(ret->neighbors[i].ch_bw_len, MAX_CH_BW_STR_LEN)
+            PARSE_LIMIT_N_DROP(channel_scan_result, ret->neighbors[i].ch_bw_len, MAX_CH_BW_STR_LEN)
 
             _EnB(&p, ret->neighbors[i].ch_bw, ret->neighbors[i].ch_bw_len);
             _E1B(&p, &byte);
@@ -355,7 +362,7 @@ static uint8_t* parse_channel_scan_result_tlv(uint8_t *packet_stream, uint16_t l
     _E1B(&p, &byte);
     ret->scan_type = (byte & BIT_MASK_7) >> BIT_SHIFT_7;
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(channel_scan_result)
     PARSE_RETURN
 }
 
@@ -418,16 +425,11 @@ static uint8_t* forge_channel_scan_result_tlv(void *memory_structure, uint16_t *
     FORGE_RETURN
 }
 
-static void free_channel_scan_result_tlv(void *memory_structure)
-{
-    map_channel_scan_result_tlv_t *m = memory_structure;
-
-    SFREE(m->neighbors);
-}
-
 /*#######################################################################
 # Timestamp TLV ("Section 17.2.41")                                     #
 ########################################################################*/
+TLV_FREE_FUNCTION(timestamp) {}
+
 static uint8_t* parse_timestamp_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_timestamp_tlv_t *ret;
@@ -443,7 +445,7 @@ static uint8_t* parse_timestamp_tlv(uint8_t *packet_stream, uint16_t len)
     PARSE_LIMIT(ret->timestamp_len, MAX_1905_TIMESTAMP_LEN);
     _EnB(&p, &ret->timestamp, ret->timestamp_len);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(timestamp)
     PARSE_RETURN
 }
 
@@ -463,11 +465,11 @@ static uint8_t* forge_timestamp_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_timestamp_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # CAC request TLV ("Section 17.2.42")                                   #
 ########################################################################*/
+TLV_FREE_FUNCTION(cac_request) {}
+
 static uint8_t* parse_cac_request_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_cac_request_tlv_t *ret;
@@ -491,7 +493,7 @@ static uint8_t* parse_cac_request_tlv(uint8_t *packet_stream, uint16_t len)
         ret->radios[i].cac_completion_action = (byte & (BIT_MASK_4 | BIT_MASK_3)) >> BIT_SHIFT_3;
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(cac_request)
     PARSE_RETURN
 }
 
@@ -520,11 +522,11 @@ static uint8_t* forge_cac_request_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_cac_request_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # CAC termination TLV ("Section 17.2.43")                               #
 ########################################################################*/
+TLV_FREE_FUNCTION(cac_termination) {}
+
 static uint8_t* parse_cac_termination_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_cac_termination_tlv_t *ret;
@@ -545,7 +547,7 @@ static uint8_t* parse_cac_termination_tlv(uint8_t *packet_stream, uint16_t len)
         _E1B(&p, &ret->radios[i].channel);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(cac_termination)
     PARSE_RETURN
 }
 
@@ -570,11 +572,18 @@ static uint8_t* forge_cac_termination_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_cac_termination_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # CAC completion report TLV ("Section 17.2.44")                         #
 ########################################################################*/
+TLV_FREE_FUNCTION(cac_completion_report)
+{
+    uint8_t i;
+
+    for (i = 0; i < m->radios_nr; i++) {
+        SFREE(m->radios[i].detected_pairs);
+    }
+}
+
 static uint8_t* parse_cac_completion_report_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_cac_completion_report_tlv_t *ret;
@@ -599,11 +608,7 @@ static uint8_t* parse_cac_completion_report_tlv(uint8_t *packet_stream, uint16_t
         if (ret->radios[i].detected_pairs_nr > 0) {
             ret->radios[i].detected_pairs = calloc(ret->radios[i].detected_pairs_nr, sizeof(*ret->radios[i].detected_pairs));
             if (ret->radios[i].detected_pairs == NULL) {
-                for (j = 0; j < i; j++) {
-                    free(ret->radios[j].detected_pairs);
-                }
-                free(ret);
-                return NULL;
+                PARSE_FREE_RET_RETURN(cac_completion_report)
             }
 
             for (j = 0; j < ret->radios[i].detected_pairs_nr; j++) {
@@ -613,7 +618,7 @@ static uint8_t* parse_cac_completion_report_tlv(uint8_t *packet_stream, uint16_t
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(cac_completion_report)
     PARSE_RETURN
 }
 
@@ -652,19 +657,16 @@ static uint8_t* forge_cac_completion_report_tlv(void *memory_structure, uint16_t
     FORGE_RETURN
 }
 
-static void free_cac_completion_report_tlv(UNUSED void *memory_structure)
-{
-    map_cac_completion_report_tlv_t *m = memory_structure;
-    uint8_t i;
-
-    for (i = 0; i < m->radios_nr; i++) {
-        SFREE(m->radios[i].detected_pairs);
-    }
-}
-
 /*#######################################################################
 # CAC status report TLV ("Section 17.2.45")                             #
 ########################################################################*/
+TLV_FREE_FUNCTION(cac_status_report)
+{
+    SFREE(m->available_pairs);
+    SFREE(m->non_occupancy_pairs);
+    SFREE(m->ongoing_cac_pairs);
+}
+
 static uint8_t* parse_cac_status_report_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_cac_status_report_tlv_t *ret;
@@ -680,8 +682,7 @@ static uint8_t* parse_cac_status_report_tlv(uint8_t *packet_stream, uint16_t len
     if (ret->available_pairs_nr > 0) {
         ret->available_pairs = calloc(ret->available_pairs_nr, sizeof(*ret->available_pairs));
         if (ret->available_pairs == NULL) {
-            free(ret);
-            return NULL;
+            PARSE_FREE_RET_RETURN(cac_status_report)
         }
 
         for (i = 0; i < ret->available_pairs_nr; i++) {
@@ -695,9 +696,7 @@ static uint8_t* parse_cac_status_report_tlv(uint8_t *packet_stream, uint16_t len
     if (ret->non_occupancy_pairs_nr > 0) {
         ret->non_occupancy_pairs = calloc(ret->non_occupancy_pairs_nr, sizeof(*ret->non_occupancy_pairs));
         if (ret->non_occupancy_pairs == NULL) {
-            free(ret->available_pairs);
-            free(ret);
-            return NULL;
+            PARSE_FREE_RET_RETURN(cac_status_report)
         }
 
         for (i = 0; i < ret->non_occupancy_pairs_nr; i++) {
@@ -711,10 +710,7 @@ static uint8_t* parse_cac_status_report_tlv(uint8_t *packet_stream, uint16_t len
     if (ret->ongoing_cac_pairs_nr > 0) {
         ret->ongoing_cac_pairs = calloc(ret->ongoing_cac_pairs_nr, sizeof(*ret->ongoing_cac_pairs));
         if (ret->ongoing_cac_pairs == NULL) {
-            free(ret->available_pairs);
-            free(ret->non_occupancy_pairs);
-            free(ret);
-            return NULL;
+            PARSE_FREE_RET_RETURN(cac_status_report)
         }
 
         for (i = 0; i < ret->ongoing_cac_pairs_nr; i++) {
@@ -724,7 +720,7 @@ static uint8_t* parse_cac_status_report_tlv(uint8_t *packet_stream, uint16_t len
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(cac_status_report)
     PARSE_RETURN
 }
 
@@ -763,19 +759,12 @@ static uint8_t* forge_cac_status_report_tlv(void *memory_structure, uint16_t *le
     FORGE_RETURN
 }
 
-static void free_cac_status_report_tlv(UNUSED void *memory_structure)
-{
-    map_cac_status_report_tlv_t *m = memory_structure;
-
-    SFREE(m->available_pairs);
-    SFREE(m->non_occupancy_pairs);
-    SFREE(m->ongoing_cac_pairs);
-}
-
 /*#######################################################################
 # CAC capabilities TLV ("Section 17.2.46")                              #
 ########################################################################*/
-static uint8_t* parse_cac_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(cac_cap) {}
+
+static uint8_t* parse_cac_cap_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_cac_cap_tlv_t *ret;
     uint8_t i, j, k, l, channels_nr, channel;
@@ -813,11 +802,11 @@ static uint8_t* parse_cac_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(cac_cap)
     PARSE_RETURN
 }
 
-static uint8_t* forge_cac_capabilities_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_cac_cap_tlv(void *memory_structure, uint16_t *len)
 {
     map_cac_cap_tlv_t *m = memory_structure;
     uint16_t  tlv_length;
@@ -866,11 +855,11 @@ static uint8_t* forge_cac_capabilities_tlv(void *memory_structure, uint16_t *len
     FORGE_RETURN
 }
 
-static void free_cac_capabilities_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Multi-AP profile TLV ("Section 17.2.47")                              #
 ########################################################################*/
+TLV_FREE_FUNCTION(multiap_profile) {}
+
 static uint8_t* parse_multiap_profile_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_multiap_profile_tlv_t *ret;
@@ -884,7 +873,7 @@ static uint8_t* parse_multiap_profile_tlv(uint8_t *packet_stream, uint16_t len)
 
     _E1B(&p, &ret->map_profile);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(multiap_profile)
     PARSE_RETURN
 }
 
@@ -903,12 +892,12 @@ static uint8_t* forge_multiap_profile_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_multiap_profile_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Profile 2 AP capability TLV ("Section 17.2.48")                       #
 ########################################################################*/
-static uint8_t* parse_profile2_ap_capability_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(profile2_ap_cap) {}
+
+static uint8_t* parse_profile2_ap_cap_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_profile2_ap_cap_tlv_t *ret;
     uint16_t reserved;
@@ -925,11 +914,11 @@ static uint8_t* parse_profile2_ap_capability_tlv(uint8_t *packet_stream, uint16_
     ret->byte_counter_unit  = (byte & (BIT_MASK_7 | BIT_MASK_6)) >> BIT_SHIFT_6;
     _E1B(&p, &ret->max_vid_count);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(profile2_ap_cap)
     PARSE_RETURN
 }
 
-static uint8_t* forge_profile2_ap_capability_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_profile2_ap_cap_tlv(void *memory_structure, uint16_t *len)
 {
     map_profile2_ap_cap_tlv_t *m = memory_structure;
     uint16_t  tlv_length = 4;
@@ -949,11 +938,11 @@ static uint8_t* forge_profile2_ap_capability_tlv(void *memory_structure, uint16_
     FORGE_RETURN
 }
 
-static void free_profile2_ap_capability_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Default 8021Q settings TLV ("Section 17.2.49")                        #
 ########################################################################*/
+TLV_FREE_FUNCTION(default_8021q_settings) {}
+
 static uint8_t* parse_default_8021q_settings_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_default_8021q_settings_tlv_t *ret;
@@ -969,7 +958,7 @@ static uint8_t* parse_default_8021q_settings_tlv(uint8_t *packet_stream, uint16_
     _E1B(&p, &byte);
     ret->default_pcp = (byte & (BIT_MASK_7 | BIT_MASK_6 | BIT_MASK_5)) >> BIT_SHIFT_5;
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(default_8021q_settings)
     PARSE_RETURN
 }
 
@@ -991,11 +980,11 @@ static uint8_t* forge_default_8021q_settings_tlv(void *memory_structure, uint16_
     FORGE_RETURN
 }
 
-static void free_default_8021q_settings_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Traffic separation policy TLV ("Section 17.2.50")                     #
 ########################################################################*/
+TLV_FREE_FUNCTION(traffic_separation_policy) {}
+
 static uint8_t* parse_traffic_separation_policy_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_traffic_separation_policy_tlv_t *ret;
@@ -1012,13 +1001,13 @@ static uint8_t* parse_traffic_separation_policy_tlv(uint8_t *packet_stream, uint
 
     for (i = 0; i < ret->ssids_nr; i++) {
         _E1B(&p, &ret->ssids[i].ssid_len);
-        PARSE_LIMIT_N_DROP(ret->ssids[i].ssid_len, (MAX_SSID_LEN - 1))
+        PARSE_LIMIT_N_DROP(traffic_separation_policy, ret->ssids[i].ssid_len, (MAX_SSID_LEN - 1))
 
         _EnB(&p, ret->ssids[i].ssid, ret->ssids[i].ssid_len);
         _E2B(&p, &ret->ssids[i].vlan_id);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(traffic_separation_policy)
     PARSE_RETURN
 }
 
@@ -1049,11 +1038,11 @@ static uint8_t* forge_traffic_separation_policy_tlv(void *memory_structure, uint
     FORGE_RETURN
 }
 
-static void free_traffic_separation_policy_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Profile 2 error code TLV ("Section 17.2.51")                          #
 ########################################################################*/
+TLV_FREE_FUNCTION(profile2_error_code) {}
+
 static uint8_t* parse_profile2_error_code_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_profile2_error_code_tlv_t *ret;
@@ -1076,7 +1065,7 @@ static uint8_t* parse_profile2_error_code_tlv(uint8_t *packet_stream, uint16_t l
         _EnB(&p, ret->sta_mac, 6);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(profile2_error_code)
     PARSE_RETURN
 }
 
@@ -1104,12 +1093,12 @@ static uint8_t* forge_profile2_error_code_tlv(void *memory_structure, uint16_t *
     FORGE_RETURN
 }
 
-static void free_profile2_error_code_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # AP radio advanced capabilities TLV ("Section 17.2.52")                #
 ########################################################################*/
-static uint8_t* parse_ap_radio_advanced_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(ap_radio_advanced_cap) {}
+
+static uint8_t* parse_ap_radio_advanced_cap_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_radio_advanced_cap_tlv_t *ret;
     uint8_t *p = packet_stream, byte;
@@ -1126,11 +1115,11 @@ static uint8_t* parse_ap_radio_advanced_capabilities_tlv(uint8_t *packet_stream,
     ret->combined_fh_profile2_bh          = (byte & BIT_MASK_7) ? SET_BIT : RESET_BIT;
     ret->combined_profile1_bh_profile2_bh = (byte & BIT_MASK_6) ? SET_BIT : RESET_BIT;
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(ap_radio_advanced_cap)
     PARSE_RETURN
 }
 
-static uint8_t* forge_ap_radio_advanced_capabilities_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_ap_radio_advanced_cap_tlv(void *memory_structure, uint16_t *len)
 {
     map_ap_radio_advanced_cap_tlv_t *m = memory_structure;
     uint16_t  tlv_length = 7;
@@ -1149,12 +1138,12 @@ static uint8_t* forge_ap_radio_advanced_capabilities_tlv(void *memory_structure,
     FORGE_RETURN
 }
 
-static void free_ap_radio_advanced_capabilities_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Association status notification TLV ("Section 17.2.53")               #
 ########################################################################*/
-static uint8_t* parse_association_status_notification_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(assoc_status_notification) {}
+
+static uint8_t* parse_assoc_status_notification_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_assoc_status_notification_tlv_t *ret;
     uint8_t *p = packet_stream, i;
@@ -1173,11 +1162,11 @@ static uint8_t* parse_association_status_notification_tlv(uint8_t *packet_stream
         _E1B(&p, &ret->bsss[i].assoc_allowance_status);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(assoc_status_notification)
     PARSE_RETURN
 }
 
-static uint8_t* forge_association_status_notification_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_assoc_status_notification_tlv(void *memory_structure, uint16_t *len)
 {
     map_assoc_status_notification_tlv_t *m = memory_structure;
     uint16_t  tlv_length = 1 + m->bsss_nr * 7;
@@ -1197,11 +1186,11 @@ static uint8_t* forge_association_status_notification_tlv(void *memory_structure
     FORGE_RETURN
 }
 
-static void free_association_status_notification_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Source info TLV ("Section 17.2.54")                                   #
 ########################################################################*/
+TLV_FREE_FUNCTION(source_info) {}
+
 static uint8_t* parse_source_info_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_source_info_tlv_t *ret;
@@ -1215,7 +1204,7 @@ static uint8_t* parse_source_info_tlv(uint8_t *packet_stream, uint16_t len)
 
     _EnB(&p, ret->src_mac, 6);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(source_info)
     PARSE_RETURN
 }
 
@@ -1234,11 +1223,11 @@ static uint8_t* forge_source_info_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_source_info_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Tunneled message type TLV ("Section 17.2.55")                         #
 ########################################################################*/
+TLV_FREE_FUNCTION(tunneled_message_type) {}
+
 static uint8_t* parse_tunneled_message_type_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_tunneled_message_type_tlv_t *ret;
@@ -1252,7 +1241,7 @@ static uint8_t* parse_tunneled_message_type_tlv(uint8_t *packet_stream, uint16_t
 
     _E1B(&p, &ret->message_type);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(tunneled_message_type)
     PARSE_RETURN
 }
 
@@ -1271,11 +1260,11 @@ static uint8_t* forge_tunneled_message_type_tlv(void *memory_structure, uint16_t
     FORGE_RETURN
 }
 
-static void free_tunneled_message_type_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Tunneled TLV ("Section 17.2.56")                                      #
 ########################################################################*/
+TLV_FREE_FUNCTION(tunneled) {}
+
 static uint8_t* parse_tunneled_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_tunneled_tlv_t *ret;
@@ -1295,7 +1284,7 @@ static uint8_t* parse_tunneled_tlv(uint8_t *packet_stream, uint16_t len)
         _EnB(&p, ret->frame_body, len);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(tunneled)
     PARSE_RETURN
 }
 
@@ -1314,11 +1303,14 @@ static uint8_t* forge_tunneled_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_tunneled_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Profile 2 steering request TLV ("Section 17.2.57")                    #
 ########################################################################*/
+TLV_FREE_FUNCTION(profile2_steering_request)
+{
+    map_free_p1_p2_steering_request_tlv(m, true);
+}
+
 static uint8_t* parse_profile2_steering_request_tlv(uint8_t *packet_stream, uint16_t len)
 {
     return map_parse_p1_p2_steering_request_tlv(packet_stream, len, true);
@@ -1329,15 +1321,12 @@ static uint8_t* forge_profile2_steering_request_tlv(void *memory_structure, uint
     return map_forge_p1_p2_steering_request_tlv(memory_structure, len, true);
 }
 
-static void free_profile2_steering_request_tlv(void *memory_structure)
-{
-    map_free_p1_p2_steering_request_tlv(memory_structure, true);
-}
-
 /*#######################################################################
 # Unsuccessful association policy TLV ("Section 17.2.58")               #
 ########################################################################*/
-static uint8_t* parse_unsuccessful_association_policy_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(unsuccessful_assoc_policy) {}
+
+static uint8_t* parse_unsuccessful_assoc_policy_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_unsuccessful_assoc_policy_tlv_t *ret;
     uint8_t *p = packet_stream, byte;
@@ -1353,11 +1342,11 @@ static uint8_t* parse_unsuccessful_association_policy_tlv(uint8_t *packet_stream
 
     _E4B(&p, &ret->max_reporting_rate);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(unsuccessful_assoc_policy)
     PARSE_RETURN
 }
 
-static uint8_t* forge_unsuccessful_association_policy_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_unsuccessful_assoc_policy_tlv(void *memory_structure, uint16_t *len)
 {
     map_unsuccessful_assoc_policy_tlv_t *m = memory_structure;
     uint16_t  tlv_length = 5;
@@ -1375,11 +1364,11 @@ static uint8_t* forge_unsuccessful_association_policy_tlv(void *memory_structure
     FORGE_RETURN
 }
 
-static void free_unsuccessful_association_policy_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Metric collection interval TLV ("Section 17.2.59")                    #
 ########################################################################*/
+TLV_FREE_FUNCTION(metric_collection_interval) {}
+
 static uint8_t* parse_metric_collection_interval_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_metric_collection_interval_tlv_t *ret;
@@ -1393,7 +1382,7 @@ static uint8_t* parse_metric_collection_interval_tlv(uint8_t *packet_stream, uin
 
     _E4B(&p, &ret->metric_collection_interval);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(metric_collection_interval)
     PARSE_RETURN
 }
 
@@ -1412,11 +1401,11 @@ static uint8_t* forge_metric_collection_interval_tlv(void *memory_structure, uin
     FORGE_RETURN
 }
 
-static void free_metric_collection_interval_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Radio metrics TLV ("Section 17.2.60")                                 #
 ########################################################################*/
+TLV_FREE_FUNCTION(radio_metrics) {}
+
 static uint8_t* parse_radio_metrics_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_radio_metrics_tlv_t *ret;
@@ -1434,7 +1423,7 @@ static uint8_t* parse_radio_metrics_tlv(uint8_t *packet_stream, uint16_t len)
     _E1B(&p, &ret->receive_self);
     _E1B(&p, &ret->receive_other);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(radio_metrics)
     PARSE_RETURN
 }
 
@@ -1457,12 +1446,12 @@ static uint8_t* forge_radio_metrics_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_radio_metrics_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # AP extended metrics TLV ("Section 17.2.61")                           #
 ########################################################################*/
-static uint8_t* parse_ap_extended_metrics_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(ap_ext_metrics) {}
+
+static uint8_t* parse_ap_ext_metrics_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_ap_ext_metrics_tlv_t *ret;
     uint8_t *p = packet_stream;
@@ -1481,11 +1470,11 @@ static uint8_t* parse_ap_extended_metrics_tlv(uint8_t *packet_stream, uint16_t l
     _E4B(&p, &ret->bcast_bytes_tx);
     _E4B(&p, &ret->bcast_bytes_rx);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(ap_ext_metrics)
     PARSE_RETURN
 }
 
-static uint8_t* forge_ap_extended_metrics_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_ap_ext_metrics_tlv(void *memory_structure, uint16_t *len)
 {
     map_ap_ext_metrics_tlv_t *m = memory_structure;
     uint16_t  tlv_length = 30;
@@ -1506,12 +1495,12 @@ static uint8_t* forge_ap_extended_metrics_tlv(void *memory_structure, uint16_t *
     FORGE_RETURN
 }
 
-static void free_ap_extended_metrics_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Associated STA extended link metrics TLV ("Section 17.2.62")          #
 ########################################################################*/
-static uint8_t* parse_associated_sta_extended_link_metrics_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(assoc_sta_ext_link_metrics) {}
+
+static uint8_t* parse_assoc_sta_ext_link_metrics_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_assoc_sta_ext_link_metrics_tlv_t *ret;
     uint8_t *p = packet_stream, i;
@@ -1534,11 +1523,11 @@ static uint8_t* parse_associated_sta_extended_link_metrics_tlv(uint8_t *packet_s
         _E4B(&p, &ret->bsss[i].utilization_tx);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(assoc_sta_ext_link_metrics)
     PARSE_RETURN
 }
 
-static uint8_t* forge_associated_sta_extended_link_metrics_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_assoc_sta_ext_link_metrics_tlv(void *memory_structure, uint16_t *len)
 {
     map_assoc_sta_ext_link_metrics_tlv_t *m = memory_structure;
     uint16_t  tlv_length = 7 + m->bsss_nr * 22;
@@ -1562,11 +1551,11 @@ static uint8_t* forge_associated_sta_extended_link_metrics_tlv(void *memory_stru
     FORGE_RETURN
 }
 
-static void free_associated_sta_extended_link_metrics_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Status code TLV ("Section 17.2.63")                                   #
 ########################################################################*/
+TLV_FREE_FUNCTION(status_code) {}
+
 static uint8_t* parse_status_code_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_status_code_tlv_t *ret;
@@ -1580,7 +1569,7 @@ static uint8_t* parse_status_code_tlv(uint8_t *packet_stream, uint16_t len)
 
     _E2B(&p, &ret->status_code);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(status_code)
     PARSE_RETURN
 }
 
@@ -1599,11 +1588,11 @@ static uint8_t* forge_status_code_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_status_code_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Reason code TLV ("Section 17.2.64")                                   #
 ########################################################################*/
+TLV_FREE_FUNCTION(reason_code) {}
+
 static uint8_t* parse_reason_code_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_reason_code_tlv_t *ret;
@@ -1617,7 +1606,7 @@ static uint8_t* parse_reason_code_tlv(uint8_t *packet_stream, uint16_t len)
 
     _E2B(&p, &ret->reason_code);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(reason_code)
     PARSE_RETURN
 }
 
@@ -1636,12 +1625,12 @@ static uint8_t* forge_reason_code_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_reason_code_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Backhaul STA radio capabilities TLV ("Section 17.2.65")               #
 ########################################################################*/
-static uint8_t* parse_backhaul_sta_radio_capabilities_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(backhaul_sta_radio_cap) {}
+
+static uint8_t* parse_backhaul_sta_radio_cap_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_backhaul_sta_radio_cap_tlv_t *ret;
     uint8_t *p = packet_stream, byte;
@@ -1660,11 +1649,11 @@ static uint8_t* parse_backhaul_sta_radio_capabilities_tlv(uint8_t *packet_stream
         _EnB(&p, ret->bsta_mac, 6);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(backhaul_sta_radio_cap)
     PARSE_RETURN
 }
 
-static uint8_t* forge_backhaul_sta_radio_capabilities_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_backhaul_sta_radio_cap_tlv(void *memory_structure, uint16_t *len)
 {
     map_backhaul_sta_radio_cap_tlv_t *m = memory_structure;
     uint16_t  tlv_length = 7 + (m->bsta_mac_present ? 6 : 0); /* radio + flags + optional mac */
@@ -1686,11 +1675,11 @@ static uint8_t* forge_backhaul_sta_radio_capabilities_tlv(void *memory_structure
     FORGE_RETURN
 }
 
-static void free_backhaul_sta_radio_capabilities_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Backhaul BSS configuration ("Section 17.2.66")                        #
 ########################################################################*/
+TLV_FREE_FUNCTION(backhaul_bss_configuration) {}
+
 static uint8_t* parse_backhaul_bss_configuration_tlv(uint8_t *packet_stream, uint16_t len)
 {
     map_backhaul_bss_configuration_tlv_t *ret;
@@ -1707,7 +1696,7 @@ static uint8_t* parse_backhaul_bss_configuration_tlv(uint8_t *packet_stream, uin
     ret->p1_bsta_disallowed = (byte & BIT_MASK_7) ? SET_BIT : RESET_BIT;
     ret->p2_bsta_disallowed = (byte & BIT_MASK_6) ? SET_BIT : RESET_BIT;
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(backhaul_bss_configuration)
     PARSE_RETURN
 }
 
@@ -1730,42 +1719,39 @@ static uint8_t* forge_backhaul_bss_configuration_tlv(void *memory_structure, uin
     FORGE_RETURN
 }
 
-static void free_backhaul_bss_configuration_tlv(UNUSED void *memory_structure) {}
-
-
 /*#######################################################################
 #                       PUBLIC FUNCTIONS                                #
 ########################################################################*/
 void map_r2_register_tlvs(void)
 {
-    I1905_REGISTER_TLV(TLV_TYPE_CHANNEL_SCAN_REPORTING_POLICY,        channel_scan_reporting_policy       );
-    I1905_REGISTER_TLV(TLV_TYPE_CHANNEL_SCAN_CAPABILITIES,            channel_scan_capabilities           );
-    I1905_REGISTER_TLV(TLV_TYPE_CHANNEL_SCAN_REQUEST,                 channel_scan_request                );
-    I1905_REGISTER_TLV(TLV_TYPE_CHANNEL_SCAN_RESULT,                  channel_scan_result                 );
-    I1905_REGISTER_TLV(TLV_TYPE_TIMESTAMP,                            timestamp                           );
-    I1905_REGISTER_TLV(TLV_TYPE_CAC_REQUEST,                          cac_request                         );
-    I1905_REGISTER_TLV(TLV_TYPE_CAC_TERMINATION,                      cac_termination                     );
-    I1905_REGISTER_TLV(TLV_TYPE_CAC_COMPLETION_REPORT,                cac_completion_report               );
-    I1905_REGISTER_TLV(TLV_TYPE_CAC_STATUS_REPORT,                    cac_status_report                   );
-    I1905_REGISTER_TLV(TLV_TYPE_CAC_CAPABILITIES,                     cac_capabilities                    );
-    I1905_REGISTER_TLV(TLV_TYPE_MULTIAP_PROFILE,                      multiap_profile                     );
-    I1905_REGISTER_TLV(TLV_TYPE_PROFILE2_AP_CAPABILITY,               profile2_ap_capability              );
-    I1905_REGISTER_TLV(TLV_TYPE_DEFAULT_8021Q_SETTINGS,               default_8021q_settings              );
-    I1905_REGISTER_TLV(TLV_TYPE_TRAFFIC_SEPARATION_POLICY,            traffic_separation_policy           );
-    I1905_REGISTER_TLV(TLV_TYPE_PROFILE2_ERROR_CODE,                  profile2_error_code                 );
-    I1905_REGISTER_TLV(TLV_TYPE_AP_RADIO_ADVANCED_CAPABILITIES,       ap_radio_advanced_capabilities      );
-    I1905_REGISTER_TLV(TLV_TYPE_ASSOCIATION_STATUS_NOTIFICATION,      association_status_notification     );
-    I1905_REGISTER_TLV(TLV_TYPE_SOURCE_INFO,                          source_info                         );
-    I1905_REGISTER_TLV(TLV_TYPE_TUNNELED_MESSAGE_TYPE,                tunneled_message_type               );
-    I1905_REGISTER_TLV(TLV_TYPE_TUNNELED,                             tunneled                            );
-    I1905_REGISTER_TLV(TLV_TYPE_PROFILE2_STEERING_REQUEST,            profile2_steering_request           );
-    I1905_REGISTER_TLV(TLV_TYPE_UNSUCCESSFUL_ASSOCIATION_POLICY,      unsuccessful_association_policy     );
-    I1905_REGISTER_TLV(TLV_TYPE_METRIC_COLLECTION_INTERVAL,           metric_collection_interval          );
-    I1905_REGISTER_TLV(TLV_TYPE_RADIO_METRICS,                        radio_metrics                       );
-    I1905_REGISTER_TLV(TLV_TYPE_AP_EXTENDED_METRICS,                  ap_extended_metrics                 );
-    I1905_REGISTER_TLV(TLV_TYPE_ASSOCIATED_STA_EXTENDED_LINK_METRICS, associated_sta_extended_link_metrics);
-    I1905_REGISTER_TLV(TLV_TYPE_STATUS_CODE,                          status_code                         );
-    I1905_REGISTER_TLV(TLV_TYPE_REASON_CODE,                          reason_code                         );
-    I1905_REGISTER_TLV(TLV_TYPE_BACKHAUL_STA_RADIO_CAPABILITIES,      backhaul_sta_radio_capabilities     );
-    I1905_REGISTER_TLV(TLV_TYPE_BACKHAUL_BSS_CONFIGURATION,           backhaul_bss_configuration          );
+    I1905_REGISTER_TLV(TLV_TYPE_CHANNEL_SCAN_REPORTING_POLICY,        channel_scan_reporting_policy);
+    I1905_REGISTER_TLV(TLV_TYPE_CHANNEL_SCAN_CAPABILITIES,            channel_scan_cap             );
+    I1905_REGISTER_TLV(TLV_TYPE_CHANNEL_SCAN_REQUEST,                 channel_scan_request         );
+    I1905_REGISTER_TLV(TLV_TYPE_CHANNEL_SCAN_RESULT,                  channel_scan_result          );
+    I1905_REGISTER_TLV(TLV_TYPE_TIMESTAMP,                            timestamp                    );
+    I1905_REGISTER_TLV(TLV_TYPE_CAC_REQUEST,                          cac_request                  );
+    I1905_REGISTER_TLV(TLV_TYPE_CAC_TERMINATION,                      cac_termination              );
+    I1905_REGISTER_TLV(TLV_TYPE_CAC_COMPLETION_REPORT,                cac_completion_report        );
+    I1905_REGISTER_TLV(TLV_TYPE_CAC_STATUS_REPORT,                    cac_status_report            );
+    I1905_REGISTER_TLV(TLV_TYPE_CAC_CAPABILITIES,                     cac_cap                      );
+    I1905_REGISTER_TLV(TLV_TYPE_MULTIAP_PROFILE,                      multiap_profile              );
+    I1905_REGISTER_TLV(TLV_TYPE_PROFILE2_AP_CAPABILITY,               profile2_ap_cap              );
+    I1905_REGISTER_TLV(TLV_TYPE_DEFAULT_8021Q_SETTINGS,               default_8021q_settings       );
+    I1905_REGISTER_TLV(TLV_TYPE_TRAFFIC_SEPARATION_POLICY,            traffic_separation_policy    );
+    I1905_REGISTER_TLV(TLV_TYPE_PROFILE2_ERROR_CODE,                  profile2_error_code          );
+    I1905_REGISTER_TLV(TLV_TYPE_AP_RADIO_ADVANCED_CAPABILITIES,       ap_radio_advanced_cap        );
+    I1905_REGISTER_TLV(TLV_TYPE_ASSOCIATION_STATUS_NOTIFICATION,      assoc_status_notification    );
+    I1905_REGISTER_TLV(TLV_TYPE_SOURCE_INFO,                          source_info                  );
+    I1905_REGISTER_TLV(TLV_TYPE_TUNNELED_MESSAGE_TYPE,                tunneled_message_type        );
+    I1905_REGISTER_TLV(TLV_TYPE_TUNNELED,                             tunneled                     );
+    I1905_REGISTER_TLV(TLV_TYPE_PROFILE2_STEERING_REQUEST,            profile2_steering_request    );
+    I1905_REGISTER_TLV(TLV_TYPE_UNSUCCESSFUL_ASSOCIATION_POLICY,      unsuccessful_assoc_policy    );
+    I1905_REGISTER_TLV(TLV_TYPE_METRIC_COLLECTION_INTERVAL,           metric_collection_interval   );
+    I1905_REGISTER_TLV(TLV_TYPE_RADIO_METRICS,                        radio_metrics                );
+    I1905_REGISTER_TLV(TLV_TYPE_AP_EXTENDED_METRICS,                  ap_ext_metrics               );
+    I1905_REGISTER_TLV(TLV_TYPE_ASSOCIATED_STA_EXTENDED_LINK_METRICS, assoc_sta_ext_link_metrics   );
+    I1905_REGISTER_TLV(TLV_TYPE_STATUS_CODE,                          status_code                  );
+    I1905_REGISTER_TLV(TLV_TYPE_REASON_CODE,                          reason_code                  );
+    I1905_REGISTER_TLV(TLV_TYPE_BACKHAUL_STA_RADIO_CAPABILITIES,      backhaul_sta_radio_cap       );
+    I1905_REGISTER_TLV(TLV_TYPE_BACKHAUL_BSS_CONFIGURATION,           backhaul_bss_configuration   );
 }

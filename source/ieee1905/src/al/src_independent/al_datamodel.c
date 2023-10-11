@@ -107,8 +107,8 @@ struct _dataModel
 
             struct _remoteInterface {
                 uint8_t             mac_address[6];
-                uint32_t            last_topology_discovery_ts;
-                uint32_t            last_bridge_discovery_ts;
+                uint64_t            last_topology_discovery_ts;
+                uint64_t            last_bridge_discovery_ts;
 
             }                  *remote_interfaces;
 
@@ -119,7 +119,7 @@ struct _dataModel
     uint8_t        network_devices_nr;
 
     struct _networkDevice {
-            uint32_t                                    update_timestamp;
+            uint64_t                                    update_timestamp;
 
             struct deviceInformationTypeTLV            *info;
 
@@ -154,10 +154,10 @@ struct _dataModel
             struct _metricsWithNeighbor {
                 uint8_t                                     neighbor_al_mac_address[6];
 
-                uint32_t                                    tx_metrics_timestamp;
+                uint64_t                                    tx_metrics_timestamp;
                 struct transmitterLinkMetricTLV            *tx_metrics;
 
-                uint32_t                                    rx_metrics_timestamp;
+                uint64_t                                    rx_metrics_timestamp;
                 struct receiverLinkMetricTLV               *rx_metrics;
 
             }                                          *metrics_with_neighbors;
@@ -294,8 +294,17 @@ static uint8_t _insertNeighbor(char *local_interface_name, uint8_t *al_mac_addre
 
     if (0 == x->neighbors_nr) {
         x->neighbors = malloc(sizeof (struct _neighbor));
+        if (!x->neighbors) {
+            return 0;
+        }
     } else {
-        x->neighbors = realloc(x->neighbors, sizeof (struct _neighbor) * (x->neighbors_nr + 1));
+        struct _neighbor *p;
+
+        p = realloc(x->neighbors, sizeof (struct _neighbor) * (x->neighbors_nr + 1));
+        if (!p) {
+            return 0;
+        }
+        x->neighbors = p;
     }
 
     memcpy(x->neighbors[x->neighbors_nr].al_mac_address, al_mac_address, 6);
@@ -330,9 +339,17 @@ static uint8_t _insertNeighborInterface(char *local_interface_name, uint8_t *nei
 
     if (0 == x->remote_interfaces_nr) {
         x->remote_interfaces = malloc(sizeof (struct _remoteInterface));
-    } else
-    {
-        x->remote_interfaces = realloc(x->remote_interfaces, sizeof (struct _remoteInterface) * (x->remote_interfaces_nr + 1));
+        if (!x->remote_interfaces) {
+            return 0;
+        }
+    } else {
+        struct _remoteInterface *p;
+        
+        p = realloc(x->remote_interfaces, sizeof (struct _remoteInterface) * (x->remote_interfaces_nr + 1));
+        if (!p) {
+            return 0;
+        }        
+        x->remote_interfaces = p;
     }
 
     memcpy(x->remote_interfaces[x->remote_interfaces_nr].mac_address, mac_address, 6);
@@ -721,147 +738,13 @@ uint8_t *DMinterfaceNameToMac(char *interface_name)
     return NULL;
 }
 
-
-uint8_t (*DMgetListOfInterfaceNeighbors(char *local_interface_name, uint8_t *al_mac_addresses_nr))[6]
-{
-    uint8_t i;
-    uint8_t (*ret)[6];
-
-    struct _localInterface *x;
-
-    if (NULL == (x = _nameToLocalInterfaceStruct(local_interface_name))) {
-        /* Non existent interface */
-        *al_mac_addresses_nr = 0;
-        return NULL;
-    }
-
-    if (0 == x->neighbors_nr) {
-        *al_mac_addresses_nr = 0;
-        return NULL;
-    }
-
-    ret = malloc(sizeof(uint8_t[6]) * x->neighbors_nr);
-
-    for (i=0; i<x->neighbors_nr; i++) {
-        ret[i][0] = x->neighbors[i].al_mac_address[0];
-        ret[i][1] = x->neighbors[i].al_mac_address[1];
-        ret[i][2] = x->neighbors[i].al_mac_address[2];
-        ret[i][3] = x->neighbors[i].al_mac_address[3];
-        ret[i][4] = x->neighbors[i].al_mac_address[4];
-        ret[i][5] = x->neighbors[i].al_mac_address[5];
-    }
-
-    *al_mac_addresses_nr = x->neighbors_nr;
-    return ret;
-}
-
-uint8_t (*DMgetListOfNeighbors(uint8_t *al_mac_addresses_nr))[6]
-{
-    uint8_t i, j, k;
-
-    uint8_t total = 0;
-    uint8_t (*ret)[6] = NULL;
-
-    if (NULL == al_mac_addresses_nr) {
-        return NULL;
-    }
-
-    for (i=0; i<data_model.local_interfaces_nr; i++) {
-        for (j=0; j<data_model.local_interfaces[i].neighbors_nr; j++) {
-            /* Check for duplicates */
-            uint8_t already_present;
-
-            already_present = 0;
-            for (k=0; k<total; k++) {
-                if (0 == memcmp(&ret[k], data_model.local_interfaces[i].neighbors[j].al_mac_address, 6)) {
-                    already_present = 1;
-                    break;
-                }
-            }
-
-            if (1 == already_present) {
-                continue;
-            }
-
-            /* If we get here, this is a new neighbor and we need to add it to
-            *  the list
-            */
-            if (NULL == ret)  {
-                ret = malloc(sizeof(uint8_t[6]));
-            } else {
-                ret = realloc(ret, sizeof(uint8_t[6])*(total + 1));
-            }
-            memcpy(&ret[total], data_model.local_interfaces[i].neighbors[j].al_mac_address, 6);
-
-            total++;
-        }
-    }
-
-    *al_mac_addresses_nr = total;
-
-    return ret;
-}
-
-uint8_t (*DMgetListOfLinksWithNeighbor(uint8_t *neighbor_al_mac_address, char ***interfaces, uint8_t *links_nr))[6]
-{
-    uint8_t i, j, k;
-    uint8_t total = 0;
-
-    uint8_t (*ret)[6] = NULL;
-    char  **intfs = NULL;
-
-    for (i=0; i<data_model.local_interfaces_nr; i++) {
-        for (j=0; j<data_model.local_interfaces[i].neighbors_nr; j++) {
-            /* Filter neighbor (we are just interested in
-            *  'neighbor_al_mac_address')
-            */
-            if (0 != memcmp(neighbor_al_mac_address, data_model.local_interfaces[i].neighbors[j].al_mac_address, 6)) {
-                continue;
-            }
-
-            for (k=0; k<data_model.local_interfaces[i].neighbors[j].remote_interfaces_nr; k++) {
-                /* This is a new link between the local AL and the remote AL.
-                *  Add it.
-                */
-                if (NULL == ret) {
-                    ret   = malloc(sizeof(uint8_t[6]));
-                    intfs = malloc(sizeof(char *));
-                } else {
-                    ret   = realloc(ret, sizeof(uint8_t[6])*(total + 1));
-                    intfs = realloc(intfs, sizeof(char *)*(total + 1));
-                }
-                memcpy(&ret[total], data_model.local_interfaces[i].neighbors[j].remote_interfaces[k].mac_address, 6);
-                intfs[total] = data_model.local_interfaces[i].name;
-
-                total++;
-            }
-        }
-    }
-
-    *links_nr   = total;
-    *interfaces = intfs;
-
-    return ret;
-}
-
-void DMfreeListOfLinksWithNeighbor(uint8_t (*p)[6], char **interfaces, uint8_t links_nr)
-{
-    if (0 == links_nr) {
-        return;
-    }
-
-    free(interfaces);
-    free(p);
-}
-
-
-uint8_t DMupdateDiscoveryTimeStamps(uint8_t *receiving_interface_addr, uint8_t *al_mac_address, uint8_t *mac_address, uint8_t timestamp_type, uint32_t *ellapsed)
+uint8_t DMupdateDiscoveryTimeStamps(uint8_t *receiving_interface_addr, uint8_t *al_mac_address, uint8_t *mac_address, uint8_t timestamp_type, uint64_t *ellapsed)
 {
     char  *receiving_interface_name;
 
     struct _remoteInterface *x;
 
-    uint32_t aux1, aux2;
+    uint64_t aux1, aux2;
     uint8_t  insert_result;
     uint8_t  ret = 2;
 
@@ -889,6 +772,9 @@ uint8_t DMupdateDiscoveryTimeStamps(uint8_t *receiving_interface_addr, uint8_t *
     }
 
     x = _macAddressToRemoteInterfaceStruct(receiving_interface_name, al_mac_address, mac_address);
+    if (!x) {
+        return 0;
+    }
 
     log_i1905_d("New discovery timestamp udpate:");
     log_i1905_d("  - local_interface      : %s", receiving_interface_name);
@@ -900,7 +786,7 @@ uint8_t DMupdateDiscoveryTimeStamps(uint8_t *receiving_interface_addr, uint8_t *
 
     switch (timestamp_type) {
         case TIMESTAMP_TOPOLOGY_DISCOVERY: {
-            uint32_t aux = PLATFORM_GET_TIMESTAMP();
+            uint64_t aux = PLATFORM_GET_TIMESTAMP();
 
             if (NULL != ellapsed) {
                 if (2 == ret) {
@@ -914,7 +800,7 @@ uint8_t DMupdateDiscoveryTimeStamps(uint8_t *receiving_interface_addr, uint8_t *
             break;
         }
         case TIMESTAMP_BRIDGE_DISCOVERY: {
-            uint32_t aux = PLATFORM_GET_TIMESTAMP();
+            uint64_t aux = PLATFORM_GET_TIMESTAMP();
 
             if (NULL != ellapsed) {
                 if (2 == ret) {
@@ -932,8 +818,8 @@ uint8_t DMupdateDiscoveryTimeStamps(uint8_t *receiving_interface_addr, uint8_t *
         }
     }
 
-    log_i1905_d("  - topology disc TS     : %d --> %d",aux1, x->last_topology_discovery_ts);
-    log_i1905_d("  - bridge   disc TS     : %d --> %d",aux2, x->last_bridge_discovery_ts);
+    log_i1905_d("  - topology disc TS     : %"PRIu64" --> %"PRIu64"",aux1, x->last_topology_discovery_ts);
+    log_i1905_d("  - bridge   disc TS     : %"PRIu64" --> %"PRIu64"",aux2, x->last_bridge_discovery_ts);
 
     return ret;
 }
@@ -942,7 +828,7 @@ uint8_t DMisLinkBridged(char *local_interface_name, uint8_t *neighbor_al_mac_add
 {
     struct _remoteInterface *x;
 
-    uint32_t aux;
+    uint64_t aux;
 
     if (NULL == (x = _macAddressToRemoteInterfaceStruct(local_interface_name, neighbor_al_mac_address, neighbor_mac_address))) {
         /* Non existent neighbor */
