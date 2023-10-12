@@ -124,7 +124,7 @@ int map_send_topology_query(void *args, uint16_t *mid);
 int map_send_topology_query_with_al_mac(mac_addr al_mac_addr, char *iface, uint16_t *mid);
 
 /* 1905.1 6.3.3 (type 0x0002) */
-int map_send_topology_response(i1905_cmdu_t *recv_cmdu);
+int map_send_topology_response(mac_addr src_mac, i1905_cmdu_t *recv_cmdu);
 
 /* 1905.1 6.3.5 (type 0x0005) */
 int map_send_link_metric_query(map_ale_info_t *ale, i1905_link_metric_query_tlv_t *tlv, uint16_t *mid);
@@ -158,10 +158,10 @@ int map_send_vendor_specific_mult_tlvs(void *args, uint16_t *mid);
 #                       MAP R1 CMDU                                     #
 ########################################################################*/
 /* MAP_R1 17.1 (type 0x8000) */
-int map_send_ack(i1905_cmdu_t *recv_cmdu);
+int map_send_ack(map_ale_info_t *ale, i1905_cmdu_t *recv_cmdu);
 
 /* MAP_R1 17.1 (type 0x8000) */
-int map_send_ack_sta_error(i1905_cmdu_t *recv_cmdu, mac_addr *sta_macs, int sta_mac_nr, uint8_t error_code);
+int map_send_ack_sta_error(map_ale_info_t *ale, i1905_cmdu_t *recv_cmdu, mac_addr *sta_macs, int sta_mac_nr, uint8_t error_code);
 
 /* MAP_R2 17.1.6 (type 0x8001) - args is of type map_ale_info_t */
 int map_send_ap_capability_query(void *args, uint16_t *mid);
@@ -226,11 +226,17 @@ int map_send_backhaul_sta_capability_query(void *args, uint16_t *mid);
 /* MAP_R3 17.1.48 (type 0x8029) */
 int map_send_proxied_encap_dpp(map_ale_info_t *ale, map_1905_encap_dpp_tlv_t *encap_tlv, map_dpp_chirp_value_tlv_t *chirp_tlv, uint16_t *mid);
 
+/* MAP_R3 17.1.49 (type 0x8030) */
+int map_send_1905_encap_eapol(map_ale_info_t *ale, map_1905_encap_eapol_tlv_t *encap_eapol_tlv, uint16_t *mid);
+
 /* MAP_R3 17.1.51 (type 0x801D) */
 int map_send_dpp_cce_indication(map_ale_info_t *ale, uint8_t advertise, uint16_t *mid);
 
 /* MAP_R3 17.1.52 (type 0x802F) */
 int map_send_dpp_chirp_notification(map_dpp_chirp_value_tlv_t *chirp_value_tlv_list, int num_chirp_tlv, uint16_t *mid);
+
+/* MAP_R3 17.1.56 (type 0x802A) */
+int map_send_direct_encap_dpp(map_ale_info_t *ale, map_dpp_message_tlv_t *dpp_message_tlv, uint16_t *mid);
 
 /*#######################################################################
 #                       RAW                                             #

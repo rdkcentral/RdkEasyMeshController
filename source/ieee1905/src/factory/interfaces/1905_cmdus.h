@@ -154,6 +154,7 @@
 #define CMDU_TYPE_MAP_PROXIED_ENCAP_DPP                         0x8029
 #define CMDU_TYPE_MAP_DIRECT_ENCAP_DPP                          0x802a
 #define CMDU_TYPE_MAP_CHIRP_NOTIFICATION                        0x802f
+#define CMDU_TYPE_MAP_1905_ENCAP_EAPOL                          0x8030
 
 /*#######################################################################
 # CMDU message version                                                  #
@@ -438,7 +439,7 @@ uint8_t compare_1905_CMDU_structures(i1905_cmdu_t *memory_structure_1, i1905_cmd
 *      structure traversing order)
 */
 void visit_1905_CMDU_structure(i1905_cmdu_t *memory_structure, void (*callback)(void (*write_function)(const char *fmt, ...),
-                               const char *prefix, uint8_t size, const char *name, const char *fmt, void *p),
+                               const char *prefix, size_t size, const char *name, const char *fmt, void *p),
                                void (*write_function)(const char *fmt, ...), const char *prefix);
 
 

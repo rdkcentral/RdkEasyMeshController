@@ -74,6 +74,7 @@
 /*#######################################################################
 #                       INCLUDES                                        #
 ########################################################################*/
+#define TLV_STRUCT_NAME_PREFIX TLV_STRUCT_NAME_PREFIX_I1905
 #define LOG_TAG "tlv"
 
 #include "platform.h"
@@ -117,6 +118,8 @@ void i1905_register_tlv(uint8_t type, char *name, i1905_tlv_parse_cb_t parse_cb,
 /*#######################################################################
 # End of message TLV ("Section 6.4.1")                                  #
 ########################################################################*/
+TLV_FREE_FUNCTION(end_of_message) {}
+
 static uint8_t* parse_end_of_message_tlv(UNUSED uint8_t *packet_stream, uint16_t len)
 {
     i1905_end_of_message_tlv_t *ret;
@@ -145,11 +148,14 @@ static uint8_t* forge_end_of_message_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_end_of_message_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Vendor specific TLV ("Section 6.4.2")                                 #
 ########################################################################*/
+TLV_FREE_FUNCTION(vendor_specific)
+{
+    SFREE(m->m);
+}
+
 static uint8_t* parse_vendor_specific_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_vendor_specific_tlv_t *ret;
@@ -169,10 +175,14 @@ static uint8_t* parse_vendor_specific_tlv(uint8_t *packet_stream, uint16_t len)
 
     if (ret->m_nr) {
         ret->m = malloc(ret->m_nr);
+        if (!ret->m) {
+            free(ret);
+            return NULL;
+        }
         _EnB(&p, ret->m, ret->m_nr);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(vendor_specific)
     PARSE_RETURN
 }
 
@@ -194,16 +204,11 @@ static uint8_t* forge_vendor_specific_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_vendor_specific_tlv(void *memory_structure)
-{
-    i1905_vendor_specific_tlv_t *m = memory_structure;
-
-    SFREE(m->m);
-}
-
 /*#######################################################################
 # AL MAC address TLV ("Section 6.4.3")                                  #
 ########################################################################*/
+TLV_FREE_FUNCTION(al_mac_address) {}
+
 static uint8_t* parse_al_mac_address_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_al_mac_address_tlv_t *ret;
@@ -217,7 +222,7 @@ static uint8_t* parse_al_mac_address_tlv(uint8_t *packet_stream, uint16_t len)
     ret->tlv_type = TLV_TYPE_AL_MAC_ADDRESS;
     _EnB(&p, ret->al_mac_address, 6);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(al_mac_address)
     PARSE_RETURN
 }
 
@@ -236,11 +241,11 @@ static uint8_t* forge_al_mac_address_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_al_mac_address_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # MAC address TLV ("Section 6.4.4")                                     #
 ########################################################################*/
+TLV_FREE_FUNCTION(mac_address) {}
+
 static uint8_t* parse_mac_address_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_mac_address_tlv_t *ret;
@@ -254,7 +259,7 @@ static uint8_t* parse_mac_address_tlv(uint8_t *packet_stream, uint16_t len)
     ret->tlv_type = TLV_TYPE_MAC_ADDRESS;
     _EnB(&p, ret->mac_address, 6);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(mac_address)
     PARSE_RETURN
 }
 
@@ -273,11 +278,14 @@ static uint8_t* forge_mac_address_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_mac_address_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Device information TLV ("Section 6.4.5")                              #
 ########################################################################*/
+TLV_FREE_FUNCTION(device_information)
+{
+    SFREE(m->local_interfaces);
+}
+
 static uint8_t* parse_device_information_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_device_information_tlv_t *ret;
@@ -290,6 +298,10 @@ static uint8_t* parse_device_information_tlv(uint8_t *packet_stream, uint16_t le
     _E1B(&p, &ret->local_interfaces_nr);
 
     ret->local_interfaces = calloc(ret->local_interfaces_nr, sizeof(*ret->local_interfaces));
+    if (!ret->local_interfaces) {
+        free(ret);
+        return NULL;
+    }
 
     for (i = 0; i < ret->local_interfaces_nr; i++) {
         _EnB(&p, ret->local_interfaces[i].mac_address, 6);
@@ -313,9 +325,7 @@ static uint8_t* parse_device_information_tlv(uint8_t *packet_stream, uint16_t le
 
             if (!ok) {
                 /* Malformed packet */
-                free(ret->local_interfaces);
-                free(ret);
-                return NULL;
+                PARSE_FREE_RET_RETURN(device_information)
             }
 
             if (10 == ret->local_interfaces[i].media_specific_data_size) {
@@ -331,9 +341,7 @@ static uint8_t* parse_device_information_tlv(uint8_t *packet_stream, uint16_t le
         {
             if (7 != ret->local_interfaces[i].media_specific_data_size) {
                 /* Malformed packet */
-                free(ret->local_interfaces);
-                free(ret);
-                return NULL;
+                PARSE_FREE_RET_RETURN(device_information)
             }
             _EnB(&p, ret->local_interfaces[i].media_specific_data.ieee1901.network_identifier, 7);
         } else {
@@ -349,15 +357,13 @@ static uint8_t* parse_device_information_tlv(uint8_t *packet_stream, uint16_t le
                     _E1B(&p, &ret->local_interfaces[i].media_specific_data.ieee80211.ap_channel_center_frequency_index_2);
                 } else {
                     /* Malformed packet */
-                    free(ret->local_interfaces);
-                    free(ret);
-                    return NULL;
+                    PARSE_FREE_RET_RETURN(device_information)
                 }
             }
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(device_information)
     PARSE_RETURN
 }
 
@@ -428,17 +434,20 @@ static uint8_t* forge_device_information_tlv(void *memory_structure, uint16_t *l
     FORGE_RETURN
 }
 
-static void free_device_information_tlv(void *memory_structure)
-{
-    i1905_device_information_tlv_t *m = memory_structure;
-
-    SFREE(m->local_interfaces);
-}
-
 /*########################################################################
 # Device bridging capability TLV ("Section 6.4.6")                       #
 #########################################################################*/
-static uint8_t* parse_device_bridging_capability_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(device_bridging_cap)
+{
+    uint8_t i;
+
+    for (i=0; i < m->bridging_tuples_nr; i++) {
+        SFREE(m->bridging_tuples[i].bridging_tuple_macs);
+    }
+    SFREE(m->bridging_tuples);
+}
+
+static uint8_t* parse_device_bridging_cap_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_device_bridging_cap_tlv_t *ret;
     uint8_t *p = packet_stream, i, j;
@@ -469,12 +478,19 @@ static uint8_t* parse_device_bridging_capability_tlv(uint8_t *packet_stream, uin
 
     if (ret->bridging_tuples_nr > 0) {
         ret->bridging_tuples = calloc(ret->bridging_tuples_nr, sizeof(*ret->bridging_tuples));
+        if (!ret->bridging_tuples) {
+            free(ret);
+            return NULL;
+        }
 
         for (i = 0; i < ret->bridging_tuples_nr; i++) {
             _E1B(&p, &ret->bridging_tuples[i].bridging_tuple_macs_nr);
 
             if (ret->bridging_tuples[i].bridging_tuple_macs_nr > 0) {
                 ret->bridging_tuples[i].bridging_tuple_macs = calloc(ret->bridging_tuples[i].bridging_tuple_macs_nr, sizeof(*ret->bridging_tuples[i].bridging_tuple_macs));
+                if (!ret->bridging_tuples[i].bridging_tuple_macs) {
+                    PARSE_FREE_RET_RETURN(device_bridging_cap)
+                }
 
                 for (j=0; j < ret->bridging_tuples[i].bridging_tuple_macs_nr; j++) {
                     _EnB(&p, ret->bridging_tuples[i].bridging_tuple_macs[j].mac_address, 6);
@@ -483,11 +499,11 @@ static uint8_t* parse_device_bridging_capability_tlv(uint8_t *packet_stream, uin
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(device_bridging_cap)
     PARSE_RETURN
 }
 
-static uint8_t* forge_device_bridging_capability_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_device_bridging_cap_tlv(void *memory_structure, uint16_t *len)
 {
     i1905_device_bridging_cap_tlv_t *m = memory_structure;
     uint16_t  tlv_length;
@@ -516,20 +532,14 @@ static uint8_t* forge_device_bridging_capability_tlv(void *memory_structure, uin
     FORGE_RETURN
 }
 
-static void free_device_bridging_capability_tlv(void *memory_structure)
-{
-    i1905_device_bridging_cap_tlv_t *m = memory_structure;
-    uint8_t i;
-
-    for (i=0; i < m->bridging_tuples_nr; i++) {
-        SFREE(m->bridging_tuples[i].bridging_tuple_macs);
-    }
-    SFREE(m->bridging_tuples);
-}
-
 /*######################################################################
 # Non-1905 neighbor device list TLV ("Section 6.4.8")                  #
 #######################################################################*/
+TLV_FREE_FUNCTION(non_1905_neighbor_device_list)
+{
+    SFREE(m->non_1905_neighbors);
+}
+
 static uint8_t* parse_non_1905_neighbor_device_list_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_non_1905_neighbor_device_list_tlv_t *ret;;
@@ -549,12 +559,16 @@ static uint8_t* parse_non_1905_neighbor_device_list_tlv(uint8_t *packet_stream, 
 
     ret->non_1905_neighbors_nr = (len - 6) / 6;
     ret->non_1905_neighbors = calloc(ret->non_1905_neighbors_nr, sizeof(*ret->non_1905_neighbors));
+    if (!ret->non_1905_neighbors) {
+        free(ret);
+        return NULL;
+    }
 
     for (i = 0; i < ret->non_1905_neighbors_nr; i++) {
         _EnB(&p,  ret->non_1905_neighbors[i].mac_address, 6);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(non_1905_neighbor_device_list)
     PARSE_RETURN
 }
 
@@ -577,16 +591,14 @@ static uint8_t* forge_non_1905_neighbor_device_list_tlv(void *memory_structure, 
     FORGE_RETURN
 }
 
-static void free_non_1905_neighbor_device_list_tlv(void *memory_structure)
-{
-    i1905_non_1905_neighbor_device_list_tlv_t *m = memory_structure;
-
-    SFREE(m->non_1905_neighbors);
-}
-
 /*#######################################################################
 # Neighbor device TLV ("Section 6.4.9")                                 #
 ########################################################################*/
+TLV_FREE_FUNCTION(neighbor_device_list)
+{
+    SFREE(m->neighbors);
+}
+
 static uint8_t* parse_neighbor_device_list_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_neighbor_device_list_tlv_t *ret;
@@ -606,6 +618,10 @@ static uint8_t* parse_neighbor_device_list_tlv(uint8_t *packet_stream, uint16_t 
     ret->neighbors_nr = (len-6) / 7;
 
     ret->neighbors = calloc(ret->neighbors_nr, sizeof(*ret->neighbors));
+    if (!ret->neighbors) {
+        free(ret);
+        return NULL;
+    }
 
     for (i = 0; i < ret->neighbors_nr; i++) {
         uint8_t aux;
@@ -616,14 +632,14 @@ static uint8_t* parse_neighbor_device_list_tlv(uint8_t *packet_stream, uint16_t 
         ret->neighbors[i].bridge_flag = (aux & 0x80) ? 1 : 0;
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(neighbor_device_list)
     PARSE_RETURN
 }
 
 static uint8_t* forge_neighbor_device_list_tlv(void *memory_structure, uint16_t *len)
 {
     i1905_neighbor_device_list_tlv_t *m = memory_structure;
-    uint16_t  tlv_length = tlv_length = 6 + 7 * m->neighbors_nr;
+    uint16_t  tlv_length = 6 + 7 * m->neighbors_nr;
     uint8_t  *ret, *p, i;
 
     FORGE_MALLOC_RET
@@ -649,16 +665,11 @@ static uint8_t* forge_neighbor_device_list_tlv(void *memory_structure, uint16_t 
     FORGE_RETURN
 }
 
-static void free_neighbor_device_list_tlv(void *memory_structure)
-{
-    i1905_neighbor_device_list_tlv_t *m = memory_structure;
-
-    SFREE(m->neighbors);
-}
-
 /*#######################################################################
 # Link metric query TLV ("Section 6.4.10")                              #
 ########################################################################*/
+TLV_FREE_FUNCTION(link_metric_query) {}
+
 static uint8_t* parse_link_metric_query_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_link_metric_query_tlv_t *ret;
@@ -677,41 +688,33 @@ static uint8_t* parse_link_metric_query_tlv(uint8_t *packet_stream, uint16_t len
         _EnB(&p, ret->specific_neighbor, 6);
     }
 
-    if (destination >= 2) {
-        /* Reserved (invalid) value received */
-        free(ret);
-        return NULL;
-    } else if (0 == destination) {
+    if (destination == 0) {
         uint8_t dummy_address[] = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
 
         ret->destination = LINK_METRIC_QUERY_TLV_ALL_NEIGHBORS;
         maccpy(ret->specific_neighbor, dummy_address);
-    } else if (1 == destination) {
+    } else if (destination == 1) {
         ret->destination = LINK_METRIC_QUERY_TLV_SPECIFIC_NEIGHBOR;
     } else {
-        /* This code cannot be reached */
+        /* Reserved (invalid) value received */
         free(ret);
         return NULL;
     }
     _E1B(&p, &link_metrics_type);
 
-    if (link_metrics_type >= 3) {
-        /* Reserved (invalid) value received */
-        free(ret);
-        return NULL;
-    } else if (0 == link_metrics_type) {
+    if (link_metrics_type == 0) {
         ret->link_metrics_type = LINK_METRIC_QUERY_TLV_TX_LINK_METRICS_ONLY;
-    } else if (1 == link_metrics_type) {
+    } else if (link_metrics_type == 1) {
         ret->link_metrics_type = LINK_METRIC_QUERY_TLV_RX_LINK_METRICS_ONLY;
-    } else if (2 == link_metrics_type) {
+    } else if (link_metrics_type == 2) {
         ret->link_metrics_type = LINK_METRIC_QUERY_TLV_BOTH_TX_AND_RX_LINK_METRICS;
     } else {
-        /* This code cannot be reached */
+        /* Reserved (invalid) value received */
         free(ret);
         return NULL;
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(link_metric_query)
     PARSE_RETURN
 }
 
@@ -807,11 +810,14 @@ static uint8_t* forge_link_metric_query_tlv(void *memory_structure, uint16_t *le
     FORGE_RETURN
 }
 
-static void free_link_metric_query_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Transmitter link metric TLV ("Section 6.4.11")                        #
 ########################################################################*/
+TLV_FREE_FUNCTION(transmitter_link_metric)
+{
+    SFREE(m->transmitter_link_metrics);
+}
+
 static uint8_t* parse_transmitter_link_metric_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_transmitter_link_metric_tlv_t *ret;
@@ -836,6 +842,10 @@ static uint8_t* parse_transmitter_link_metric_tlv(uint8_t *packet_stream, uint16
     ret->transmitter_link_metrics_nr = (len - 12) / 29;
 
     ret->transmitter_link_metrics = calloc(ret->transmitter_link_metrics_nr, sizeof(*ret->transmitter_link_metrics));
+    if (!ret->transmitter_link_metrics) {
+        free(ret);
+        return NULL;
+    }
 
     for (i=0; i < ret->transmitter_link_metrics_nr; i++) {
         _EnB(&p, ret->transmitter_link_metrics[i].local_interface_address,    6);
@@ -850,7 +860,7 @@ static uint8_t* parse_transmitter_link_metric_tlv(uint8_t *packet_stream, uint16
         _E2B(&p, &ret->transmitter_link_metrics[i].phy_rate);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(transmitter_link_metric)
     PARSE_RETURN
 }
 
@@ -882,16 +892,14 @@ static uint8_t* forge_transmitter_link_metric_tlv(void *memory_structure, uint16
     FORGE_RETURN
 }
 
-static void free_transmitter_link_metric_tlv(void *memory_structure)
-{
-    i1905_transmitter_link_metric_tlv_t *m = memory_structure;
-
-    SFREE(m->transmitter_link_metrics);
-}
-
 /*#######################################################################
 # Receiver link metric TLV ("Section 6.4.12")                           #
 ########################################################################*/
+TLV_FREE_FUNCTION(receiver_link_metric)
+{
+    SFREE(m->receiver_link_metrics);
+}
+
 static uint8_t* parse_receiver_link_metric_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_receiver_link_metric_tlv_t *ret;
@@ -916,6 +924,10 @@ static uint8_t* parse_receiver_link_metric_tlv(uint8_t *packet_stream, uint16_t 
     ret->receiver_link_metrics_nr = (len - 12) / 23;
 
     ret->receiver_link_metrics = calloc(ret->receiver_link_metrics_nr, sizeof(*ret->receiver_link_metrics));
+    if (!ret->receiver_link_metrics) {
+        free(ret);
+        return NULL;
+    }
 
     for (i=0; i < ret->receiver_link_metrics_nr; i++) {
         _EnB(&p,  ret->receiver_link_metrics[i].local_interface_address,    6);
@@ -927,7 +939,7 @@ static uint8_t* parse_receiver_link_metric_tlv(uint8_t *packet_stream, uint16_t 
         _E1B(&p, &ret->receiver_link_metrics[i].rssi);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(receiver_link_metric)
     PARSE_RETURN
 }
 
@@ -956,16 +968,11 @@ static uint8_t* forge_receiver_link_metric_tlv(void *memory_structure, uint16_t 
     FORGE_RETURN
 }
 
-static void free_receiver_link_metric_tlv(void *memory_structure)
-{
-    i1905_receiver_link_metric_tlv_t *m = memory_structure;
-
-    SFREE(m->receiver_link_metrics);
-}
-
 /*#######################################################################
 # Link metric result code TLV ("Section 6.4.13")                        #
 ########################################################################*/
+TLV_FREE_FUNCTION(link_metric_result_code) {}
+
 static uint8_t* parse_link_metric_result_code_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_link_metric_result_code_tlv_t *ret;
@@ -979,7 +986,7 @@ static uint8_t* parse_link_metric_result_code_tlv(uint8_t *packet_stream, uint16
     ret->tlv_type = TLV_TYPE_LINK_METRIC_RESULT_CODE;
     _E1B(&p, &ret->result_code);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(link_metric_result_code)
     PARSE_RETURN
 }
 
@@ -1005,11 +1012,11 @@ static uint8_t* forge_link_metric_result_code_tlv(void *memory_structure, uint16
     FORGE_RETURN
 }
 
-static void free_link_metric_result_code_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Searched role TLV ("Section 6.4.14")                                  #
 ########################################################################*/
+TLV_FREE_FUNCTION(searched_role) {}
+
 static uint8_t* parse_searched_role_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_searched_role_tlv_t *ret;
@@ -1023,7 +1030,7 @@ static uint8_t* parse_searched_role_tlv(uint8_t *packet_stream, uint16_t len)
     ret->tlv_type = TLV_TYPE_SEARCHED_ROLE;
     _E1B(&p, &ret->role);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(searched_role)
     PARSE_RETURN
 }
 
@@ -1049,11 +1056,11 @@ static uint8_t* forge_searched_role_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_searched_role_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Autoconfig frequency band TLV ("Section 6.4.15")                      #
 ########################################################################*/
+TLV_FREE_FUNCTION(autoconfig_freq_band) {}
+
 static uint8_t* parse_autoconfig_freq_band_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_autoconfig_freq_band_tlv_t *ret;
@@ -1067,7 +1074,7 @@ static uint8_t* parse_autoconfig_freq_band_tlv(uint8_t *packet_stream, uint16_t 
     ret->tlv_type = TLV_TYPE_AUTOCONFIG_FREQ_BAND;
     _E1B(&p, &ret->freq_band);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(autoconfig_freq_band)
     PARSE_RETURN
 }
 
@@ -1095,11 +1102,11 @@ static uint8_t* forge_autoconfig_freq_band_tlv(void *memory_structure, uint16_t 
     FORGE_RETURN
 }
 
-static void free_autoconfig_freq_band_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
- # Supported role TLV ("Section 6.4.16")                                #
+# Supported role TLV ("Section 6.4.16")                                 #
 ########################################################################*/
+TLV_FREE_FUNCTION(supported_role) {}
+
 static uint8_t* parse_supported_role_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_supported_role_tlv_t *ret;
@@ -1113,7 +1120,7 @@ static uint8_t* parse_supported_role_tlv(uint8_t *packet_stream, uint16_t len)
     ret->tlv_type = TLV_TYPE_SUPPORTED_ROLE;
     _E1B(&p, &ret->role);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(supported_role)
     PARSE_RETURN
 }
 
@@ -1139,11 +1146,11 @@ static uint8_t* forge_supported_role_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_supported_role_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Supported frequency band TLV ("Section 6.4.17")                       #
 ########################################################################*/
+TLV_FREE_FUNCTION(supported_freq_band) {}
+
 static uint8_t* parse_supported_freq_band_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_supported_freq_band_tlv_t *ret;
@@ -1157,7 +1164,7 @@ static uint8_t* parse_supported_freq_band_tlv(uint8_t *packet_stream, uint16_t l
     ret->tlv_type = TLV_TYPE_SUPPORTED_FREQ_BAND;
     _E1B(&p, &ret->freq_band);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(supported_freq_band)
     PARSE_RETURN
 }
 
@@ -1186,11 +1193,14 @@ static uint8_t* forge_supported_freq_band_tlv(void *memory_structure, uint16_t *
     FORGE_RETURN
 }
 
-static void free_supported_freq_band_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # WSC TLV ("Section 6.4.18")                                            #
 ########################################################################*/
+TLV_FREE_FUNCTION(wsc)
+{
+    SFREE(m->wsc_frame);
+}
+
 static uint8_t* parse_wsc_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_wsc_tlv_t *ret;
@@ -1203,10 +1213,14 @@ static uint8_t* parse_wsc_tlv(uint8_t *packet_stream, uint16_t len)
 
     if (len > 0) {
         ret->wsc_frame = malloc(len);
+        if (!ret->wsc_frame) {
+            free(ret);
+            return NULL;
+        }
         _EnB(&p, ret->wsc_frame, len);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(wsc)
     PARSE_RETURN
 }
 
@@ -1225,16 +1239,14 @@ static uint8_t* forge_wsc_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_wsc_tlv(void *memory_structure)
-{
-    i1905_wsc_tlv_t *m = memory_structure;
-
-    SFREE(m->wsc_frame);
-}
-
 /*#######################################################################
 # Push button event notification TLV ("Section 6.4.19")                 #
 ########################################################################*/
+TLV_FREE_FUNCTION(push_button_event_notification)
+{
+    SFREE(m->media_types);
+}
+
 static uint8_t* parse_push_button_event_notification_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_push_button_event_notification_tlv_t *ret;
@@ -1267,6 +1279,10 @@ static uint8_t* parse_push_button_event_notification_tlv(uint8_t *packet_stream,
 
     if (ret->media_types_nr > 0) {
         ret->media_types = calloc(ret->media_types_nr, sizeof(*ret->media_types));
+        if (!ret->media_types) {
+            free(ret);
+            return NULL;
+        }
 
         for (i=0; i < ret->media_types_nr; i++) {
             _E2B(&p, &ret->media_types[i].media_type);
@@ -1286,9 +1302,7 @@ static uint8_t* parse_push_button_event_notification_tlv(uint8_t *packet_stream,
 
                 if (10 != ret->media_types[i].media_specific_data_size) {
                     /* Malformed packet */
-                    free(ret->media_types);
-                    free(ret);
-                    return NULL;
+                    PARSE_FREE_RET_RETURN(push_button_event_notification)
                 }
 
                 _EnB(&p, ret->media_types[i].media_specific_data.ieee80211.network_membership, 6);
@@ -1303,23 +1317,18 @@ static uint8_t* parse_push_button_event_notification_tlv(uint8_t *packet_stream,
             {
                 if (7 != ret->media_types[i].media_specific_data_size) {
                     /* Malformed packet */
-                    free(ret->media_types);
-                    free(ret);
-                    return NULL;
+                    PARSE_FREE_RET_RETURN(push_button_event_notification)
                 }
                 _EnB(&p, ret->media_types[i].media_specific_data.ieee1901.network_identifier, 7);
             } else {
                 if (0 != ret->media_types[i].media_specific_data_size) {
-                    /* Malformed packet */
-                    free(ret->media_types);
-                    free(ret);
-                    return NULL;
+                    PARSE_FREE_RET_RETURN(push_button_event_notification)
                 }
             }
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(push_button_event_notification)
     PARSE_RETURN
 }
 
@@ -1392,16 +1401,11 @@ static uint8_t* forge_push_button_event_notification_tlv(void *memory_structure,
     FORGE_RETURN
 }
 
-static void free_push_button_event_notification_tlv(void *memory_structure)
-{
-    i1905_push_button_event_notification_tlv_t *m = memory_structure;
-
-    SFREE(m->media_types);
-}
-
 /*#######################################################################
 # Push button join notification TLV ("Section 6.4.20")                  #
 ########################################################################*/
+TLV_FREE_FUNCTION(push_button_join_notification) {}
+
 static uint8_t* parse_push_button_join_notification_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_push_button_join_notification_tlv_t *ret;
@@ -1418,7 +1422,7 @@ static uint8_t* parse_push_button_join_notification_tlv(uint8_t *packet_stream, 
     _EnB(&p, ret->mac_address, 6);
     _EnB(&p, ret->new_mac_address, 6);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(push_button_join_notification)
     PARSE_RETURN
 }
 
@@ -1440,11 +1444,20 @@ static uint8_t* forge_push_button_join_notification_tlv(void *memory_structure, 
     FORGE_RETURN
 }
 
-static void free_push_button_join_notification_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Generic PHY device information TLV ("Section 6.4.21")                 #
 ########################################################################*/
+TLV_FREE_FUNCTION(generic_phy_device_information)
+{
+    uint8_t i;
+
+    for (i=0; i < m->local_interfaces_nr; i++) {
+        SFREE(m->local_interfaces[i].generic_phy_description_xml_url);
+        SFREE(m->local_interfaces[i].generic_phy_common_data.media_specific_bytes);
+    }
+    SFREE(m->local_interfaces);
+}
+
 static uint8_t* parse_generic_phy_device_information_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_generic_phy_device_information_tlv_t *ret;
@@ -1459,6 +1472,10 @@ static uint8_t* parse_generic_phy_device_information_tlv(uint8_t *packet_stream,
 
     if (ret->local_interfaces_nr > 0) {
         ret->local_interfaces = calloc(ret->local_interfaces_nr, sizeof(*ret->local_interfaces));
+        if (!ret->local_interfaces) {
+            free(ret);
+            return NULL;
+        }
 
         for (i = 0; i < ret->local_interfaces_nr; i++) {
             _EnB(&p, ret->local_interfaces[i].local_interface_address,                 6);
@@ -1470,17 +1487,23 @@ static uint8_t* parse_generic_phy_device_information_tlv(uint8_t *packet_stream,
 
             if (ret->local_interfaces[i].generic_phy_description_xml_url_len > 0) {
                 ret->local_interfaces[i].generic_phy_description_xml_url = malloc(ret->local_interfaces[i].generic_phy_description_xml_url_len);
+                if (!ret->local_interfaces[i].generic_phy_description_xml_url) {
+                    PARSE_FREE_RET_RETURN(generic_phy_device_information)
+                }
                 _EnB(&p, ret->local_interfaces[i].generic_phy_description_xml_url, ret->local_interfaces[i].generic_phy_description_xml_url_len);
             }
 
             if (ret->local_interfaces[i].generic_phy_common_data.media_specific_bytes_nr > 0) {
                 ret->local_interfaces[i].generic_phy_common_data.media_specific_bytes = malloc(ret->local_interfaces[i].generic_phy_common_data.media_specific_bytes_nr);
+                if (!ret->local_interfaces[i].generic_phy_common_data.media_specific_bytes) {
+                    PARSE_FREE_RET_RETURN(generic_phy_device_information)
+                }
                 _EnB(&p, ret->local_interfaces[i].generic_phy_common_data.media_specific_bytes, ret->local_interfaces[i].generic_phy_common_data.media_specific_bytes_nr);
             }
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(generic_phy_device_information)
     PARSE_RETURN
 }
 
@@ -1528,21 +1551,11 @@ static uint8_t* forge_generic_phy_device_information_tlv(void *memory_structure,
     FORGE_RETURN
 }
 
-static void free_generic_phy_device_information_tlv(void *memory_structure)
-{
-    i1905_generic_phy_device_information_tlv_t *m = memory_structure;
-    uint8_t i;
-
-    for (i=0; i < m->local_interfaces_nr; i++) {
-        SFREE(m->local_interfaces[i].generic_phy_description_xml_url);
-        SFREE(m->local_interfaces[i].generic_phy_common_data.media_specific_bytes);
-    }
-    SFREE(m->local_interfaces);
-}
-
 /*#######################################################################
 # Device identification type TLV ("Section 6.4.22")                     #
 ########################################################################*/
+TLV_FREE_FUNCTION(device_identification) {}
+
 static uint8_t* parse_device_identification_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_device_identification_tlv_t *ret;
@@ -1559,7 +1572,7 @@ static uint8_t* parse_device_identification_tlv(uint8_t *packet_stream, uint16_t
     _EnB(&p, ret->manufacturer_name,  64);
     _EnB(&p, ret->manufacturer_model, 64);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(device_identification)
     PARSE_RETURN
 }
 
@@ -1580,11 +1593,14 @@ static uint8_t* forge_device_identification_tlv(void *memory_structure, uint16_t
     FORGE_RETURN
 }
 
-static void free_device_identification_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Control URL type TLV ("Section 6.4.23")                               #
 ########################################################################*/
+TLV_FREE_FUNCTION(control_url)
+{
+    SFREE(m->url);
+}
+
 static uint8_t* parse_control_url_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_control_url_tlv_t *ret;
@@ -1594,12 +1610,16 @@ static uint8_t* parse_control_url_tlv(uint8_t *packet_stream, uint16_t len)
 
     ret->tlv_type = TLV_TYPE_CONTROL_URL;
 
-    if (len>0) {
+    if (len > 0) {
         ret->url = malloc(len);
+        if (!ret->url) {
+            free(ret);
+            return NULL;
+        }
         _EnB(&p, ret->url, len);
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(control_url)
     PARSE_RETURN
 }
 
@@ -1618,16 +1638,19 @@ static uint8_t* forge_control_url_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_control_url_tlv(void *memory_structure)
-{
-    i1905_control_url_tlv_t *m = memory_structure;
-
-    SFREE(m->url);
-}
-
 /*#######################################################################
 # IPv4 type TLV ("Section 6.4.24")                                      #
 ########################################################################*/
+TLV_FREE_FUNCTION(ipv4)
+{
+    uint8_t i;
+
+    for (i=0; i < m->ipv4_interfaces_nr; i++) {
+        SFREE(m->ipv4_interfaces[i].ipv4);
+    }
+    SFREE(m->ipv4_interfaces);
+}
+
 static uint8_t* parse_ipv4_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_ipv4_tlv_t *ret;
@@ -1660,6 +1683,10 @@ static uint8_t* parse_ipv4_tlv(uint8_t *packet_stream, uint16_t len)
 
     if (ret->ipv4_interfaces_nr > 0) {
         ret->ipv4_interfaces = calloc(ret->ipv4_interfaces_nr, sizeof(*ret->ipv4_interfaces));
+        if (!ret->ipv4_interfaces) {
+            free(ret);
+            return NULL;
+        }
 
         for (i=0; i < ret->ipv4_interfaces_nr; i++) {
             _EnB(&p,  ret->ipv4_interfaces[i].mac_address, 6);
@@ -1667,6 +1694,9 @@ static uint8_t* parse_ipv4_tlv(uint8_t *packet_stream, uint16_t len)
 
             if (ret->ipv4_interfaces[i].ipv4_nr > 0) {
                 ret->ipv4_interfaces[i].ipv4 = calloc(ret->ipv4_interfaces[i].ipv4_nr, sizeof(*ret->ipv4_interfaces[i].ipv4));
+                if (!ret->ipv4_interfaces[i].ipv4) {
+                    PARSE_FREE_RET_RETURN(ipv4);
+                }
 
                 for (j=0; j < ret->ipv4_interfaces[i].ipv4_nr; j++) {
                     _E1B(&p, &ret->ipv4_interfaces[i].ipv4[j].type);
@@ -1677,7 +1707,7 @@ static uint8_t* parse_ipv4_tlv(uint8_t *packet_stream, uint16_t len)
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(ipv4)
     PARSE_RETURN
 }
 
@@ -1714,20 +1744,19 @@ static uint8_t* forge_ipv4_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_ipv4_tlv(void *memory_structure)
-{
-    i1905_ipv4_tlv_t *m = memory_structure;
-    uint8_t i;
-
-    for (i=0; i < m->ipv4_interfaces_nr; i++) {
-        SFREE(m->ipv4_interfaces[i].ipv4);
-    }
-    SFREE(m->ipv4_interfaces);
-}
-
 /*#######################################################################
 # IPv6 type TLV ("Section 6.4.25")                                      #
 ########################################################################*/
+TLV_FREE_FUNCTION(ipv6)
+{
+    uint8_t i;
+
+    for (i=0; i < m->ipv6_interfaces_nr; i++) {
+        SFREE(m->ipv6_interfaces[i].ipv6);
+    }
+    SFREE(m->ipv6_interfaces);
+}
+
 static uint8_t* parse_ipv6_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_ipv6_tlv_t *ret;
@@ -1760,6 +1789,10 @@ static uint8_t* parse_ipv6_tlv(uint8_t *packet_stream, uint16_t len)
 
     if (ret->ipv6_interfaces_nr > 0) {
         ret->ipv6_interfaces = calloc(ret->ipv6_interfaces_nr, sizeof(*ret->ipv6_interfaces));
+        if (!ret->ipv6_interfaces) {
+            free(ret);
+            return NULL;
+        }
 
         for (i=0; i < ret->ipv6_interfaces_nr; i++) {
             _EnB(&p, ret->ipv6_interfaces[i].mac_address,              6);
@@ -1768,6 +1801,9 @@ static uint8_t* parse_ipv6_tlv(uint8_t *packet_stream, uint16_t len)
 
             if (ret->ipv6_interfaces[i].ipv6_nr > 0) {
                 ret->ipv6_interfaces[i].ipv6 = calloc(ret->ipv6_interfaces[i].ipv6_nr, sizeof(*ret->ipv6_interfaces[i].ipv6));
+                if (!ret->ipv6_interfaces[i].ipv6) {
+                    PARSE_FREE_RET_RETURN(ipv6);
+                }
 
                 for (j=0; j < ret->ipv6_interfaces[i].ipv6_nr; j++) {
                     _E1B(&p, &ret->ipv6_interfaces[i].ipv6[j].type);
@@ -1778,7 +1814,7 @@ static uint8_t* parse_ipv6_tlv(uint8_t *packet_stream, uint16_t len)
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(ipv6)
     PARSE_RETURN
 }
 
@@ -1817,20 +1853,20 @@ static uint8_t* forge_ipv6_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_ipv6_tlv(void *memory_structure)
-{
-    i1905_ipv6_tlv_t *m = memory_structure;
-    uint8_t i;
-
-    for (i=0; i < m->ipv6_interfaces_nr; i++) {
-        SFREE(m->ipv6_interfaces[i].ipv6);
-    }
-    SFREE(m->ipv6_interfaces);
-}
-
 /*#######################################################################
 # Push button generic PHY event notification TLV ("Section 6.4.26")     #
 ########################################################################*/
+TLV_FREE_FUNCTION(generic_phy_event_notification)
+{
+    uint8_t i;
+
+    for (i = 0; i < m->local_interfaces_nr; i++) {
+        SFREE(m->local_interfaces[i].media_specific_bytes);
+    }
+
+    SFREE(m->local_interfaces);
+}
+
 static uint8_t* parse_generic_phy_event_notification_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_generic_phy_event_notification_tlv_t *ret;
@@ -1863,6 +1899,10 @@ static uint8_t* parse_generic_phy_event_notification_tlv(uint8_t *packet_stream,
 
     if (ret->local_interfaces_nr > 0) {
         ret->local_interfaces = calloc(ret->local_interfaces_nr, sizeof(*ret->local_interfaces));
+        if (!ret->local_interfaces) {
+            free(ret);
+            return NULL;
+        }
 
         for (i=0; i < ret->local_interfaces_nr; i++) {
             _EnB(&p, ret->local_interfaces[i].oui, 3);
@@ -1876,7 +1916,7 @@ static uint8_t* parse_generic_phy_event_notification_tlv(uint8_t *packet_stream,
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(generic_phy_event_notification)
     PARSE_RETURN
 }
 
@@ -1912,22 +1952,12 @@ static uint8_t* forge_generic_phy_event_notification_tlv(void *memory_structure,
     FORGE_RETURN
 }
 
-static void free_generic_phy_event_notification_tlv(void *memory_structure)
-{
-    i1905_generic_phy_event_notification_tlv_t *m = memory_structure;
-    uint8_t i;
-
-    for (i = 0; i < m->local_interfaces_nr; i++) {
-        SFREE(m->local_interfaces[i].media_specific_bytes);
-    }
-
-    SFREE(m->local_interfaces);
-}
-
 /*#######################################################################
 # Profile version TLV ("Section 6.4.27")                                #
 ########################################################################*/
-static uint8_t* parse_1905_profile_version_tlv(uint8_t *packet_stream, uint16_t len)
+TLV_FREE_FUNCTION(profile_version) {}
+
+static uint8_t* parse_profile_version_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_profile_version_tlv_t *ret;
     uint8_t *p = packet_stream;
@@ -1940,11 +1970,11 @@ static uint8_t* parse_1905_profile_version_tlv(uint8_t *packet_stream, uint16_t 
     ret->tlv_type = TLV_TYPE_1905_PROFILE_VERSION;
     _E1B(&p, &ret->profile);
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(profile_version)
     PARSE_RETURN
 }
 
-static uint8_t* forge_1905_profile_version_tlv(void *memory_structure, uint16_t *len)
+static uint8_t* forge_profile_version_tlv(void *memory_structure, uint16_t *len)
 {
     i1905_profile_version_tlv_t *m = memory_structure;
     uint16_t  tlv_length = 1;
@@ -1967,11 +1997,19 @@ static uint8_t* forge_1905_profile_version_tlv(void *memory_structure, uint16_t 
     FORGE_RETURN
 }
 
-static void free_1905_profile_version_tlv(UNUSED void *memory_structure) {}
-
 /*#######################################################################
 # Power off interface TLV ("Section 6.4.28")                            #
 ########################################################################*/
+TLV_FREE_FUNCTION(power_off_interface)
+{
+    uint8_t i;
+
+    for (i = 0; i < m->power_off_interfaces_nr; i++) {
+        SFREE(m->power_off_interfaces[i].generic_phy_common_data.media_specific_bytes);
+    }
+    SFREE(m->power_off_interfaces);
+}
+
 static uint8_t* parse_power_off_interface_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_power_off_interface_tlv_t *ret;
@@ -2002,6 +2040,10 @@ static uint8_t* parse_power_off_interface_tlv(uint8_t *packet_stream, uint16_t l
 
     if (ret->power_off_interfaces_nr > 0) {
         ret->power_off_interfaces = calloc(ret->power_off_interfaces_nr, sizeof(*ret->power_off_interfaces));
+        if (!ret->power_off_interfaces) {
+            free(ret);
+            return NULL;
+        }
 
         for (i = 0; i < ret->power_off_interfaces_nr; i++) {
             _EnB(&p, ret->power_off_interfaces[i].interface_address, 6);
@@ -2017,7 +2059,7 @@ static uint8_t* parse_power_off_interface_tlv(uint8_t *packet_stream, uint16_t l
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(power_off_interface)
     PARSE_RETURN
 }
 
@@ -2057,20 +2099,14 @@ static uint8_t* forge_power_off_interface_tlv(void *memory_structure, uint16_t *
     FORGE_RETURN
 }
 
-static void free_power_off_interface_tlv(void *memory_structure)
-{
-    i1905_power_off_interface_tlv_t *m = memory_structure;
-    uint8_t i;
-
-    for (i = 0; i < m->power_off_interfaces_nr; i++) {
-        SFREE(m->power_off_interfaces[i].generic_phy_common_data.media_specific_bytes);
-    }
-    SFREE(m->power_off_interfaces);
-}
-
 /*#######################################################################
 # Interface power change information TLV ("Section 6.4.29")             #
 ########################################################################*/
+TLV_FREE_FUNCTION(interface_power_change_information)
+{
+    SFREE(m->power_change_interfaces);
+}
+
 static uint8_t* parse_interface_power_change_information_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_interface_power_change_information_tlv_t *ret;
@@ -2103,6 +2139,10 @@ static uint8_t* parse_interface_power_change_information_tlv(uint8_t *packet_str
 
     if (ret->power_change_interfaces_nr > 0) {
         ret->power_change_interfaces = calloc(ret->power_change_interfaces_nr, sizeof(*ret->power_change_interfaces));
+        if (!ret->power_change_interfaces) {
+            free(ret);
+            return NULL;
+        }
 
         for (i=0; i < ret->power_change_interfaces_nr; i++) {
             _EnB(&p,  ret->power_change_interfaces[i].interface_address, 6);
@@ -2110,7 +2150,7 @@ static uint8_t* parse_interface_power_change_information_tlv(uint8_t *packet_str
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(interface_power_change_information)
     PARSE_RETURN
 }
 
@@ -2137,16 +2177,14 @@ static uint8_t* forge_interface_power_change_information_tlv(void *memory_struct
     FORGE_RETURN
 }
 
-static void free_interface_power_change_information_tlv(void *memory_structure)
-{
-    i1905_interface_power_change_information_tlv_t *m = memory_structure;
-
-    SFREE(m->power_change_interfaces);
-}
-
 /*#######################################################################
 # Interface power change status TLV ("Section 6.4.30")                  #
 ########################################################################*/
+TLV_FREE_FUNCTION(interface_power_change_status)
+{
+    SFREE(m->power_change_interfaces);
+}
+
 static uint8_t* parse_interface_power_change_status_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_interface_power_change_status_tlv_t *ret;
@@ -2179,6 +2217,10 @@ static uint8_t* parse_interface_power_change_status_tlv(uint8_t *packet_stream, 
 
     if (ret->power_change_interfaces_nr > 0) {
         ret->power_change_interfaces = calloc(ret->power_change_interfaces_nr, sizeof(*ret->power_change_interfaces));
+        if (!ret->power_change_interfaces) {
+            free(ret);
+            return NULL;
+        }
 
         for (i = 0; i < ret->power_change_interfaces_nr; i++) {
             _EnB(&p, ret->power_change_interfaces[i].interface_address, 6);
@@ -2186,7 +2228,7 @@ static uint8_t* parse_interface_power_change_status_tlv(uint8_t *packet_stream, 
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(interface_power_change_status)
     PARSE_RETURN
 }
 
@@ -2213,16 +2255,22 @@ static uint8_t* forge_interface_power_change_status_tlv(void *memory_structure, 
     FORGE_RETURN
 }
 
-static void free_interface_power_change_status_tlv(void *memory_structure)
-{
-    i1905_interface_power_change_status_tlv_t *m = memory_structure;
-
-    SFREE(m->power_change_interfaces);
-}
-
 /*#######################################################################
 # L2 neighbor device TLV ("Section 6.4.31")                             #
 ########################################################################*/
+TLV_FREE_FUNCTION(l2_neighbor_device)
+{
+    uint8_t i, j;
+
+    for (i = 0; i < m->local_interfaces_nr; i++) {
+        for (j = 0; j < m->local_interfaces[i].l2_neighbors_nr; j++) {
+             SFREE(m->local_interfaces[i].l2_neighbors[j].behind_mac_addresses);
+        }
+        SFREE(m->local_interfaces[i].l2_neighbors);
+    }
+    SFREE(m->local_interfaces);
+}
+
 static uint8_t* parse_l2_neighbor_device_tlv(uint8_t *packet_stream, uint16_t len)
 {
     i1905_l2_neighbor_device_tlv_t *ret;
@@ -2255,6 +2303,10 @@ static uint8_t* parse_l2_neighbor_device_tlv(uint8_t *packet_stream, uint16_t le
 
     if (ret->local_interfaces_nr > 0) {
         ret->local_interfaces = calloc(ret->local_interfaces_nr, sizeof(*ret->local_interfaces));
+        if (!ret->local_interfaces) {
+            free(ret);
+            return NULL;
+        }
 
         for (i=0; i < ret->local_interfaces_nr; i++) {
             _EnB(&p, ret->local_interfaces[i].local_mac_address, 6);
@@ -2262,6 +2314,11 @@ static uint8_t* parse_l2_neighbor_device_tlv(uint8_t *packet_stream, uint16_t le
 
             if (ret->local_interfaces[i].l2_neighbors_nr > 0) {
                 ret->local_interfaces[i].l2_neighbors = calloc(ret->local_interfaces[i].l2_neighbors_nr, sizeof(*ret->local_interfaces[i].l2_neighbors));
+                if (!ret->local_interfaces[i].l2_neighbors) {
+                    /* Set l2_neighbors_nr to 0 so tlv is ok for free function */
+                    ret->local_interfaces[i].l2_neighbors_nr = 0;
+                    PARSE_FREE_RET_RETURN(l2_neighbor_device)
+                }
 
                 for (j=0; j < ret->local_interfaces[i].l2_neighbors_nr; j++) {
                     _EnB(&p,  ret->local_interfaces[i].l2_neighbors[j].l2_neighbor_mac_address, 6);
@@ -2270,6 +2327,9 @@ static uint8_t* parse_l2_neighbor_device_tlv(uint8_t *packet_stream, uint16_t le
                     if (ret->local_interfaces[i].l2_neighbors[j].behind_mac_addresses_nr > 0)
                     {
                         ret->local_interfaces[i].l2_neighbors[j].behind_mac_addresses = malloc(sizeof(mac_addr) * ret->local_interfaces[i].l2_neighbors[j].behind_mac_addresses_nr);
+                        if (!ret->local_interfaces[i].l2_neighbors[j].behind_mac_addresses) {
+                            PARSE_FREE_RET_RETURN(l2_neighbor_device)
+                        }
 
                         for (k = 0; k < ret->local_interfaces[i].l2_neighbors[j].behind_mac_addresses_nr; k++) {
                             _EnB(&p,  ret->local_interfaces[i].l2_neighbors[j].behind_mac_addresses[k], 6);
@@ -2280,7 +2340,7 @@ static uint8_t* parse_l2_neighbor_device_tlv(uint8_t *packet_stream, uint16_t le
         }
     }
 
-    PARSE_CHECK_INTEGRITY
+    PARSE_CHECK_INTEGRITY(l2_neighbor_device)
     PARSE_RETURN
 }
 
@@ -2325,23 +2385,14 @@ static uint8_t* forge_l2_neighbor_device_tlv(void *memory_structure, uint16_t *l
     FORGE_RETURN
 }
 
-static void free_l2_neighbor_device_tlv(void *memory_structure)
-{
-    i1905_l2_neighbor_device_tlv_t *m = memory_structure;
-    uint8_t i, j;
-
-    for (i = 0; i < m->local_interfaces_nr; i++) {
-        for (j = 0; j < m->local_interfaces[i].l2_neighbors_nr; j++) {
-             SFREE(m->local_interfaces[i].l2_neighbors[j].behind_mac_addresses);
-        }
-        SFREE(m->local_interfaces[i].l2_neighbors);
-    }
-    SFREE(m->local_interfaces);
-}
-
 /*#######################################################################
 # Unknown TLV                                                           #
 ########################################################################*/
+TLV_FREE_FUNCTION(unknown)
+{
+    SFREE(m->v);
+}
+
 static uint8_t* parse_unknown_tlv(uint8_t *p, uint16_t len)
 {
     i1905_unknown_tlv_t *ret;
@@ -2381,13 +2432,6 @@ static uint8_t* forge_unknown_tlv(void *memory_structure, uint16_t *len)
     FORGE_RETURN
 }
 
-static void free_unknown_tlv(void *memory_structure)
-{
-    i1905_unknown_tlv_t *m = memory_structure;
-
-    SFREE(m->v);
-}
-
 /*#######################################################################
 # Register TLVs                                                         #
 ########################################################################*/
@@ -2406,7 +2450,7 @@ static void register_tlvs()
         e->name     = "TLV_TYPE_UNKNOWN";
         e->parse_cb = parse_unknown_tlv;
         e->forge_cb = forge_unknown_tlv;
-        e->free_cb  = free_unknown_tlv;
+        e->free_cb  = TLV_VOID_FREE_FUNCTION_NAME(unknown);
     }
 
     I1905_REGISTER_TLV(TLV_TYPE_END_OF_MESSAGE,                     end_of_message                    );
@@ -2414,7 +2458,7 @@ static void register_tlvs()
     I1905_REGISTER_TLV(TLV_TYPE_AL_MAC_ADDRESS,                     al_mac_address                    );
     I1905_REGISTER_TLV(TLV_TYPE_MAC_ADDRESS,                        mac_address                       );
     I1905_REGISTER_TLV(TLV_TYPE_DEVICE_INFORMATION,                 device_information                );
-    I1905_REGISTER_TLV(TLV_TYPE_DEVICE_BRIDGING_CAPABILITY,         device_bridging_capability        );
+    I1905_REGISTER_TLV(TLV_TYPE_DEVICE_BRIDGING_CAPABILITY,         device_bridging_cap               );
     I1905_REGISTER_TLV(TLV_TYPE_NON_1905_NEIGHBOR_DEVICE_LIST,      non_1905_neighbor_device_list     );
     I1905_REGISTER_TLV(TLV_TYPE_NEIGHBOR_DEVICE_LIST,               neighbor_device_list              );
     I1905_REGISTER_TLV(TLV_TYPE_LINK_METRIC_QUERY,                  link_metric_query                 );
@@ -2434,7 +2478,7 @@ static void register_tlvs()
     I1905_REGISTER_TLV(TLV_TYPE_IPV4,                               ipv4                              );
     I1905_REGISTER_TLV(TLV_TYPE_IPV6,                               ipv6                              );
     I1905_REGISTER_TLV(TLV_TYPE_GENERIC_PHY_EVENT_NOTIFICATION,     generic_phy_event_notification    );
-    I1905_REGISTER_TLV(TLV_TYPE_1905_PROFILE_VERSION,               1905_profile_version              );
+    I1905_REGISTER_TLV(TLV_TYPE_1905_PROFILE_VERSION,               profile_version                   );
     I1905_REGISTER_TLV(TLV_TYPE_POWER_OFF_INTERFACE,                power_off_interface               );
     I1905_REGISTER_TLV(TLV_TYPE_INTERFACE_POWER_CHANGE_INFORMATION, interface_power_change_information);
     I1905_REGISTER_TLV(TLV_TYPE_INTERFACE_POWER_CHANGE_STATUS,      interface_power_change_status     );
@@ -3140,7 +3184,7 @@ uint8_t compare_1905_TLV_structures(uint8_t *memory_structure_1, uint8_t *memory
 }
 
 void visit_1905_TLV_structure(uint8_t *memory_structure, void (*callback)(void (*write_function)(const char *fmt, ...),
-                              const char *prefix, uint8_t size, const char *name, const char *fmt, void *p),
+                              const char *prefix, size_t size, const char *name, const char *fmt, void *p),
                               void (*write_function)(const char *fmt, ...), const char *prefix)
 {
     /* Buffer size to store a prefix string that will be used to show each
@@ -3604,13 +3648,17 @@ char *convert_1905_TLV_type_to_string(uint8_t tlv_type)
     return g_tlv_table[tlv_type].name;
 }
 
-uint8_t log_and_check_1905_TLV_malformed(int parsed, int len, uint8_t *tlv_structure)
+int check_and_log_1905_TLV_malformed(int parsed, int len, uint8_t tlv_type)
 {
-    uint8_t ret = 0;
+    int ret = 0;
 
-    log_i1905_e("Parsed TLV length mismatch: parsed[%d] expected[%d] for %s", parsed, len, convert_1905_TLV_type_to_string(*tlv_structure));
-    if (parsed > len) {
-        ret = 1;
+    if (parsed != len) {
+        log_i1905_e("Parsed TLV length mismatch: parsed[%d] expected[%d] for %s", parsed, len, convert_1905_TLV_type_to_string(tlv_type));
+
+        if (parsed > len) {
+            /* Critical -> drop tlv */
+            ret = -1;
+        }
     }
 
     return ret;

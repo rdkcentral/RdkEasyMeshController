@@ -55,27 +55,33 @@ static void print_sta_bss_mapping(map_printf_cb_t print_cb)
     print_cb(" ======================================================================\n");
 }
 
-static void print_sta_link_metrics(map_sta_info_t *sta, uint8_t print_last_n, map_printf_cb_t print_cb)
+static void print_sta_link_metrics(map_sta_info_t *sta, size_t print_last_n, map_printf_cb_t print_cb)
 {
-    if (sta->metrics) {
-        list_iterator_t *it = new_list_iterator(sta->metrics);
-        uint8_t          index;
+    list_iterator_t *it;
+    size_t           index;
 
-        print_cb("     |    - LINK METRICS  :\n");
-
-        for (index = 0; it->iter != NULL && index < print_last_n; ) {
-            map_sta_link_metrics_t *link_metrics = get_next_list_object(it);
-            if (link_metrics) {
-                print_cb("     |      -[%d]\n", index);
-                print_cb("     |        - Age           : %d\n",   link_metrics->age);
-                print_cb("     |        - DL Data rate  : %d\n",   link_metrics->dl_mac_datarate);
-                print_cb("     |        - UL Data rate  : %d\n",   link_metrics->ul_mac_datarate);
-                print_cb("     |        - RSSI          : %d\n\n", link_metrics->rssi);
-                index++;
-            }
-        }
-        free_list_iterator(it);
+    if (!sta->metrics) {
+        return;
     }
+
+    if (!(it = new_list_iterator(sta->metrics))) {
+        return;
+    }
+
+    print_cb("     |    - LINK METRICS  :\n");
+
+    for (index = 0; it->iter != NULL && index < print_last_n; ) {
+        map_sta_link_metrics_t *link_metrics = get_next_list_object(it);
+        if (link_metrics) {
+            print_cb("     |      -[%zu]\n", index);
+            print_cb("     |        - Age           : %d\n",   link_metrics->age);
+            print_cb("     |        - DL Data rate  : %d\n",   link_metrics->dl_mac_datarate);
+            print_cb("     |        - UL Data rate  : %d\n",   link_metrics->ul_mac_datarate);
+            print_cb("     |        - RSSI          : %d\n\n", link_metrics->rssi);
+            index++;
+        }
+    }
+    free_list_iterator(it);
 }
 
 static void print_sta_metrics( map_sta_info_t *sta, map_printf_cb_t print_cb)
@@ -185,6 +191,24 @@ static void print_op_class_channel_list(map_op_class_t *op_class, map_printf_cb_
     print_cb("     -Channels : %s\n", map_cs_nr(s) > 0 ? map_cs_to_string(s, ',', buf, sizeof(buf)) : "all");
 }
 
+static void print_curr_op_class_list(map_radio_info_t *radio, map_printf_cb_t print_cb)
+{
+    uint8_t i;
+
+    print_cb("  Current op class list:\n");
+    print_cb("  |\n");
+
+    for (i = 0; i < radio->curr_op_class_list.op_classes_nr ; ++i) {
+        map_op_class_t *op_class = &radio->curr_op_class_list.op_classes[i];
+
+        print_cb("  -[%d]\n", i);
+        print_cb("     |\n");
+        print_cb("     -OP Class : %d\n", op_class->op_class);
+        print_cb("     -EIRP     : %d\n", op_class->eirp);
+        print_op_class_channel_list(op_class, print_cb);
+    }
+}
+
 static void print_cap_op_class_list(map_radio_info_t *radio, map_printf_cb_t print_cb)
 {
     uint8_t i;
@@ -225,18 +249,20 @@ static void print_pref_op_class_list(map_radio_info_t *radio, map_printf_cb_t pr
 static void print_op_restriction_in_radio(map_radio_info_t *radio, map_printf_cb_t print_cb)
 {
     char buf[MAP_CS_BUF_LEN];
-    int  pos = 0;
     uint8_t i, j;
 
     print_cb("  Operation restriction:\n");
     print_cb("  |\n");
 
-    for (i = 0; i < radio->op_restriction_list.op_classes_nr ; ++i) {
+    for (i = 0; i < radio->op_restriction_list.op_classes_nr; ++i) {
         map_op_restriction_t *op_class = &radio->op_restriction_list.op_classes[i];
+        int                   pos = 0;
+
         print_cb("  -[%d]\n", i);
         print_cb("     |\n");
         print_cb("     -OP Class : %d\n", op_class->op_class);
 
+        buf[0] = 0;
         for (j = 0; j < op_class->channel_count && pos < MAP_CS_BUF_LEN; j++) {
             pos += snprintf(buf + pos, MAP_CS_BUF_LEN - pos, "%d, ", op_class->channel_list[j].channel);
         }
@@ -332,6 +358,7 @@ static void print_radios_in_agent(map_ale_info_t *ale, map_printf_cb_t print_cb)
         print_cb("  Radio BW       : %d\n",radio->current_bw);
         print_cb("  Radio Tx Pwr   : %d\n",radio->current_tx_pwr);
 
+        print_curr_op_class_list(radio, print_cb);
         print_cap_op_class_list(radio, print_cb);
         print_pref_op_class_list(radio, print_cb, true);
         print_pref_op_class_list(radio, print_cb, false);
@@ -375,7 +402,6 @@ static void print_local_interfaces(map_ale_info_t *ale, map_printf_cb_t print_cb
 static void print_backhaul_sta_interfaces(map_ale_info_t *ale, map_printf_cb_t print_cb)
 {
     uint8_t i;
-    map_radio_info_t *radio;
 
     if (ale->backhaul_sta_iface_count == 0) {
         return;
@@ -383,15 +409,57 @@ static void print_backhaul_sta_interfaces(map_ale_info_t *ale, map_printf_cb_t p
 
     for (i = 0; i < ale->backhaul_sta_iface_count; i++) {
         map_backhaul_sta_iface_t *bhsta_iface = &ale->backhaul_sta_iface_list[i];
-
-        radio = map_dm_get_radio(ale, bhsta_iface->radio_id);
+        map_radio_info_t         *radio = map_dm_get_radio(ale, bhsta_iface->radio_id);
+        uint8_t                   band = radio ? radio->supported_freq : IEEE80211_FREQUENCY_BAND_UNKNOWN;
 
         print_cb("BHSTA Interface[%u]\n", i);
         print_cb("  STA MAC      : %s\n", mac_string(bhsta_iface->mac_address));
-        print_cb("  Radio MAC    : %s\n", radio->radio_id_str);
-        print_cb("  Radio Band   : %s\n", map_get_freq_band_str(radio->supported_freq));
+        print_cb("  Radio MAC    : %s\n", mac_string(bhsta_iface->radio_id));
+        print_cb("  Radio Band   : %s\n", map_get_freq_band_str(band));
         print_cb("  Active       : %s\n", bhsta_iface->active ? "true" : "false");
     }
+    print_cb("----------------------------------------------\n");
+}
+
+static void print_eth_devices(map_ale_info_t *ale, map_printf_cb_t print_cb)
+{
+    size_t i;
+
+    print_cb("Ethernet devices:\n");
+
+    for (i = 0; i < ale->eth_device_list.macs_nr; i++) {
+        print_cb("  %s\n", mac_string(ale->eth_device_list.macs[i]));
+    }
+    print_cb("----------------------------------------------\n");
+}
+
+static void print_emex_eth_interfaces(map_ale_info_t *ale, map_printf_cb_t print_cb)
+{
+    map_emex_eth_iface_list_t *list = &ale->emex.eth_iface_list;
+    size_t i, j;
+
+    print_cb("Emex ethernet interfaces:\n");
+
+    for (i = 0; i < list->iface_nr; i++) {
+        map_emex_eth_iface_t *iface = &list->ifaces[i];
+
+        print_cb("interface[%d][%s]\n", iface->port_id, iface->name);
+        print_cb("  MAC          : %s\n", mac_string(iface->mac));
+        print_cb("  Admin state  : %d\n", iface->admin_state);
+        print_cb("  Oper state   : %d\n", iface->oper_state);
+        print_cb("  Full duplex  : %d\n", iface->full_duplex);
+        print_cb("  Supp speed   : %d\n", iface->supported_link_speed);
+        print_cb("  Speed        : %d\n", iface->link_speed);
+        print_cb("  Non_1905_nbr : %zu\n", iface->non_i1905_neighbor_macs_nr);
+        for (j = 0; j < iface->non_i1905_neighbor_macs_nr; j++) {
+            print_cb("    %s\n", mac_string(iface->non_i1905_neighbor_macs[j]));
+        }
+        print_cb("  1905_nbr     : %zu\n", iface->i1905_neighbor_macs_nr);
+        for (j = 0; j < iface->i1905_neighbor_macs_nr; j++) {
+            print_cb("    %s\n", mac_string(iface->i1905_neighbor_macs[j]));
+        }
+    }
+    print_cb("----------------------------------------------\n");
 }
 
 static void print_agent_info(map_ale_info_t *ale, map_printf_cb_t print_cb)
@@ -400,6 +468,7 @@ static void print_agent_info(map_ale_info_t *ale, map_printf_cb_t print_cb)
 
     print_cb(" Al ENTITY MAC          : %s\n",          ale->al_mac_str);
     print_cb(" ALE LOCAL              : %s %s\n",       ale->is_local ? "yes" : "no", ale->is_local ? (ale->is_local_colocated ? "(colocated)" : "(not colocated)") : "");
+    print_cb(" ALE EASYMESH PLUS      : %s\n",          ale->easymesh_plus ? "yes" : "no");
     print_cb(" ALE SOURCE MAC         : %s\n",          mac_string(ale->src_mac));
     print_cb(" ALE UPSTREAM LOCAL MAC : %s\n",          mac_string(ale->upstream_local_iface_mac));
     print_cb(" ALE UPSTREAM INTERFACE Type : %s[%d]\n", convert_interface_type_to_string(ale->upstream_iface_type), ale->upstream_iface_type);
@@ -411,10 +480,10 @@ static void print_agent_info(map_ale_info_t *ale, map_printf_cb_t print_cb)
         print_cb(" ALE STATUS             : ONBOARDED\n");
     }
 
-    print_cb(" RECEIVING INTERFACE    : %s\n",      ale->iface_name);
-    print_cb(" KEEP ALIVE TIME        : %lu sec\n", ale->keep_alive_time.tv_sec);
-    print_cb(" MANUFACTURER NAME      : %s\n",      ale->device_info.manufacturer_name);
-    print_cb(" NUM OF RADIOS          : %d\n",      ale->radios_nr);
+    print_cb(" RECEIVING INTERFACE    : %s\n",            ale->iface_name);
+    print_cb(" KEEP ALIVE TIME        : %"PRIu64" sec\n", ale->keep_alive_time);
+    print_cb(" MANUFACTURER NAME      : %s\n",            ale->device_info.manufacturer_name);
+    print_cb(" NUM OF RADIOS          : %d\n",            ale->radios_nr);
     print_cb("***********************************************\n");
     /* Print all the radio info */
     print_radios_in_agent(ale, print_cb);
@@ -423,7 +492,9 @@ static void print_agent_info(map_ale_info_t *ale, map_printf_cb_t print_cb)
 
     print_backhaul_sta_interfaces(ale, print_cb);
 
-    print_cb("----------------------------------------------\n");
+    print_eth_devices(ale, print_cb);
+
+    print_emex_eth_interfaces(ale, print_cb);
 }
 
 static const char *convert_tunneled_type_to_string(uint8_t type)

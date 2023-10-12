@@ -84,12 +84,12 @@ void PLATFORM_PRINTF(const char *format, ...)
     va_list args;
     va_start(args, format);
 
-    map_vlog(MAP_IEEE1905, LOG_DEBUG, format, args);
+    map_vlog(MAP_IEEE1905, LOG_TRACE, format, args);
 
     va_end(args);
 }
 
-uint32_t PLATFORM_GET_TIMESTAMP(void)
+uint64_t PLATFORM_GET_TIMESTAMP(void)
 {
     return acu_get_timestamp_msec();
 }

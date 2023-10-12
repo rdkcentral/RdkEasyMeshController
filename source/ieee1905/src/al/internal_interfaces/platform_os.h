@@ -148,7 +148,7 @@ int PLATFORM_OS_GET_RAW_SEND_FD(void);
 /* Get global gateway mac */
 mac_addr* PLATFORM_OS_GET_GATEWAY_MAC(void);
 
-/* Check if log level is at least debug */
-bool PLATFORM_OS_LOG_LEVEL_DEBUG(void);
+/* Check if log level is at least trace */
+bool PLATFORM_OS_LOG_LEVEL_TRACE(void);
 
 #endif /* PLATFORM_OS_H_ */

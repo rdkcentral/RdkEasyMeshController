@@ -24,6 +24,7 @@ struct subscription_s {
     char *event;
     subscription_function_t function;
     void *context;
+    uint32_t flags;
 };
 
 struct subscriptions_s {
@@ -45,7 +46,7 @@ static void subscription_destroy(subscription_t *subscription)
     free(subscription);
 }
 
-static subscription_t *subscription_create(const char *event, subscription_function_t function, void *context)
+static subscription_t *subscription_create(const char *event, subscription_function_t function, uint32_t flags, void *context)
 {
     subscription_t *subscription;
     subscription = NULL;
@@ -70,6 +71,8 @@ static subscription_t *subscription_create(const char *event, subscription_funct
     }
     subscription->function = function;
     subscription->context = context;
+    subscription->flags = flags;
+
     return subscription;
 
 bail:
@@ -116,6 +119,18 @@ void *subscription_context(subscription_t *subscription)
 
 bail:
     return NULL;
+}
+
+uint32_t subscription_flags(subscription_t *subscription)
+{
+    if (subscription == NULL) {
+        log_lib_e("subscription is invalid");
+        goto bail;
+    }
+    return subscription->flags;
+
+bail:
+    return 0;
 }
 
 subscription_t *subscriptions_get(subscriptions_t *subscriptions, const char *event)
@@ -165,7 +180,7 @@ bail:
     return -1;
 }
 
-int subscriptions_add(subscriptions_t *subscriptions, const char *event, subscription_function_t function, void *context)
+int subscriptions_add(subscriptions_t *subscriptions, const char *event, subscription_function_t function, uint32_t flags, void *context)
 {
     subscription_t *subscription;
     if (subscriptions == NULL) {
@@ -181,7 +196,7 @@ int subscriptions_add(subscriptions_t *subscriptions, const char *event, subscri
         log_lib_e("subscription already exists");
         goto bail;
     }
-    subscription = subscription_create(event, function, context);
+    subscription = subscription_create(event, function, flags, context);
     if (subscription == NULL) {
         log_lib_e("can not create subscription");
         goto bail;
@@ -211,20 +226,12 @@ void subscriptions_destroy(subscriptions_t *subscriptions)
 
 subscriptions_t *subscriptions_create(void)
 {
-    subscriptions_t *subscriptions;
-    subscriptions = malloc(sizeof(subscriptions_t));
-    if (subscriptions == NULL) {
-        log_lib_e("can not allocate memory");
-        goto bail;
-    }
-    memset(subscriptions, 0, sizeof(subscriptions_t));
-    INIT_LIST_HEAD(&subscriptions->subscriptions);
-    subscriptions->count = 0;
-    return subscriptions;
+    subscriptions_t *subscriptions = calloc(1, sizeof(subscriptions_t));
 
-bail:
-    if (subscriptions != NULL) {
-        subscriptions_destroy(subscriptions);
+    if (subscriptions) {
+        INIT_LIST_HEAD(&subscriptions->subscriptions);
+        subscriptions->count = 0;
     }
-    return NULL;
+
+    return subscriptions;
 }

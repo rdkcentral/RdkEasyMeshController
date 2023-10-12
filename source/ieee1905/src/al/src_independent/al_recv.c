@@ -110,7 +110,7 @@ uint8_t processLlpdPayload(i1905_lldp_payload_t *payload, uint8_t *receiving_int
         return 0;
     }
 
-    log_i1905_d("<-- LLDP BRIDGE DISCOVERY (%s)", DMmacToInterfaceName(receiving_interface_addr));
+    log_i1905_t("<-- LLDP BRIDGE DISCOVERY (%s)", DMmacToInterfaceName(receiving_interface_addr));
 
     /* We need to update the data model structure, which keeps track
     *  of local interfaces, neighbors, and neighbors' interfaces, and
@@ -152,12 +152,12 @@ uint8_t processLlpdPayload(i1905_lldp_payload_t *payload, uint8_t *receiving_int
     if (0 == memcmp(al_mac_address, dummy_mac_address, 6) ||
         0 == memcmp(mac_address,    dummy_mac_address, 6))
     {
-        log_i1905_d("More TLVs were expected inside this LLDP message");
+        log_i1905_t("More TLVs were expected inside this LLDP message");
         return 0;
     }
 
-    log_i1905_d("AL MAC address = %02x:%02x:%02x:%02x:%02x:%02x", al_mac_address[0], al_mac_address[1], al_mac_address[2], al_mac_address[3], al_mac_address[4], al_mac_address[5]);
-    log_i1905_d("MAC    address = %02x:%02x:%02x:%02x:%02x:%02x", mac_address[0],    mac_address[1],    mac_address[2],    mac_address[3],    mac_address[4],    mac_address[5]);
+    log_i1905_t("AL MAC address = %02x:%02x:%02x:%02x:%02x:%02x", al_mac_address[0], al_mac_address[1], al_mac_address[2], al_mac_address[3], al_mac_address[4], al_mac_address[5]);
+    log_i1905_t("MAC    address = %02x:%02x:%02x:%02x:%02x:%02x", mac_address[0],    mac_address[1],    mac_address[2],    mac_address[3],    mac_address[4],    mac_address[5]);
 
     // Finally, update the data model
     //

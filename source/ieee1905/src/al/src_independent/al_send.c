@@ -95,58 +95,55 @@
 /*#######################################################################
 #                       LOCAL FUNCTIONS                                 #
 ########################################################################*/
-static void _obtainLocalDeviceInfoTLV(i1905_device_information_tlv_t *device_info)
+static int _obtainLocalDeviceInfoTLV(i1905_device_information_tlv_t *device_info)
 {
-    uint8_t   al_mac_address[6];
-
-    char    **interfaces_names;
-    uint8_t   interfaces_names_nr;
+    char    **interface_names;
+    uint8_t   interface_names_nr;
     uint8_t   i;
 
-    memcpy(al_mac_address, DMalMacGet(), 6);
-
     device_info->tlv_type            = TLV_TYPE_DEVICE_INFORMATION;
-    device_info->al_mac_address[0]   = al_mac_address[0];
-    device_info->al_mac_address[1]   = al_mac_address[1];
-    device_info->al_mac_address[2]   = al_mac_address[2];
-    device_info->al_mac_address[3]   = al_mac_address[3];
-    device_info->al_mac_address[4]   = al_mac_address[4];
-    device_info->al_mac_address[5]   = al_mac_address[5];
+    maccpy(device_info->al_mac_address, DMalMacGet());
     device_info->local_interfaces_nr = 0;
     device_info->local_interfaces    = NULL;
 
-    interfaces_names = PLATFORM_GET_LIST_OF_1905_INTERFACES(&interfaces_names_nr);
+    interface_names = PLATFORM_GET_LIST_OF_1905_INTERFACES(&interface_names_nr);
+    if (!interface_names) {
+        log_i1905_e("Could not get list of 1905 interfaces");
+        return -1;
+    }
+
+    if (interface_names_nr == 0) {
+        PLATFORM_FREE_LIST_OF_1905_INTERFACES(interface_names, interface_names_nr);
+        return 0;
+    }
+
+    /* Allocate enough memory for all interfaces... */
+    device_info->local_interfaces = calloc(interface_names_nr, sizeof(i1905_local_interface_entry_t));
+    if (!device_info->local_interfaces) {
+        PLATFORM_FREE_LIST_OF_1905_INTERFACES(interface_names, interface_names_nr);
+        return -1;
+    }
 
     /* Add all interfaces that are *not* in "POWER OFF" mode */
-    for (i=0; i<interfaces_names_nr; i++) {
-        struct interfaceInfo *x;
+    for (i=0; i<interface_names_nr; i++) {
+        i1905_local_interface_entry_t *interface = &device_info->local_interfaces[device_info->local_interfaces_nr];
+        i1905_interface_info_t *x;
 
-        if (NULL == (x = PLATFORM_GET_1905_INTERFACE_INFO(interfaces_names[i]))) {
+        if (NULL == (x = PLATFORM_GET_1905_INTERFACE_INFO(interface_names[i]))) {
             /* Error retrieving information for this interface. Ignor it. */
             continue;
         }
 
         if (INTERFACE_POWER_STATE_OFF == x->power_state) {
             /* Ignore interfaces that are in "POWER OFF" mode (they will
-            * be included in the "power off" TLV, later, on this same CMDU)
-            */
+             * be included in the "power off" TLV, later, on this same CMDU)
+             */
             PLATFORM_FREE_1905_INTERFACE_INFO(x);
             continue;
         }
 
-        if (0 == device_info->local_interfaces_nr) {
-            device_info->local_interfaces = malloc(sizeof(struct _localInterfaceEntries));
-        } else {
-            device_info->local_interfaces = realloc(device_info->local_interfaces, sizeof(struct _localInterfaceEntries) *(device_info->local_interfaces_nr + 1));
-        }
-
-        device_info->local_interfaces[device_info->local_interfaces_nr].mac_address[0] = x->mac_address[0];
-        device_info->local_interfaces[device_info->local_interfaces_nr].mac_address[1] = x->mac_address[1];
-        device_info->local_interfaces[device_info->local_interfaces_nr].mac_address[2] = x->mac_address[2];
-        device_info->local_interfaces[device_info->local_interfaces_nr].mac_address[3] = x->mac_address[3];
-        device_info->local_interfaces[device_info->local_interfaces_nr].mac_address[4] = x->mac_address[4];
-        device_info->local_interfaces[device_info->local_interfaces_nr].mac_address[5] = x->mac_address[5];
-        device_info->local_interfaces[device_info->local_interfaces_nr].media_type     = x->interface_type;
+        maccpy(interface->mac_address, x->mac_address);
+        interface->media_type = x->interface_type;
         switch (x->interface_type) {
             case INTERFACE_TYPE_IEEE_802_11B_2_4_GHZ:
             case INTERFACE_TYPE_IEEE_802_11G_2_4_GHZ:
@@ -157,33 +154,22 @@ static void _obtainLocalDeviceInfoTLV(i1905_device_information_tlv_t *device_inf
             case INTERFACE_TYPE_IEEE_802_11AD_60_GHZ:
             case INTERFACE_TYPE_IEEE_802_11AF:
             case INTERFACE_TYPE_IEEE_802_11AX: {
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data_size                                          = 10;
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.network_membership[0]               = x->interface_type_data.ieee80211.bssid[0];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.network_membership[1]               = x->interface_type_data.ieee80211.bssid[1];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.network_membership[2]               = x->interface_type_data.ieee80211.bssid[2];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.network_membership[3]               = x->interface_type_data.ieee80211.bssid[3];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.network_membership[4]               = x->interface_type_data.ieee80211.bssid[4];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.network_membership[5]               = x->interface_type_data.ieee80211.bssid[5];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.role                                = x->interface_type_data.ieee80211.role;
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.ap_channel_band                     = x->interface_type_data.ieee80211.ap_channel_band;
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.ap_channel_center_frequency_index_1 = x->interface_type_data.ieee80211.ap_channel_center_frequency_index_1;
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee80211.ap_channel_center_frequency_index_2 = x->interface_type_data.ieee80211.ap_channel_center_frequency_index_2;
+                interface->media_specific_data_size                                          = 10;
+                maccpy(interface->media_specific_data.ieee80211.network_membership, x->interface_type_data.ieee80211.bssid);
+                interface->media_specific_data.ieee80211.role                                = x->interface_type_data.ieee80211.role;
+                interface->media_specific_data.ieee80211.ap_channel_band                     = x->interface_type_data.ieee80211.ap_channel_band;
+                interface->media_specific_data.ieee80211.ap_channel_center_frequency_index_1 = x->interface_type_data.ieee80211.ap_channel_center_frequency_index_1;
+                interface->media_specific_data.ieee80211.ap_channel_center_frequency_index_2 = x->interface_type_data.ieee80211.ap_channel_center_frequency_index_2;
                 break;
             }
             case INTERFACE_TYPE_IEEE_1901_FFT: {
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data_size                           = 7;
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee1901.network_identifier[0] = x->interface_type_data.ieee1901.network_identifier[0];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee1901.network_identifier[1] = x->interface_type_data.ieee1901.network_identifier[1];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee1901.network_identifier[2] = x->interface_type_data.ieee1901.network_identifier[2];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee1901.network_identifier[3] = x->interface_type_data.ieee1901.network_identifier[3];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee1901.network_identifier[4] = x->interface_type_data.ieee1901.network_identifier[4];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee1901.network_identifier[5] = x->interface_type_data.ieee1901.network_identifier[5];
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.ieee1901.network_identifier[6] = x->interface_type_data.ieee1901.network_identifier[6];
+                interface->media_specific_data_size = 7;
+                memcpy(interface->media_specific_data.ieee1901.network_identifier, x->interface_type_data.ieee1901.network_identifier, 7);
                 break;
             }
             default: {
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data_size  = 0;
-                device_info->local_interfaces[device_info->local_interfaces_nr].media_specific_data.dummy = 0;
+                interface->media_specific_data_size  = 0;
+                interface->media_specific_data.dummy = 0;
                 break;
             }
         }
@@ -192,7 +178,9 @@ static void _obtainLocalDeviceInfoTLV(i1905_device_information_tlv_t *device_inf
         PLATFORM_FREE_1905_INTERFACE_INFO(x);
     }
 
-    PLATFORM_FREE_LIST_OF_1905_INTERFACES(interfaces_names, interfaces_names_nr);
+    PLATFORM_FREE_LIST_OF_1905_INTERFACES(interface_names, interface_names_nr);
+
+    return 0;
 }
 
 /* Given a pointer to a preallocated "alMacAddressTypeTLV" structure, fill it
@@ -200,17 +188,8 @@ static void _obtainLocalDeviceInfoTLV(i1905_device_information_tlv_t *device_inf
 */
 static void _obtainLocalAlMacAddressTLV(i1905_al_mac_address_tlv_t *al_mac_addr)
 {
-    uint8_t al_mac_address[6];
-
-    memcpy(al_mac_address, DMalMacGet(), 6);
-
-    al_mac_addr->tlv_type          = TLV_TYPE_AL_MAC_ADDRESS;
-    al_mac_addr->al_mac_address[0] = al_mac_address[0];
-    al_mac_addr->al_mac_address[1] = al_mac_address[1];
-    al_mac_addr->al_mac_address[2] = al_mac_address[2];
-    al_mac_addr->al_mac_address[3] = al_mac_address[3];
-    al_mac_addr->al_mac_address[4] = al_mac_address[4];
-    al_mac_addr->al_mac_address[5] = al_mac_address[5];
+    al_mac_addr->tlv_type = TLV_TYPE_AL_MAC_ADDRESS;
+    maccpy(al_mac_addr->al_mac_address, DMalMacGet());
 }
 
 /* Given a pointer to a preallocated "searchedRoleTLV" structure, fill it
@@ -240,7 +219,7 @@ static void _obtainSupportedFrequencyBandTLV(i1905_supported_freq_band_tlv_t *su
 /* Given a pointer to a preallocated "autoconfigFreqBandTLV" structure, fill it
 *  with all the pertaining information retrieved from the local device.
 */
-static void _obtainAutoconfigFreqBandTLV(i1905_autoconfig_freq_band_tlv_t *ac_freq_band_tlv, uint8_t freq_band, char *interface)
+static int _obtainAutoconfigFreqBandTLV(i1905_autoconfig_freq_band_tlv_t *ac_freq_band_tlv, uint8_t freq_band, char *interface)
 {
     ac_freq_band_tlv->tlv_type = TLV_TYPE_AUTOCONFIG_FREQ_BAND;
 
@@ -252,10 +231,14 @@ static void _obtainAutoconfigFreqBandTLV(i1905_autoconfig_freq_band_tlv_t *ac_fr
         uint8_t   unconfigured_ap_band   = 0;
 
         ifs_names = PLATFORM_GET_LIST_OF_1905_INTERFACES(&ifs_nr);
+        if (!ifs_names) {
+            log_i1905_e("Could not get list of 1905 interfaces");
+            return -1;
+        }
 
         for (i=0; i<ifs_nr; i++) {
             if (0 == memcmp(ifs_names[i], interface, strlen(interface))) {
-                struct interfaceInfo *x;
+                i1905_interface_info_t *x;
 
                 x = PLATFORM_GET_1905_INTERFACE_INFO(ifs_names[i]);
 
@@ -319,6 +302,8 @@ static void _obtainAutoconfigFreqBandTLV(i1905_autoconfig_freq_band_tlv_t *ac_fr
     } else {
         ac_freq_band_tlv->freq_band = freq_band;
     }
+
+    return 0;
 }
 
 /*#######################################################################
@@ -331,7 +316,7 @@ uint8_t forward1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dest_m
     uint8_t   *src_mac;
     uint8_t    total_streams, x;
 
-    log_i1905_d("Contents of CMDU to send:0x%x",cmdu->message_type);
+    log_i1905_d("Contents of CMDU to send:0x%x", cmdu->message_type);
 
     streams = forge_1905_CMDU_from_structure(cmdu, &streams_lens);
     if (NULL == streams) {
@@ -339,6 +324,8 @@ uint8_t forward1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dest_m
         log_i1905_e("forge_1905_CMDU_from_structure() failed!");
         return 0;
     }
+
+    src_mac = get_src_mac_frm_stream ? cmdu->cmdu_stream.src_mac_addr : DMalMacGet();
 
     total_streams = 0;
     while(streams[total_streams]) {
@@ -355,13 +342,8 @@ uint8_t forward1905RawPacket(char *interface_name, uint16_t mid, uint8_t *dest_m
     }
 
     x = 0;
-    while(streams[x]) {
-        log_i1905_d("Sending 1905 message on interface %s, MID %d, fragment %d/%d", interface_name, mid, x+1, total_streams);
-	if (get_src_mac_frm_stream) {
-            src_mac = cmdu->cmdu_stream.src_mac_addr;
-        } else {
-            src_mac = DMalMacGet();
-        }
+    while (streams[x]) {
+        log_i1905_t("Sending 1905 message on interface %s, MID %d, fragment %d/%d", interface_name, mid, x + 1, total_streams);
 
         if (0 == PLATFORM_SEND_RAW_PACKET(interface_name,
                                           dest_mac,
@@ -400,7 +382,7 @@ uint8_t sendLLDPBridgeDiscoveryPacket(char *interface_name, uint8_t* src_mac, i1
         return 0;
     }
 
-    log_i1905_d("Sending LLDP bridge discovery message on interface %s", interface_name);
+    log_i1905_t("Sending LLDP bridge discovery message on interface %s", interface_name);
     if (0 == PLATFORM_SEND_RAW_PACKET(interface_name, mcast_address, src_mac,
                                       ETHERTYPE_LLDP, stream, stream_len)) {
         log_i1905_e("%s: Packet could not be sent!", __func__);
@@ -412,6 +394,8 @@ uint8_t sendLLDPBridgeDiscoveryPacket(char *interface_name, uint8_t* src_mac, i1
 
 int obtainTLVFrom1905(char *ifname, i1905_param_t param, void *data)
 {
+    int ret = 0;
+
     if (NULL == data) {
        return -1;
     }
@@ -426,7 +410,7 @@ int obtainTLVFrom1905(char *ifname, i1905_param_t param, void *data)
             break;
         }
         case I1905_GET_FREQUENCYBAND_TLV: {
-            _obtainAutoconfigFreqBandTLV(data, 0, ifname);
+            ret = _obtainAutoconfigFreqBandTLV(data, 0, ifname);
             break;
         }
         case I1905_GET_SUPPORTEDROLE_TLV: {
@@ -439,7 +423,7 @@ int obtainTLVFrom1905(char *ifname, i1905_param_t param, void *data)
             break;
         }
         case I1905_GET_DEVICEINFO_TLV: {
-            _obtainLocalDeviceInfoTLV(data);
+            ret = _obtainLocalDeviceInfoTLV(data);
             break;
         }
         case I1905_GET_WSCM1_TLV: {
@@ -466,11 +450,12 @@ int obtainTLVFrom1905(char *ifname, i1905_param_t param, void *data)
             uint8_t          *m2;
             uint16_t          m2_size;
 
-            if (!wsc_data || !wsc_data->m1.wsc_frame || !wsc_data->m2_config) {
+            if (!wsc_data || !wsc_data->m1.wsc_frame || !wsc_data->m2_cfg) {
                 return -1;
             }
 
-            if (wscBuildM2(wsc_data->m1.wsc_frame, wsc_data->m1.wsc_frame_size, &m2, &m2_size, wsc_data->m2_config, ifname) == 0) {
+            if (wscBuildM2(wsc_data->m1.wsc_frame, wsc_data->m1.wsc_frame_size, &m2, &m2_size,
+                           wsc_data->m2_cfg->profile, wsc_data->m2_cfg->map_ext, ifname) == 0) {
                 return -1;
             }
 
@@ -484,5 +469,5 @@ int obtainTLVFrom1905(char *ifname, i1905_param_t param, void *data)
             return -1;
         }
     }
-    return 0;
+    return ret;
 }

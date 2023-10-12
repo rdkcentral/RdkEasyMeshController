@@ -28,6 +28,11 @@
 #include "map_staging_list.h"
 
 /*#######################################################################
+#                       DEFINES                                         #
+########################################################################*/
+#define TOPOLOGY_CONFLICT_QUERY_DELAY 2 /* seconds */
+
+/*#######################################################################
 #                       LOCAL FUNCTIONS                                 #
 ########################################################################*/
 static void send_topology_query_for_children(map_ale_info_t *ale)
@@ -44,6 +49,7 @@ static void send_topology_query_for_children(map_ale_info_t *ale)
 static int detect_dead_agent_timer_cb(int status, void *ale_object, UNUSED void *cmdu)
 {
     map_ale_info_t *ale = ale_object;
+    uint64_t        no_update_since = 0;
 
     if (!ale) {
         goto done;
@@ -54,14 +60,25 @@ static int detect_dead_agent_timer_cb(int status, void *ale_object, UNUSED void 
         goto done;
     }
 
-    uint64_t no_update_since = get_clock_diff_secs(get_current_time(), ale->keep_alive_time);
-    if (map_get_dead_agent_detection_interval() < no_update_since) {
+    no_update_since = acu_timestamp_delta_sec(ale->keep_alive_time);
+    if (ale->keep_alive_time == 0 || map_get_dead_agent_detection_interval() < no_update_since) {
         map_cleanup_agent(ale);
     }
 
 done:
     /* Must return 0 to keep timer running */
     return 0;
+}
+
+static uint8_t delayed_topology_query_timer_cb(UNUSED char *timer_id, void *arg)
+{
+    map_ale_info_t *ale = arg;
+
+    if (ale) {
+        map_register_topology_query_retry(ale);
+    }
+
+    return 1; /* stop timer */
 }
 
 /*#######################################################################
@@ -86,6 +103,7 @@ void map_add_as_child_of_controller(map_ale_info_t *ale)
 
 void map_build_topology_tree(map_ale_info_t *ale, i1905_neighbor_device_list_tlv_t **tlvs, uint8_t tlv_nr)
 {
+    map_ale_info_t *parent_of_ale;
     map_ale_info_t *neighbor_ale;
     bool            parent_of_ale_found                       = false;
     map_ale_info_t *conflict_ale_list[MAX_ALE_NEIGHBOR_COUNT] = {NULL};
@@ -94,7 +112,7 @@ void map_build_topology_tree(map_ale_info_t *ale, i1905_neighbor_device_list_tlv
     uint8_t         i, j;
 
     /* If the current ALE is orphaned lets not process the neighbors */
-    if (!ale || !get_parent_ale_node(ale)) {
+    if (!ale || !(parent_of_ale = get_parent_ale_node(ale))) {
         return;
     }
 
@@ -111,18 +129,18 @@ void map_build_topology_tree(map_ale_info_t *ale, i1905_neighbor_device_list_tlv
             map_ale_info_t         *parent_of_neighbor_ale = NULL;
 
             if (!(neighbor_ale = map_dm_get_ale(neighbor->mac_address))) {
-                map_1905_dev_info_t        *dev;
-
                 /* This new neighbor category is not clear yet? EM or good non-EM or bad non-EM */
                 map_send_topology_query_with_al_mac(neighbor->mac_address, ale->iface_name, MID_NA);
-                if (NULL != (dev = map_stglist_get_1905_dev(neighbor->mac_address))) {
+                if (map_stglist_get_1905_dev(neighbor->mac_address)) {
                     continue; /* ALE is in the staging list */
                 }
-                if (!(dev = map_stglist_create_1905_dev(neighbor->mac_address, g_zero_mac, false))) {
+                if (!map_stglist_create_1905_dev(neighbor->mac_address, g_zero_mac, false)) {
                     log_ctrl_e("%s: Failed to create 1905 dev info", __FUNCTION__);
                 }
                 continue;
             }
+
+            parent_of_neighbor_ale = get_parent_ale_node(neighbor_ale);
 
             /* Avoid handling local agent and controller as a neighbor
              *
@@ -136,14 +154,40 @@ void map_build_topology_tree(map_ale_info_t *ale, i1905_neighbor_device_list_tlv
             }
 
             /* Skip this existing parent from neighbor list */
-            if (neighbor_ale == get_parent_ale_node(ale)) {
-                parent_of_ale_found = get_parent_ale_node(ale);
+            if (neighbor_ale == parent_of_ale) {
+                parent_of_ale_found = true;
                 continue;
             }
 
-            /* If the controller is reported as the neighbor then make the current ALE as the child of controller. */
+
+            /* 1   Check if ALE is a child of neighbor */
+            /* 1.1 If the controller is reported as the neighbor then make the current ALE as the child of controller. */
             if (map_is_controller(neighbor_ale)) {
-                if (!is_parent_of(neighbor_ale,ale)) {
+                log_ctrl_i("[build_topology] ale[%s] neighbor[%s]: set ale parent to controller",
+                           ale->al_mac_str, neighbor_ale->al_mac_str);
+
+                topology_tree_insert(neighbor_ale, ale);
+
+                /* Update information about upstream link */
+                map_dm_ale_set_upstream_info(ale,
+                                             /* upstream al mac     */ neighbor_ale->al_mac,
+                                             /* local upstream mac  */ current_tlv->local_mac_address,
+                                             /* remove upstream mac */ NULL,
+                                             false, 0);
+
+                parent_of_ale_found = true;
+                continue;
+            }
+
+            /* 1.2 Check if neighbor is closer to root than current ALE parent */
+            if (parent_of_neighbor_ale) {
+                int parent_height = map_get_height_of(parent_of_ale);
+                int neighbor_height = map_get_height_of(neighbor_ale);
+
+                if ((parent_height > 0) && (neighbor_height > 0) && (neighbor_height < parent_height)) {
+                    log_ctrl_i("[build_topology] ale[%s] neighbor[%s]: change ale parent from [%s] to neighbor",
+                               ale->al_mac_str, neighbor_ale->al_mac_str, parent_of_ale->al_mac_str);
+
                     topology_tree_insert(neighbor_ale, ale);
 
                     /* Update information about upstream link */
@@ -152,14 +196,19 @@ void map_build_topology_tree(map_ale_info_t *ale, i1905_neighbor_device_list_tlv
                                                  /* local upstream mac  */ current_tlv->local_mac_address,
                                                  /* remove upstream mac */ NULL,
                                                  false, 0);
+
+                    parent_of_ale_found = true;
+                    continue;
                 }
-                parent_of_ale_found = get_parent_ale_node(ale);
-                continue;
             }
 
-            parent_of_neighbor_ale = get_parent_ale_node(neighbor_ale);
+
+            /* 2   Check if ALE is a child of neighbor */
+            /* 2.1 Add as child of ALE when neighbor has no parent */
             if (parent_of_neighbor_ale == NULL) {
-                /* Add this neighbor as child of current ALE. */
+                log_ctrl_i("[build_topology] ale[%s] neighbor[%s]: set neighbor as child of ale",
+                           ale->al_mac_str, neighbor_ale->al_mac_str);
+
                 topology_tree_insert(ale, neighbor_ale);
                 new_neighbor_count++;
 
@@ -172,18 +221,46 @@ void map_build_topology_tree(map_ale_info_t *ale, i1905_neighbor_device_list_tlv
 
                 /* Update the receiving interface name. */
                 map_strlcpy(neighbor_ale->iface_name, ale->iface_name, MAX_IFACE_NAME_LEN);
-            } else if (parent_of_neighbor_ale == ale) {
-                /* Alread a child node. Remove from the list and add it to the front for easy deletion. */
+                continue;
+            }
+
+            /* 2.2 When neighbor is already child of parent, remove and add again (to the front) for easy deletion
+                   of the no longer existing neighbors which will be at the end of the child list
+            */
+            if (parent_of_neighbor_ale == ale) {
                 make_ale_orphaned(neighbor_ale);
                 topology_tree_insert(ale, neighbor_ale);
                 new_neighbor_count++;
-            } else if (map_is_controller(parent_of_neighbor_ale)){
-                /* It is already a child of the controller. Do nothing. */
-            } else {
-                /* This conflict can only be resolved after iterating all the TLVs. */
-                if (conflict_list_count < MAX_ALE_NEIGHBOR_COUNT) {
-                    conflict_ale_list[conflict_list_count++] = neighbor_ale;
-                }
+                continue;
+            }
+
+            /* 2.3 If it is a child of controller then do nothing
+                   NOTE: this could also be caught by check 2.4 below but keeping
+                         check as controller's direct neighbors are very lickely to
+                         be correct as we got a topology discovery from them
+            */
+            if (map_is_controller(parent_of_neighbor_ale)) {
+                continue;
+            }
+
+            /* 2.4 If ALE and neighbor have the same parent then do nothing
+
+                   This can happen in a topology with switch where ALE and neighbor report
+                   the common parent and each other as neighbor.
+
+                       PARENT
+                         |
+                       SWITCH
+                       |    |
+                       A    B
+            */
+            if (parent_of_neighbor_ale == parent_of_ale) {
+                continue;
+            }
+
+            /* 2.5 There is a conflict. Send new topology query so neighbors are analyzed again */
+            if (conflict_list_count < MAX_ALE_NEIGHBOR_COUNT) {
+                conflict_ale_list[conflict_list_count++] = neighbor_ale;
             }
         }
     }
@@ -198,8 +275,8 @@ void map_build_topology_tree(map_ale_info_t *ale, i1905_neighbor_device_list_tlv
         /* Update the receiving interface name */
         map_update_ale_receiving_iface(conflict_ale_list[i], ale->iface_name);
 
-        /* Send topology query */
-        map_register_topology_query_retry(conflict_ale_list[i]);
+        /* Send delayed topology query (to avoid query/response flood) */
+        map_register_delayed_topology_query_retry(conflict_ale_list[i], TOPOLOGY_CONFLICT_QUERY_DELAY);
     }
 
     /* Handle neighbor deletion
@@ -233,13 +310,25 @@ void map_register_topology_query_retry(map_ale_info_t *ale)
     }
 }
 
+void map_register_delayed_topology_query_retry(map_ale_info_t *ale, uint32_t delay_sec)
+{
+    timer_id_t timer_id;
+
+    map_dm_get_ale_timer_id(timer_id, ale, DELAYED_TOPOLOGY_QUERY_TIMER_ID);
+    if (!map_is_timer_registered(timer_id)) {
+        if (map_timer_register_callback(delay_sec, timer_id, (void *)ale, delayed_topology_query_timer_cb)) {
+            log_ctrl_e("failed to register timer[%s]", timer_id);
+        }
+    }
+}
+
 int8_t map_cleanup_agent(map_ale_info_t *ale) {
 
     map_ale_info_t *child_ale;
 
-    log_ctrl_i("-------------------------------------------");
-    log_ctrl_i(" Deleting ALE : %s from DM", ale->al_mac_str);
-    log_ctrl_i("-------------------------------------------");
+    log_ctrl_n("-------------------------------------------");
+    log_ctrl_n(" Deleting ALE : %s from DM", ale->al_mac_str);
+    log_ctrl_n("-------------------------------------------");
 
     /* Trigger topology query for all child nodes before removing the ALE */
     send_topology_query_for_children(ale);
@@ -266,8 +355,8 @@ void map_extend_ale_deletion(map_ale_info_t *ale)
 uint8_t map_is_topology_update_required(map_ale_info_t *ale)
 {
     if (ale) {
-        uint64_t no_update_since = get_clock_diff_secs( get_current_time(), ale->keep_alive_time);
-        if (ALE_KEEP_ALIVE_THRESHOLD_IN_SEC < no_update_since) {
+        uint64_t no_update_since = acu_timestamp_delta_sec(ale->keep_alive_time);
+        if (ale->keep_alive_time == 0 || ALE_KEEP_ALIVE_THRESHOLD_IN_SEC < no_update_since) {
             return 1;
         }
     }

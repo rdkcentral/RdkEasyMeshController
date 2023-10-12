@@ -688,6 +688,9 @@ int map_validate_ap_metrics_response(UNUSED map_ale_info_t *ale, i1905_cmdu_t *c
             case TLV_TYPE_ASSOCIATED_STA_EXTENDED_LINK_METRICS: /* Profile 2 */
                 /* Optional */
             break;
+            case TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT: /* Profile 3 */
+                /* Optional */
+            break;
             default:
                 log_unexpected_tlv(cmdu, *tlv);
             break;
@@ -998,6 +1001,12 @@ int map_validate_proxied_encap_dpp(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmd
     CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_DPP_CHIRP_VALUE, chirp_value_tlv_nr );
 
     return 0;
+}
+
+/* MAP_R3 17.1.49 (type 0x8030) */
+int map_validate_1905_encap_eapol(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    return expect_one_tlv_type(cmdu, TLV_TYPE_1905_ENCAP_EAPOL);
 }
 
 /* MAP_R3 17.1.52 (type 0x802f) */

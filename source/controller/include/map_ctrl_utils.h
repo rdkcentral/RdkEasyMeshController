@@ -116,6 +116,11 @@ bool map_is_5g_low_high(map_radio_info_t *radio);
 map_profile_cfg_t *map_get_profile_from_bss(map_bss_info_t *bss);
 
 /**
+ *  @brief  Check if this radio has a profile with a wanted bss state (MAP_xxx_BSS)
+ */
+bool map_radio_has_profile_with_bss_state(map_radio_info_t *radio, uint8_t bss_state);
+
+/**
  *  @brief  Get attribute from WSC message/
  */
 uint8_t *map_get_wsc_attr(uint8_t *message, uint16_t message_size, uint16_t attr_type, uint16_t *attr_len);
@@ -123,7 +128,12 @@ uint8_t *map_get_wsc_attr(uint8_t *message, uint16_t message_size, uint16_t attr
 /**
  * @brief Check if channel is in op class and not its non operable list
  */
-bool map_is_channel_in_cap_op_class(map_op_class_t *cap_op_class, int channel);
+bool map_is_channel_in_cap_op_class(map_op_class_t *cap_op_class, uint8_t channel);
+
+/**
+ * @brief Get channel preference in op_class list
+ */
+uint8_t map_get_channel_pref(map_op_class_list_t *list, uint8_t op_class, uint8_t channel);
 
 /**
  *  @brief  Update radio supported channel set based on config and cap_op_class_list.
@@ -174,7 +184,7 @@ map_backhaul_sta_iface_t *map_find_bhsta_iface_from_ale(map_ale_info_t *ale, mac
 /**
  *  @brief  Find backhaul sta iface globally based on mac
  */
-map_backhaul_sta_iface_t *map_find_bhsta_iface_gbl(mac_addr sta_mac);
+map_backhaul_sta_iface_t *map_find_bhsta_iface_gbl(mac_addr sta_mac, map_ale_info_t **ret_ale);
 
 /**
  *  @brief  Delete ht/vht/he/wifi6 capability tlv

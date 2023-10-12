@@ -83,9 +83,9 @@ i1905_lldp_payload_t *parse_lldp_PAYLOAD_from_packet(uint8_t *packet_stream)
         return NULL;
     }
 
-    ret = malloc(sizeof(i1905_lldp_payload_t));
-    for (i = 0; i < MAX_LLDP_TLVS; i++) {
-        ret->list_of_TLVs[i] = NULL;
+    ret = calloc(1, sizeof(i1905_lldp_payload_t));
+    if (!ret) {
+        return 0;
     }
 
     p = packet_stream;
@@ -287,7 +287,7 @@ uint8_t compare_lldp_PAYLOAD_structures(i1905_lldp_payload_t *memory_structure_1
 }
 
 void visit_lldp_PAYLOAD_structure(i1905_lldp_payload_t *memory_structure, void (*callback)(void (*write_function)(const char *fmt, ...),
-                                  const char *prefix, uint8_t size, const char *name, const char *fmt, void *p),
+                                  const char *prefix, size_t size, const char *name, const char *fmt, void *p),
                                   void (*write_function)(const char *fmt, ...), const char *prefix)
 {
     /* Buffer size to store a prefix string that will be used to show each

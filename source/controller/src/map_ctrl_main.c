@@ -35,12 +35,12 @@
 #include "map_ctrl_cli.h"
 #include "map_ctrl_topology_tree.h"
 #include "map_ctrl_chan_sel.h"
+#include "map_ctrl_nbapi.h"
 
 #include "map_timer_handler.h"
 #include "map_retry_handler.h"
 #include "map_staging_list.h"
 #include "map_blocklist.h"
-#include "ssp_internal.h"
 
 /*#######################################################################
 #                       DEFINES                                         #
@@ -57,107 +57,42 @@
 /*#######################################################################
 #                       GLOBALS                                         #
 ########################################################################*/
-static bool g_ebtables;
-static bool g_wfa_cert;
 static bool g_signal_stop = false;
 
 /*#######################################################################
 #                       LOCAL FUNCTIONS                                 #
 ########################################################################*/
-static void signal_stop_handler(UNUSED int signum)
-{
-    if (signum != SIGINT) {
-        ssp_stack_backtrace();
-    }
-    g_signal_stop = true;
-    acu_evloop_end();
-}
-
-static void signal_ignore_handler(UNUSED int signum)
-{
-}
-
-static void print_usage()
-{
-    printf("------MultiAP Controller Daemon-------\n");
-    printf(" -e   set ebtables rules\n");
-    printf(" -w   wfa certification\n");
-}
-
-static void parse_options(int argc, char *argv[])
-{
-    int opt = 0;
-
-    while(-1 != (opt = getopt( argc, argv, "ew" ))) {
-        switch( opt ) {
-            case 'e':
-                g_ebtables = true;
-            break;
-            case 'w':
-                g_wfa_cert = true;
-            break;
-            case 'h':
-            case '?':
-            default:
-                print_usage();
-                exit(EXIT_FAILURE);
-                break;
-        }
-    }
-}
-
 static void interface_cb(const char *ifname, bool added)
 {
-    log_ctrl_i("interface[%s] %s", ifname, added ? "added" : "removed");
+    log_ctrl_n("interface[%s] %s", ifname, added ? "added" : "removed");
 
     if (added) {
-        /* Send some fast topology discovery to make sure we
-           are discovered quickly
-        */
-        map_restart_topology_discovery();
+        map_restart_topology_discovery(ifname);
+    } else {
+        map_stop_topology_discovery(ifname);
     }
 }
 
 /*#######################################################################
 #                       MAIN                                            #
 ########################################################################*/
-int main(int argc, char *argv[])
+int map_ctrl_main(bool ebtables, bool wfa_cert)
 {
-    struct sigaction sig_stop_action;
-    struct sigaction sig_no_reaction;
-    bool             enabled;
+    bool enabled;
 
     openlog("Multiap_Controller", 0, LOG_DAEMON);
 
-    parse_options(argc,argv);
-    ssp_main(argc, argv);
-
     do {
-        /* Signal handlers */
-        sig_stop_action.sa_handler = signal_stop_handler;
-        sigemptyset(&sig_stop_action.sa_mask);
-        sig_stop_action.sa_flags = 0;
+        if (acu_evloop_init()) {
+            log_ctrl_e("acu_evloop_init failed");
+            goto fini;
+        }
 
-        sigaction(SIGTERM, &sig_stop_action, NULL);
-        sigaction(SIGINT, &sig_stop_action, NULL);
-        sigaction(SIGSEGV, &sig_stop_action, NULL);
-        sigaction(SIGBUS, &sig_stop_action, NULL);
-        sigaction(SIGKILL, &sig_stop_action, NULL);
-        sigaction(SIGFPE, &sig_stop_action, NULL);
-        sigaction(SIGILL, &sig_stop_action, NULL);
-        sigaction(SIGQUIT, &sig_stop_action, NULL);
-        sigaction(SIGHUP, &sig_stop_action, NULL);
-
-        sig_no_reaction.sa_handler = signal_ignore_handler;
-        sigemptyset(&sig_no_reaction.sa_mask);
-        sig_no_reaction.sa_flags = 0;
-        //sigaction(SIGHUP,  &sig_no_reaction, NULL);
-        sigaction(SIGPIPE, &sig_no_reaction, NULL);
-        sigaction(SIGALRM, &sig_no_reaction, NULL);
-        sigaction(SIGUSR1, &sig_no_reaction, NULL);
-        sigaction(SIGUSR2, &sig_no_reaction, NULL);
-
-        acu_evloop_init();
+        /* Init map info */
+        if (map_info_init()) {
+            log_ctrl_e("map_info_init failed");
+            break;
+        }
 
         /* Init config */
         if (map_cfg_init()) {
@@ -165,10 +100,6 @@ int main(int argc, char *argv[])
             break;
         }
 
-        /* Check dormant mode
-           NOTE: only read MultiAPControllerEnabled as all the rest might
-                 not yet be configured
-        */
 dormant_loop:
         map_cfg_set_dormant_cbs();
         if (map_cfg_is_enabled(&enabled)) {
@@ -185,7 +116,7 @@ dormant_loop:
         }
 
         /* Load config */
-        if (map_cfg_load(BUILD_VERSION, g_wfa_cert)) {
+        if (map_cfg_load(BUILD_VERSION, wfa_cert)) {
             log_ctrl_e("map_cfg_load failed");
             break;
         }
@@ -194,7 +125,7 @@ dormant_loop:
            - For licensing products, ebtables rules for controller mac must be set by integrator.
            - For 4960, the easiest is to still do it from here
         */
-        if (g_ebtables) {
+        if (ebtables) {
             if (map_set_ebtables_rules(get_controller_cfg()->al_mac)) {
                 log_ctrl_e("map_set_ebtables_rules failed");
                 break;
@@ -231,7 +162,7 @@ dormant_loop:
            NOTE: Do not load profiles when doing WFA certification as
                  in this case profiles are configured by CAPI command
         */
-        if (!g_wfa_cert) {
+        if (!wfa_cert) {
             if (map_profile_load(NULL, true)) {
                 log_ctrl_e("map_profile_load failed");
                 break;
@@ -262,6 +193,12 @@ dormant_loop:
             break;
         }
 
+        /* Northbound API */
+        if (map_ctrl_nbapi_init()) {
+            log_ctrl_e("map_ctrl_nbapi_init failed");
+            break;
+        }
+
         map_stglist_init();
 
         map_blocklist_init();
@@ -271,9 +208,13 @@ dormant_loop:
         acu_evloop_run();
     } while (0);
 
+
+    /* Deinit in reverse order */
     map_blocklist_fini();
 
     map_stglist_fini();
+
+    map_ctrl_nbapi_fini();
 
     map_ctrl_chan_sel_fini();
 
@@ -291,11 +232,18 @@ dormant_loop:
 
     map_cfg_fini();
 
-    acu_evloop_fini();
+    map_info_fini();
 
-    ssp_fini();
+fini:
+    acu_evloop_fini();
 
     log_ctrl_e("map_controller stopped");
 
     return 0;
+}
+
+void map_controller_stop(void)
+{
+    g_signal_stop = true;
+    acu_evloop_end();
 }

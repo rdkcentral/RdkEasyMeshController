@@ -15,10 +15,8 @@ AM_CFLAGS += -DMULTIAP -D_FLAVOUR_AIRTIES_ -DSEND_EMPTY_TLVS -DFIX_BROKEN_TLVS -
 lib_LIBRARIES = libcommon.a
 
 libcommon_a_CPPFLAGS = -I$(srcdir)/interfaces \
-                       -I$(top_srcdir)/source/libplatform/include \
-                       -I$(top_srcdir)/source/ssp
+                       -I$(top_srcdir)/source/libplatform/include
 
 libcommon_a_SOURCES = $(srcdir)/src_independent/utils.c \
                       $(srcdir)/src_linux/platform.c
 
-libcommon_a_LIBADD = ${top_builddir}/source/libplatform/src/libutils.a

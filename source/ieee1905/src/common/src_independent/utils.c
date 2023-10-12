@@ -71,7 +71,7 @@
 /*#######################################################################
 #                       PUBLIC FUNCTIONS                                #
 ########################################################################*/
-void print_callback(void (*write_function)(const char *fmt, ...), const char *prefix, uint8_t size, const char *name, const char *fmt, void *p)
+void print_callback(void (*write_function)(const char *fmt, ...), const char *prefix, size_t size, const char *name, const char *fmt, void *p)
 {
    if (0 == memcmp(fmt, "%s", 3)) {
        /* Strings are printed with triple quotes surrounding them */
@@ -85,13 +85,10 @@ void print_callback(void (*write_function)(const char *fmt, ...), const char *pr
         */
        fmt = "%d";
     } else {
-        #define FMT_LINE_SIZE 20
+        #define FMT_LINE_SIZE 32
         char fmt_line[FMT_LINE_SIZE];
 
-        fmt_line[0] = 0x0;
-
-        snprintf(fmt_line, FMT_LINE_SIZE-1, "%%s%%s: %s\n", fmt);
-        fmt_line[FMT_LINE_SIZE-1] = 0x0;
+        snprintf(fmt_line, FMT_LINE_SIZE, "%%s%%s: %s\n", fmt);
 
         if (1 == size) {
             write_function(fmt_line, prefix, name, *(uint8_t *)p);
@@ -107,29 +104,22 @@ void print_callback(void (*write_function)(const char *fmt, ...), const char *pr
 
     /* If we get here, it's either an IPv4 address or a sequence of bytes */
     {
-        #define AUX1_SIZE 200  // Store a whole output line
-        #define AUX2_SIZE  20  // Store a fmt conversion
+        #define AUX1_SIZE 256  // Store a whole output line
+        #define AUX2_SIZE  32  // Store a fmt conversion
 
-        uint16_t i, j;
+        size_t   i;
         char     aux1[AUX1_SIZE];
         char     aux2[AUX2_SIZE];
-        uint16_t space_left = AUX1_SIZE-1;
+        int      pos1, pos2;
+        uint8_t *u8p = p;
 
-        aux1[0] = 0x00;
-        strncat(aux1, "%s%s: ", AUX1_SIZE - 1);
+        pos1 = snprintf(aux1, AUX1_SIZE, "%%s%%s: ");
 
         for (i = 0; i < size; i++) {
             /* Write one element to aux2 */
-            snprintf(aux2, AUX2_SIZE-1, fmt, *((uint8_t *)p+i));
+            pos2 = snprintf(aux2, AUX2_SIZE, fmt, u8p[i]);
 
-            /* Obtain its length */
-            for (j=0; j<AUX2_SIZE; j++) {
-                if (aux2[j] == 0x00) {
-                    break;
-                }
-            }
-
-            /* 'j' contains the number of chars in "aux2"
+            /* 'pos2' contains the number of chars in "aux2"
             *  Check if there is enough space left in "aux1"
             *
             *    NOTE: The "+2" is because we are going to append to "aux1"
@@ -137,24 +127,23 @@ void print_callback(void (*write_function)(const char *fmt, ...), const char *pr
             *          three chars long)
             *          The second "+2" is because of the final "\n"
             */
-            if (j+2+2 > space_left) {
-                /* No more space left */
-                aux1[AUX1_SIZE-6] = '.';
-                aux1[AUX1_SIZE-5] = '.';
-                aux1[AUX1_SIZE-4] = '.';
-                aux1[AUX1_SIZE-3] = '.';
-                aux1[AUX1_SIZE-2] = '.';
-                aux1[AUX1_SIZE-1] = 0x00;
+            if ((pos2 + 2 + 2) > ((AUX1_SIZE - 1) - pos1)) {
+                /* No more space left -> add ...*/
+                if (pos1 > (AUX1_SIZE - 4)) {
+                    pos1 = AUX1_SIZE - 4;
+                }
+                aux1[pos1    ] = '.';
+                aux1[pos1 + 1] = '.';
+                aux1[pos1 + 2] = '.';
+                aux1[pos1 + 3] = '\0';
                 break;
             }
 
             /* Append string to "aux1" */
-            strncat(aux1, aux2, j);
-            strcat(aux1, ", ");
-            space_left -= (j+2);
+            pos1 += snprintf(aux1 + pos1, AUX1_SIZE - pos1, "%s, ", aux2);
         }
 
-        strncat(aux1, "\n", 2);
+        snprintf(aux1 + pos1, AUX1_SIZE - pos1, "\n");
         write_function(aux1, prefix, name);
     }
 }

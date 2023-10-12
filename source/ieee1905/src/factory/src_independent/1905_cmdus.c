@@ -269,7 +269,7 @@ static uint8_t check_cmdu_rules(i1905_cmdu_t *p, uint8_t rules_type)
     while (NULL != p->list_of_TLVs[i]) {
         if (*(p->list_of_TLVs[i]) > TLV_TYPE_LAST) {
             /* Invalid arguments */
-	    log_i1905_d("no 1905 TLV type");
+	    log_i1905_t("no 1905 TLV type");
 	    return 2;
 	}
 	i++;
@@ -418,7 +418,14 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
     *  re-allocate and fill.
     */
     ret = malloc(sizeof(i1905_cmdu_t) * 1);
+    if (!ret) {
+        return NULL;
+    }
     ret->list_of_TLVs = malloc(sizeof(uint8_t *) * 1);
+    if (!ret->list_of_TLVs) {
+        free(ret);
+        return NULL;
+    }
     ret->list_of_TLVs[0] = NULL;
     tlvs_nr = 0;
 
@@ -439,7 +446,7 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
         uint8_t   relay_indicator;
         uint8_t   last_fragment_indicator;
 
-        uint8_t *parsed;
+        uint8_t  *parsed;
 
         bytes_left = 0;
         /* We want to traverse fragments in order, thus lets search for the
@@ -571,10 +578,10 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
 
                     if (0 != j && 0 == (j + 1) % 8) {
                         if (1 == first_time) {
-                            log_i1905_d("[PLATFORM]   - Payload        = %s", aux1);
+                            log_i1905_t("[PLATFORM]   - Payload        = %s", aux1);
                             first_time = 0;
                         } else {
-                            log_i1905_d("[PLATFORM]                      %s", aux1);
+                            log_i1905_t("[PLATFORM]                      %s", aux1);
                         }
                         aux1[0] = 0x0;
                     }
@@ -612,9 +619,14 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
             *  with more space first)
             */
             tlvs_nr++;
-            ret->list_of_TLVs = realloc(ret->list_of_TLVs, sizeof(uint8_t *) * (tlvs_nr+1));
-            ret->list_of_TLVs[tlvs_nr-1] = parsed;
-            ret->list_of_TLVs[tlvs_nr]   = NULL;
+            uint8_t **new_list_of_TLVs = realloc(ret->list_of_TLVs, sizeof(uint8_t *) * (tlvs_nr + 1));
+            if (!new_list_of_TLVs) {
+                error = 10;
+                break;
+            }
+            ret->list_of_TLVs = new_list_of_TLVs;
+            ret->list_of_TLVs[tlvs_nr - 1] = parsed;
+            ret->list_of_TLVs[tlvs_nr]     = NULL;
 
             if (0 == bytes_left) {
                 /* Advance to next packet, except last fragment should have had an end_of_message_TLV */
@@ -641,7 +653,7 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
         *      and others must be ignored.
         *      The 'check_cmdu_rules()' takes care of this for us.
         */
-        log_i1905_d("CMDU type: %s", convert_1905_CMDU_type_to_string(ret->message_type));
+        log_i1905_t("CMDU type: %s", convert_1905_CMDU_type_to_string(ret->message_type));
 
         if (CMDU_TYPE_VENDOR_SPECIFIC == ret->message_type) {
             if (NULL == ret->list_of_TLVs || NULL == ret->list_of_TLVs[0] || TLV_TYPE_VENDOR_SPECIFIC != *(ret->list_of_TLVs[0])) {
@@ -734,9 +746,16 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
     *  element marking the end-of-list: a NULL pointer)
     */
     ret = malloc(sizeof(uint8_t *) * 1);
+    if (ret == NULL) {
+        return NULL;
+    }
     ret[0] = NULL;
 
     *lens = malloc(sizeof(uint16_t) * 1);
+    if (*lens == NULL) {
+        free(ret);
+        return NULL;
+    }
     (*lens)[0] = 0;
 
     fragments_nr = 0;
@@ -839,11 +858,26 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
         */
         fragments_nr++;
 
-        ret = realloc(ret, sizeof(uint8_t *) * (fragments_nr + 1));
+        /* Allocate memory for next fragment, realloc ret and lens arrays */
+        uint8_t **new_ret = realloc(ret, sizeof(uint8_t *) * (fragments_nr + 1));
+        if (!new_ret) {
+            error = 2;
+            break;
+        }
+        ret = new_ret;
         ret[fragments_nr-1] = malloc(MAX_NETWORK_SEGMENT_SIZE);
         ret[fragments_nr]   = NULL;
+        if (!ret[fragments_nr-1]) {
+            error = 3;
+            break;
+        }
 
-        *lens = realloc(*lens, sizeof(uint16_t *) * (fragments_nr + 1));
+        uint16_t *new_lens = realloc(*lens, sizeof(uint16_t) * (fragments_nr + 1));
+        if (!new_lens) {
+            error = 4;
+            break;
+        }
+        *lens = new_lens;
         (*lens)[fragments_nr-1] = 0; /* To be updated a few lines later */
         (*lens)[fragments_nr]   = 0;
 
@@ -1018,7 +1052,7 @@ uint8_t compare_1905_CMDU_structures(i1905_cmdu_t *memory_structure_1, i1905_cmd
 }
 
 void visit_1905_CMDU_structure(i1905_cmdu_t *memory_structure, void (*callback)(void (*write_function)(const char *fmt, ...),
-                               const char *prefix, uint8_t size, const char *name, const char *fmt, void *p),
+                               const char *prefix, size_t size, const char *name, const char *fmt, void *p),
                                void (*write_function)(const char *fmt, ...), const char *prefix)
 {
     /* Buffer size to store a prefix string that will be used to show each
@@ -1124,7 +1158,9 @@ char *convert_1905_CMDU_type_to_string(uint16_t cmdu_type)
         /* MAP R3 */
         CMDU_STR(CMDU_TYPE_MAP_DPP_CCE_INDICATION)
         CMDU_STR(CMDU_TYPE_MAP_PROXIED_ENCAP_DPP)
+        CMDU_STR(CMDU_TYPE_MAP_DIRECT_ENCAP_DPP)
         CMDU_STR(CMDU_TYPE_MAP_CHIRP_NOTIFICATION)
+        CMDU_STR(CMDU_TYPE_MAP_1905_ENCAP_EAPOL)
 
         default: return "CMDU_TYPE_UNKNOWN";
     }

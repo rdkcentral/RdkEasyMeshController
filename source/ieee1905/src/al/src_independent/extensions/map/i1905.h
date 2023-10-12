@@ -30,6 +30,18 @@
 #include "packet_tools.h"
 
 /**
+ * This data structure is used to provide data needed to create the WSC M2
+ *
+ * @param[in] profile : map profile containing ssid, key,...
+ * @param[in] map_ext : map extension used in WFA MAP WSC attribute
+ */
+
+typedef struct {
+    const map_profile_cfg_t *profile;
+    uint8_t                  map_ext;
+} i1905_wsc_m2_cfg_t;
+
+/**
  * This data structure is used as a parameter while constructing or extracting
  * WSC M1/M2 messages using lib1905_get/lib1905_set
  *
@@ -44,10 +56,10 @@
  */
 
 typedef struct {
-   i1905_wsc_key_t   *wsc_key;
-   i1905_wsc_tlv_t    m1;
-   i1905_wsc_tlv_t    m2;
-   map_profile_cfg_t *m2_config;
+   i1905_wsc_key_t    *wsc_key;
+   i1905_wsc_tlv_t     m1;
+   i1905_wsc_tlv_t     m2;
+   i1905_wsc_m2_cfg_t *m2_cfg;
 } i1905_wsc_data_t;
 
 
@@ -95,7 +107,7 @@ typedef enum {
 
 
 /**
- * Initializa 1905 library
+ * Initialize 1905 library
  *
  * @param[in] al_mac      : al mac address
  * @param[in] interface_cb: interface callback
@@ -108,7 +120,7 @@ int i1905_init(uint8_t *al_mac, i1905_interface_cb_t interface_cb, i1905_cmdu_cb
 
 
 /**
- * De-initializa 1905 library
+ * De-initialize 1905 library
  *
  */
 void i1905_fini(void);

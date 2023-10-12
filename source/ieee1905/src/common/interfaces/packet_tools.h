@@ -92,7 +92,7 @@ static inline void _E1B(uint8_t **packet_ppointer, uint8_t *memory_pointer)
     (*packet_ppointer) += 1;
 }
 
-static inline void _I1B(uint8_t *memory_pointer, uint8_t **packet_ppointer)
+static inline void _I1B(const uint8_t *memory_pointer, uint8_t **packet_ppointer)
 {
     **packet_ppointer   = *memory_pointer;
     (*packet_ppointer) += 1;
@@ -112,7 +112,7 @@ static inline void _E2B(uint8_t **packet_ppointer, uint16_t *memory_pointer)
 #endif
 }
 
-static inline void _I2B(uint16_t *memory_pointer, uint8_t **packet_ppointer)
+static inline void _I2B(const uint16_t *memory_pointer, uint8_t **packet_ppointer)
 {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     **packet_ppointer = *(((uint8_t *)memory_pointer)+0); (*packet_ppointer)++;
@@ -141,7 +141,7 @@ static inline void _E3B(uint8_t **packet_ppointer, uint32_t *memory_pointer)
 #endif
 }
 
-static inline void _I3B(uint32_t *memory_pointer, uint8_t **packet_ppointer)
+static inline void _I3B(const uint32_t *memory_pointer, uint8_t **packet_ppointer)
 {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     **packet_ppointer = *(((uint8_t *)memory_pointer)+0); (*packet_ppointer)++;
@@ -174,7 +174,7 @@ static inline void _E4B(uint8_t **packet_ppointer, uint32_t *memory_pointer)
 #endif
 }
 
-static inline void _I4B(uint32_t *memory_pointer, uint8_t **packet_ppointer)
+static inline void _I4B(const uint32_t *memory_pointer, uint8_t **packet_ppointer)
 {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     **packet_ppointer = *(((uint8_t *)memory_pointer)+0); (*packet_ppointer)++;
@@ -191,13 +191,40 @@ static inline void _I4B(uint32_t *memory_pointer, uint8_t **packet_ppointer)
 #endif
 }
 
+/* Extract/insert 6 bytes */
+static inline void _E6B(uint8_t **packet_ppointer, uint64_t *memory_pointer)
+{
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    *(((uint8_t *)memory_pointer)+0)  = 0;
+    *(((uint8_t *)memory_pointer)+1)  = 0;
+    *(((uint8_t *)memory_pointer)+2)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+3)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+4)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+5)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+6)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+7)  = **packet_ppointer; (*packet_ppointer)++;
+#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    *(((uint8_t *)memory_pointer)+7)  = 0;
+    *(((uint8_t *)memory_pointer)+6)  = 0;
+    *(((uint8_t *)memory_pointer)+5)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+4)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+3)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+2)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+1)  = **packet_ppointer; (*packet_ppointer)++;
+    *(((uint8_t *)memory_pointer)+0)  = **packet_ppointer; (*packet_ppointer)++;
+#else
+#error You must specify your architecture endianess
+#endif
+}
+
 /* Extract/insert N bytes (ignore endianess) */
 static inline void _EnB(uint8_t **packet_ppointer, void *memory_pointer, uint32_t n)
 {
     memcpy(memory_pointer, *packet_ppointer, n);
     (*packet_ppointer) += n;
 }
-static inline void _InB(void *memory_pointer, uint8_t **packet_ppointer, uint32_t n)
+
+static inline void _InB(const void *memory_pointer, uint8_t **packet_ppointer, uint32_t n)
 {
     memcpy(*packet_ppointer, memory_pointer, n);
     (*packet_ppointer) += n;

@@ -174,6 +174,7 @@ typedef struct interfaceInfo {
             #define IEEE80211_AP_CHANNEL_BAND_80MHZ     (0x2)
             #define IEEE80211_AP_CHANNEL_BAND_160MHZ    (0x3)
             #define IEEE80211_AP_CHANNEL_BAND_80P80MHZ  (0x4)
+            #define IEEE80211_AP_CHANNEL_BAND_320MHZ    (0x5) /* TODO: check agent behaviors */
             uint8_t ap_channel_band;  /* Hex value of dot11CurrentChannelBandwidth
                                       *  (see "IEEE P802.11ac/D3.0" for description)
                                       */

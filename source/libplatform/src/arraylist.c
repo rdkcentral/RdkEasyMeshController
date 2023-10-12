@@ -77,101 +77,84 @@ static int is_equal_obj_ptr(void* obj, void* obj_to_find)
 /*#######################################################################
 #                       PUBLIC FUNCTIONS                                #
 ########################################################################*/
-array_list_t *new_array_list(void)
+array_list_t* new_array_list(void)
 {
     return calloc(1, sizeof(array_list_t));
 }
 
-void delete_array_list(array_list_t* list)
+void delete_array_list(array_list_t *list)
 {
     free(list);
-    list = NULL;
+}
+
+//peek the first object (dont remove) O(1)
+void* first_object(array_list_t *list)
+{
+    return list && list->head ? list->head->obj : NULL;
 }
 
 //peek the last object (dont remove) O(1)
-void *first_object(array_list_t* list)
+void* last_object(array_list_t* list)
 {
-    void * obj = NULL;
-    if (list && list->head) {
-        obj = list->head->obj;
-    }
-    return obj;
-}
-
-//peek the last object (dont remove) O(1)
-void *last_object(array_list_t* list)
-{
-    void * obj = NULL;
-    if (list && list->tail) {
-        obj = list->tail->obj;
-    }
-    return obj;
+    return list && list->tail ? list->tail->obj : NULL;
 }
 
 //stack PUSH operation O(1)
-int push_object(array_list_t* list, void * obj)
+array_list_node_t* push_object_ex(array_list_t *list, void *obj)
 {
-    int ret = -1;
-    if (list && obj) {
-        array_list_node_t * node = allocate_object(obj);
-        if (node) {
-            if (list->head == NULL) {
-                list->head = node;
-                list->tail = list->head;
-            } else {
-                array_list_node_t* old = list->head;   //head = old->next ...
-                list->head = node;                  //head=node<->old->next ...
-                node->next = old;
-                old->prev = node;
-            }
-            list->count++;
-            ret = 0;
-        }
-    }
-    return ret;
-}
+    array_list_node_t *node;
 
-//stack PUSH operation O(1)
-array_list_node_t* push_object_ex(array_list_t* list, void * obj)
-{
-    array_list_node_t* node = NULL;
-    if (list && obj) {
-        node =allocate_object(obj);
-        if (node) {
-            if (list->head == NULL) {
-                list->head = node;
-                list->tail = list->head;
-            } else {
-                array_list_node_t* old = list->head;   //head = old->next ...
-                list->head = node;                  //head=node<->old->next ...
-                node->next = old;
-                old->prev = node;
-            }
-            list->count++;
-        }
+    if (!list || !obj) {
+        return NULL;
     }
+
+    if (!(node = allocate_object(obj))) {
+        return NULL;
+    }
+
+    if (list->head == NULL) {
+        list->head = node;
+        list->tail = list->head;
+    } else {
+        array_list_node_t *old = list->head;   //head = old->next ...
+        list->head = node;                     //head=node<->old->next ...
+        node->next = old;
+        old->prev = node;
+    }
+    list->count++;
+
     return node;
+}
+
+//stack PUSH operation O(1)
+int push_object(array_list_t *list, void *obj)
+{
+    array_list_node_t *node = push_object_ex(list, obj);
+
+    return node ? 0 : -1;
 }
 
 void* pop_object(array_list_t* list)
 {
-    void * obj = NULL;
-    array_list_node_t* node = NULL;
-    if (list) {
-        if (list->head) {
-            node = list->head;
-            if (node == list->tail) {
-                list->tail = NULL;
-            }
-            if (node->next) {
-                node->next->prev = NULL;
-            }
-            list->head = node->next;
-            list->count--;
-            obj = node->obj;
-            free(node);
-        }
+    array_list_node_t *node;
+    void *obj;
+
+    if (!list || !list->head) {
+        return NULL;
     }
+
+    node = list->head;
+    if (node == list->tail) {
+        list->tail = NULL;
+    }
+    if (node->next) {
+        node->next->prev = NULL;
+    }
+    list->head = node->next;
+    list->count--;
+    obj = node->obj;
+    free(node);
+
     return obj;
 }
 
@@ -179,57 +162,53 @@ void* pop_object(array_list_t* list)
 // for seq access use iterator
 void* object_at_index(array_list_t* list, int position)
 {
-    array_list_node_t* node =  NULL;
-    node = node_at_index(list, position);
-    void * obj = NULL;
-    if (node) {
-        obj = node->obj;
-    }
-    return obj;
+    array_list_node_t *node = node_at_index(list, position);
+
+    return node ? node->obj : NULL;
 }
 
 int insert_last_object(array_list_t* list, void *obj)
 {
-    int ret = -1;
+    array_list_node_t *node;
 
-    if (obj && list) {
-        array_list_node_t * node = NULL;
-        node = allocate_object(obj);
-        if (list->head == NULL) {
-            //if(list->head == NULL)
-            {
-                list->head = node;
-                list->tail = list->head;
-            }
-//            else {
-//                array_list_node_t* old = list->head;   //head = old->next ...
-//                list->head = node;                  //head=node<->old->next ...
-//                node->next = old;
-//                old->prev = node;
-//            }
-        } else {
-            node->prev = list->tail;
-            list->tail->next = node;
-            list->tail = node;
-        }
-        list->count++;
-        ret = 0;
+    if (!obj  || !list) {
+        return -1;
     }
-    return ret;
+
+    if (!(node = allocate_object(obj))) {
+        return -1;
+    }
+
+    if (list->head == NULL) {
+        list->head = node;
+        list->tail = list->head;
+    } else {
+        node->prev = list->tail;
+        list->tail->next = node;
+        list->tail = node;
+    }
+    list->count++;
+
+    return 0;
 }
 
 int insert_at_index(array_list_t *list, void * obj, int position)
 {
     int ret = -1;
-    if (list && obj) {
-        if (position == 0) {
-            ret = push_object(list, obj);
-        } else if ((unsigned int)position >= list->count) {
-            ret = insert_last_object(list, obj);
-        } else {
-            array_list_node_t * old = node_at_index(list, position);
-            if (old) {
-                array_list_node_t * new  = allocate_object(obj);
+
+    if (!list || !obj) {
+        return -1;
+    }
+
+    if (position == 0) {
+        ret = push_object(list, obj);
+    } else if ((unsigned int)position >= list->count) {
+        ret = insert_last_object(list, obj);
+    } else {
+        array_list_node_t *old = node_at_index(list, position);
+        if (old) {
+            array_list_node_t *new = allocate_object(obj);
+            if (new) {
                 new->next = old;
                 new->prev = old->prev;
                 old->prev->next = new;
@@ -245,45 +224,52 @@ int insert_at_index(array_list_t *list, void * obj, int position)
 int compare_and_insert(array_list_t * list, void* obj,
                        int (*is_condition_met)(void* obj, void* object_to_find))
 {
+    array_list_node_t *new;
     int ret = -1;
-    if (list && obj && is_condition_met) {
-        array_list_node_t *new = allocate_object(obj);
-        if (list->head == NULL) {
-            list->head = new;
-            list->tail = list->head;
-            list->count++;
-            ret = 0;
-        } else {
-            array_list_node_t *node = list->head;
-            while (node) {
-                if (is_condition_met(node->obj, obj)) {
-                    if (node == list->head) {
-                        new->prev = NULL;
-                        list->head = new;
-                    } else {
-                        new->prev       = node->prev;
-                        new->prev->next = new;
-                    }
-                    new->next  = node;
-                    node->prev = new;
-                    list->count++;
-                    ret = 0;
-                    break;
+
+    if (!list || !obj || !is_condition_met) {
+        return -1;
+    }
+
+    if (!(new = allocate_object(obj))) {
+        return -1;
+    }
+
+    if (list->head == NULL) {
+        list->head = new;
+        list->tail = list->head;
+        list->count++;
+        ret = 0;
+    } else {
+        array_list_node_t *node = list->head;
+        while (node) {
+            if (is_condition_met(node->obj, obj)) {
+                if (node == list->head) {
+                    new->prev = NULL;
+                    list->head = new;
+                } else {
+                    new->prev       = node->prev;
+                    new->prev->next = new;
                 }
-                else if (node == list->tail) {
-                    node->next = new;
-                    new->prev  = node;
-                    new->next  = NULL;
-                    list->tail = new;
-                    list->count++;
-                    ret = 0;
-                    break;
-                }
-                node = node->next;
+                new->next  = node;
+                node->prev = new;
+                list->count++;
+                ret = 0;
+                break;
             }
-            if (ret != 0 && new != NULL) {
-                free(new);
+            else if (node == list->tail) {
+                node->next = new;
+                new->prev  = node;
+                new->next  = NULL;
+                list->tail = new;
+                list->count++;
+                ret = 0;
+                break;
             }
+            node = node->next;
+        }
+        if (ret != 0) {
+            free(new);
         }
     }
     return ret;

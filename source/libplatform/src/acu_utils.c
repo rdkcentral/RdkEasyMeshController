@@ -349,6 +349,16 @@ uint64_t acu_get_epoch_msec(void)
     return get_time_msec(CLOCK_REALTIME);
 }
 
+uint64_t acu_get_epoch_usec(void)
+{
+    return get_time_usec(CLOCK_REALTIME);
+}
+
+uint64_t acu_get_epoch_nsec(void)
+{
+    return get_time_nsec(CLOCK_REALTIME);
+}
+
 /*#######################################################################
 #                       EVLOOP                                          #
 ########################################################################*/

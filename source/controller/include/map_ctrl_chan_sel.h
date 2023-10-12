@@ -8,6 +8,7 @@
 #define MAP_CTRL_CHAN_SEL_H_
 
 #include "map_data_model.h"
+#include "i1905.h"
 
 /* Update controller preference and send channel selection request */
 int map_ctrl_chan_sel_set(map_radio_info_t *radio, bool *acs_enable, map_channel_set_t *acs_channels,
@@ -22,7 +23,7 @@ int map_ctrl_chan_sel_set_bandwidth(map_radio_info_t *radio, int bandwidth);
 */
 int map_ctrl_chan_sel_update(map_radio_info_t *radio);
 
-void map_ctrl_chan_sel_dump(map_printf_cb_t print_cb, bool extended);
+void map_ctrl_chan_sel_dump(map_printf_cb_t print_cb, map_ale_info_t *ale, bool extended);
 
 int map_ctrl_chan_sel_init(void);
 

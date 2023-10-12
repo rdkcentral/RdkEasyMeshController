@@ -169,7 +169,8 @@ uint8_t wscBuildM1(char *interface_name, uint8_t **m1, uint16_t *m1_size, void *
 uint8_t wscProcessM2(void *key, uint8_t *m1, uint16_t m1_size, uint8_t *m2, uint16_t m2_size);
 
 #ifdef MULTIAP
-uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_size, map_profile_cfg_t* profile, char *recv_iface);
+uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_size,
+                   const map_profile_cfg_t *profile, uint8_t map_ext, char *recv_iface);
 #else
 uint8_t wscBuildM2(uint8_t *m1, uint16_t m1_size, uint8_t **m2, uint16_t *m2_size);
 #endif

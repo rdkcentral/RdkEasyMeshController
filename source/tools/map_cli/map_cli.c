@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
     /* Connect to server */
     memset(&saddr, 0, sizeof(saddr));
     saddr.sun_family = AF_UNIX;
-    sprintf(saddr.sun_path + 1, "%s", CLI_SOCK_PATH);
+    snprintf(saddr.sun_path + 1, sizeof(saddr.sun_path) - 1, "%s", CLI_SOCK_PATH);
     if (connect(fd, (struct sockaddr*)&saddr, sizeof(struct sockaddr_un))) {
         fprintf(stderr, "map_cli connect failed\n");
         goto bail;

@@ -79,12 +79,14 @@ void cli_run(cli_t *cli);
  * @param[in] cli      Instance to subscribe event.
  * @param[in] event    Event.
  * @param[in] function Callback functions for event.
+ * @param[in] flags    Subscription flags for event.
  * @param[in] context
  * @return 0 if successful, -1 if not.
  */
 int cli_subscribe(cli_t *cli,
                   const char *event,
                   cli_function_t function,
+                  uint32_t flags,
                   void *context);
 
 /**

@@ -108,6 +108,9 @@ uint8_t *forge_media_specific_blob(struct genericInterfaceType *m, uint16_t *len
            */
            *len   = 5;
            ret    = malloc(*len);
+           if (!ret) {
+               return NULL;
+           }
            ret[0] = 0x01;
            ret[1] = 0x00;
            ret[2] = 0x02;
@@ -123,6 +126,9 @@ uint8_t *forge_media_specific_blob(struct genericInterfaceType *m, uint16_t *len
         */
         *len = m->media_specific.unsupported.bytes_nr;
         ret  = malloc(*len);
+        if (!ret) {
+            return NULL;
+        }
 
         memcpy(ret, m->media_specific.unsupported.bytes, *len);
     }

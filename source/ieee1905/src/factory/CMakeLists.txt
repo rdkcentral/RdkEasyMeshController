@@ -31,22 +31,12 @@ set(FACTORY_INDEPENDENT_INCLUDES
     PRIVATE ${SYSTEM_INCLUDES}
 )
 
-set(FACTORY_COMPILE_OPTIONS
-	-fPIC
-    -ffunction-sections
-    -fdata-sections
-    -fvisibility=hidden
-)
-
 set(FACTORY_LIBRARIES
     -Wl,--gc-sections
-# uncomment if you want to see which symbols are GC'd
-#    -Wl,--print-gc-sections
 )
 
 # Library objects
 add_library(FACTORY_INDEPENDENT-objs OBJECT ${FACTORY_INDEPENDENT_SOURCES})
-target_compile_options(FACTORY_INDEPENDENT-objs PRIVATE ${FACTORY_COMPILE_OPTIONS})
 target_include_directories(FACTORY_INDEPENDENT-objs ${FACTORY_INDEPENDENT_INCLUDES})
 
 # Dynamic library
@@ -64,16 +54,3 @@ add_library(${FACTORYSTATIC}
 set_target_properties(${FACTORYSTATIC} PROPERTIES OUTPUT_NAME ${FACTORY})
 target_link_libraries(${FACTORYSTATIC} ${FACTORY_LIBRARIES})
 
-# Install header file(s)
-#install(DIRECTORY
-#    ${PROJECT_SOURCE_DIR}/interfaces
-#    ${PROJECT_SOURCE_DIR}/interfaces/extensions/map
-#    DESTINATION include/ieee1905
-#)
-
-# Install library
-#install(TARGETS ${LIBSTATIC}
-#    RUNTIME DESTINATION bin
-#    LIBRARY DESTINATION lib
-#    ARCHIVE DESTINATION lib
-#)

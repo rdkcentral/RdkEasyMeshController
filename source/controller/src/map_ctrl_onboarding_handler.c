@@ -30,6 +30,7 @@
 #include "map_ctrl_utils.h"
 #include "map_ctrl_defines.h"
 #include "map_info.h"
+#include "map_dm_eth_device_list.h"
 #include "arraylist.h"
 #include "1905_platform.h"
 
@@ -44,25 +45,26 @@
 /*#######################################################################
 #                       HELP FUNCTIONS                                  #
 ########################################################################*/
-static uint8_t map_topology_discovery_timer_cb(char* timer_id, void *arg)
+static int send_topology_discovery(const char *ifname)
 {
-    uintptr_t cfg_interval = get_controller_cfg()->topology_discovery_interval;
-    uintptr_t cur_interval = (int)(uintptr_t)arg;
-    char    **interfaces;
-    uint8_t   nr_interfaces, i;
+    i1905_interface_info_t *info = i1905_get_interface_info((char *)ifname);
+    int                     ret  = -1;
 
-    interfaces = i1905_get_list_of_interfaces(&nr_interfaces);
-
-    for (i = 0; i < nr_interfaces; i++) {
-        i1905_interface_info_t *info = i1905_get_interface_info(interfaces[i]);
-
-        if (info) {
-            map_send_topology_discovery(info, MID_NA);
-            i1905_free_interface_info(info);
-        }
+    if (info) {
+        ret = map_send_topology_discovery(info, MID_NA);
+        i1905_free_interface_info(info);
     }
 
-    i1905_free_list_of_interfaces(interfaces, nr_interfaces);
+    return ret;
+}
+
+static uint8_t map_topology_discovery_timer_cb(char* timer_id, void *arg)
+{
+    uintptr_t  cfg_interval = get_controller_cfg()->topology_discovery_interval;
+    uintptr_t  cur_interval = (int)(uintptr_t)arg;
+    char      *ifname       = &timer_id[sizeof(TOPOLOGY_DISCOVERY_TIMER_ID)];
+
+    send_topology_discovery(ifname);
 
     /* Set next timeout */
     if (cur_interval < cfg_interval) {
@@ -81,16 +83,18 @@ static uint8_t map_lldp_discovery_timer_cb(UNUSED char* timer_id, UNUSED void *a
 
     interfaces = i1905_get_list_of_interfaces(&nr_interfaces);
 
-    for (i = 0; i < nr_interfaces; i++) {
-        i1905_interface_info_t *info = i1905_get_interface_info(interfaces[i]);
+    if (interfaces) {
+        for (i = 0; i < nr_interfaces; i++) {
+            i1905_interface_info_t *info = i1905_get_interface_info(interfaces[i]);
 
-        if (info) {
-            map_send_lldp_bridge_discovery(info);
-            i1905_free_interface_info(info);
+           if (info) {
+                map_send_lldp_bridge_discovery(info);
+                i1905_free_interface_info(info);
+            }
         }
-    }
 
-    i1905_free_list_of_interfaces(interfaces, nr_interfaces);
+        i1905_free_list_of_interfaces(interfaces, nr_interfaces);
+    }
 
     return 0;
 }
@@ -105,6 +109,9 @@ static uint8_t map_periodic_topology_query_timer_cb(UNUSED char* timer_id, UNUSE
             map_register_topology_query_retry(ale);
         }
     }
+
+    /* Schedule derivation of ethernet client locations */
+    map_dm_eth_device_list_schedule_update();
 
     return 0;
 }
@@ -154,20 +161,10 @@ int map_onboarding_handler_init()
     int16_t link_interval        = get_controller_cfg()->link_metrics_query_interval;
     int16_t topquery_interval    = get_controller_cfg()->topology_query_interval;
     int16_t apcapquery_interval  = get_controller_cfg()->ap_capability_query_interval;
-    int16_t topo_dis_interval    = get_controller_cfg()->topology_discovery_interval;
     int16_t lldp_br_dis_interval = get_controller_cfg()->lldp_interval;
     int     status = 0;
 
     do {
-        /* Registering a timer for topology discovery */
-        if (topo_dis_interval > 0) {
-            /* Pass interval as argument */
-            if (map_timer_register_callback(START_TOPOLOGY_DISCOVERY_INTERVAL, TOPOLOGY_DISCOVERY_TIMER_ID, (void*)START_TOPOLOGY_DISCOVERY_INTERVAL, map_topology_discovery_timer_cb)) {
-                log_ctrl_e("failed to register CTLR_TOPO_DISOVERY_SEND_TIMER");
-                ERROR_EXIT(status)
-            }
-        }
-
         /* Registering a timer for lldp bridge discovery message */
         if (lldp_br_dis_interval > 0) {
             if (lldp_br_dis_interval > 60) {
@@ -225,9 +222,7 @@ int map_onboarding_handler_init()
 
 void map_onboarding_handler_fini(void)
 {
-    if (map_is_timer_registered(TOPOLOGY_DISCOVERY_TIMER_ID)) {
-        map_timer_unregister_callback(TOPOLOGY_DISCOVERY_TIMER_ID);
-    }
+    map_timer_unregister_callback_prefix(TOPOLOGY_DISCOVERY_TIMER_ID);
 
     if (map_is_timer_registered(LLDP_BRIDGE_DISCOVERY_TIMER_ID)) {
         map_timer_unregister_callback(LLDP_BRIDGE_DISCOVERY_TIMER_ID);
@@ -279,7 +274,7 @@ uint16_t map_get_topology_query_retry_interval_sec()
     return map_get_dead_agent_detection_interval() / MAX_TOPOLOGY_QUERY_RETRY;
 }
 
-map_ale_info_t* map_handle_new_agent_onboarding(uint8_t *al_mac, char *recv_iface)
+map_ale_info_t* map_handle_new_agent_onboarding(uint8_t *al_mac, char *recv_iface, bool easymesh_plus)
 {
     map_ale_info_t* ale;
 
@@ -301,6 +296,8 @@ map_ale_info_t* map_handle_new_agent_onboarding(uint8_t *al_mac, char *recv_ifac
 
             /* Set default profile to 1 */
             ale->map_profile = MAP_PROFILE_1;
+
+            ale->easymesh_plus = easymesh_plus;
         } else {
             log_ctrl_e("failed creating ALE node");
         }
@@ -390,10 +387,39 @@ bool map_is_all_radio_configured(map_ale_info_t* ale)
     return false;
 }
 
-void map_restart_topology_discovery(void)
+void map_restart_topology_discovery(const char *ifname)
 {
-    if (map_is_timer_registered(TOPOLOGY_DISCOVERY_TIMER_ID)) {
+    int        topo_dis_interval = get_controller_cfg()->topology_discovery_interval;
+    int        start_interval    = START_TOPOLOGY_DISCOVERY_INTERVAL;
+    timer_id_t timer_id;
+
+    /* Send first topology discovery immediatly */
+    send_topology_discovery(ifname);
+
+    if (topo_dis_interval == 0) {
+        return;
+    }
+
+    /* Add interface name in timer id */
+    snprintf(timer_id, sizeof(timer_id), "%s_%s", TOPOLOGY_DISCOVERY_TIMER_ID, ifname);
+
+    if (map_is_timer_registered(timer_id)) {
         /* Go back to initial timeout. Do not restart to avoid that this is done several times in a row */
-        map_timer_change_callback(TOPOLOGY_DISCOVERY_TIMER_ID, START_TOPOLOGY_DISCOVERY_INTERVAL, (void*)START_TOPOLOGY_DISCOVERY_INTERVAL);
+        map_timer_change_callback(timer_id, start_interval, (void*)(uintptr_t)start_interval);
+    } else {
+        if (map_timer_register_callback(start_interval, timer_id, (void*)(uintptr_t)start_interval, map_topology_discovery_timer_cb)) {
+            log_ctrl_e("failed starting timer[%s]", timer_id);
+        }
+    }
+}
+
+void map_stop_topology_discovery(const char *ifname)
+{
+    timer_id_t timer_id;
+
+    snprintf(timer_id, sizeof(timer_id), "%s_%s", TOPOLOGY_DISCOVERY_TIMER_ID, ifname);
+
+    if (map_is_timer_registered(timer_id)) {
+        map_timer_unregister_callback(timer_id);
     }
 }

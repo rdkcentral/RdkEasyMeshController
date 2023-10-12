@@ -9,7 +9,7 @@ dnl Process this file with autoconf to produce a configure script.
 
 dnl AC_PREREQ([2.69])
 AC_INIT(EasyMeshController-rdkb, version-1.0)
-AM_INIT_AUTOMAKE([foreign no-dist-gzip dist-bzip2 1.9])
+AM_INIT_AUTOMAKE([foreign no-dist-gzip dist-bzip2 1.9 subdir-objects])
 LT_INIT
 
 dnl subdirectories.
@@ -48,7 +48,6 @@ AC_FUNC_MALLOC
 AC_CHECK_FUNCS([memset strdup strerror asprintf])
 
 PKG_CHECK_MODULES([OPENSSL], [openssl >= 1.0.1f])
-PKG_CHECK_MODULES(ZLIB, zlib)
 PKG_CHECK_MODULES([JSONC], [json-c >= 0.12])
 PKG_CHECK_MODULES([DBUS], [dbus-1 >= 1.6.18])
 

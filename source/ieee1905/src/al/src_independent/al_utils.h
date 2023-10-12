@@ -79,6 +79,9 @@
 extern mac_addr g_mcast_mac_1905;
 extern mac_addr g_mcast_mac_lldp;
 
+#define is_multicast_ether_addr(addr) \
+    memcmp(addr, g_mcast_mac_1905, ETHER_ADDR_LEN) == 0
+
 // "MIDs" are "message IDs" used inside 1905 protocol messages. They must be
 // monotonically increased as explained in "Section 7.8"
 //

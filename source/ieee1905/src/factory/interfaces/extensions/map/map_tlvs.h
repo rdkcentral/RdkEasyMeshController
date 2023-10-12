@@ -77,6 +77,7 @@
 #include "platform.h"
 #include "map_common_defines.h"
 #include "map_data_model.h"
+#include "map_emex_tlvs.h"
 
 /*#######################################################################
 # MAP R1 TLV types                                                      #
@@ -156,9 +157,12 @@
 # MAP R3 TLV types                                                      #
 ########################################################################*/
 #define TLV_TYPE_AP_WIFI6_CAPABILITIES                    0xAA
+#define TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT       0xB0
+#define TLV_TYPE_ENCRYPTED_PAYLOAD                        0xAC
 #define TLV_TYPE_BSSID                                    0xB8
 #define TLV_TYPE_DPP_CCE_INDICATION                       0xD2
 #define TLV_TYPE_1905_ENCAP_DPP                           0xCD
+#define TLV_TYPE_1905_ENCAP_EAPOL                         0xCE
 #define TLV_TYPE_DPP_MESSAGE                              0xD1
 #define TLV_TYPE_DPP_CHIRP_VALUE                          0xD3
 #define TLV_TYPE_DEVICE_INVENTORY                         0xD4
@@ -174,8 +178,10 @@ typedef struct  {
 /*#######################################################################
 # Supported service TLV associated structures ("Section 17.2.1")        #
 ########################################################################*/
-#define MAP_SERVICE_CONTROLLER 0x00
-#define MAP_SERVICE_AGENT      0x01
+#define MAP_SERVICE_CONTROLLER          0x00
+#define MAP_SERVICE_AGENT               0x01
+#define MAP_SERVICE_EMEX_CONTROLLER     0xA0
+#define MAP_SERVICE_EMEX_AGENT          0xA1
 #define MAX_SERVICE            8
 
 typedef struct mapSupportedServiceTLV {
@@ -372,8 +378,22 @@ typedef struct mapMetricPolicyTLV {
 /*#######################################################################
 # Channel preference TLV associated structures ("Section 17.2.13")      #
 ########################################################################*/
-#define NUM_SHIFT_TO_GET_PREF               4
-#define PREF_REASON_BIT_MASK                0x0F
+#define MAP_PREF_SCORE_0                           0
+#define MAP_PREF_SCORE_14                          14
+#define MAP_PREF_SCORE_15                          15
+
+#define MAP_PREF_REASON_UNSPECFIED                  0
+#define MAP_PREF_REASON_NON80211_INTF               1
+#define MAP_PREF_REASON_80211_INTRA_OBSS_INTF_MGMT  2
+#define MAP_PREF_REASON_80211_EXT_OBSS_INTF_MGMT    3
+#define MAP_PREF_REASON_REDUCED_COVERAGE            4
+#define MAP_PREF_REASON_REDUCED_TPUT                5
+#define MAP_PREF_REASON_INDEVICE_INTF               6
+#define MAP_PREF_REASON_RADAR                       7
+#define MAP_PREF_REASON_BACKHAUL                    8
+#define MAP_PREF_REASON_DFS_CAC_COMPLETE            9
+#define MAP_PREF_REASON_DFS_PASSIVE                10
+#define MAP_PREF_REASON_CHAN_CLEAR_IND             11
 
 typedef struct {
     uint8_t           op_class;
@@ -605,25 +625,26 @@ typedef struct mapBeaconMetricsQueryTLV {
 
 #define MAP_MEASUREMENT_REPORT_ELEMENTID          39
 
-#define MAP_BEACON_REPORT_ELEMENT_SIZE            sizeof(map_beacon_metrics_response_tlv_element_t)
+#define MAP_BEACON_REPORT_ELEMENT_SIZE            sizeof(map_beacon_metrics_response_tlv_element_t) - sizeof(uint8_t *)
 
 /* Note: this struct must be packed as data from 1905 packet is copied directly into it. */
 typedef struct {
-    uint8_t  element_id;
-    uint8_t  length;
-    uint8_t  measurement_token;
-    uint8_t  measurement_report_mode;
-    uint8_t  measurement_type;
-    uint8_t  op_class;
-    uint8_t  channel;
-    uint8_t  measurement_time[8];
-    uint16_t measurement_duration;
-    uint8_t  reported_frame_information;
-    uint8_t  rcpi;
-    uint8_t  rsni;
-    mac_addr bssid;
-    uint8_t  antenna_id;
-    uint32_t parent_tsf;
+    uint8_t   element_id;
+    uint8_t   length;
+    uint8_t   measurement_token;
+    uint8_t   measurement_report_mode;
+    uint8_t   measurement_type;
+    uint8_t   op_class;
+    uint8_t   channel;
+    uint8_t   measurement_time[8];
+    uint16_t  measurement_duration;
+    uint8_t   reported_frame_information;
+    uint8_t   rcpi;
+    uint8_t   rsni;
+    mac_addr  bssid;
+    uint8_t   antenna_id;
+    uint32_t  parent_tsf;
+    uint8_t  *subelements;
 } STRUCT_PACKED map_beacon_metrics_response_tlv_element_t;
 
 typedef struct mapBeaconMetricsResponseTLV {
@@ -1106,7 +1127,7 @@ typedef struct mapAPExtendedMetricsTLV {
 /*####################################################################################
 # Associated STA extended link metrics TLV associated structures ("Section 17.2.62") #
 #####################################################################################*/
-typedef struct map_sta_ext_metrics_s {
+typedef struct {
     mac_addr bssid;
     uint32_t last_data_dl_rate;  /* from AP to STA in Kbps */
     uint32_t last_data_ul_rate;  /* from STA to AP in Kbps */
@@ -1159,6 +1180,18 @@ typedef struct mapBhBssConfigTLV {
 } map_backhaul_bss_configuration_tlv_t;
 
 /*#######################################################################
+# Encrypted Payload TLV associated structures      ("Section 17.2.69")  #
+########################################################################*/
+typedef struct mapEncryptedPayloadTLV {
+    uint8_t  tlv_type;
+    uint8_t  encr_tx_counter[ENCRYPTION_TX_COUNTER_LEN];
+    mac_addr src_al_mac;
+    mac_addr dst_al_mac;
+    uint16_t siv_len;
+    uint8_t *siv_output;
+} map_encrypted_payload_tlv_t;
+
+/*#######################################################################
 # AP Wi-Fi 6 Capabilities associated structures ("Section 17.2.72")     #
 ########################################################################*/
 typedef struct mapAPWiFi6CapTLV {
@@ -1167,6 +1200,19 @@ typedef struct mapAPWiFi6CapTLV {
     uint8_t  roles_nr;
     map_radio_wifi6_cap_data_t cap_data[MAP_AP_ROLE_MAX];
 } map_ap_wifi6_cap_tlv_t;
+
+
+/*################################################################################
+# Associated Wi-Fi 6 STA Status Report associated structures ("Section 17.2.73") #
+#################################################################################*/
+
+typedef struct mapAssocWiFi6STAStatusTLV {
+    uint8_t tlv_type;
+    mac_addr sta_mac;
+    uint8_t TID_nr;
+    uint8_t TID[MAX_NUM_TID];
+    uint8_t queue_size[MAX_NUM_TID];
+} map_assoc_wifi6_sta_status_tlv_t;
 
 /*#######################################################################
 # BSSID TLV associated structures ("Section 17.2.74")                   #
@@ -1190,6 +1236,15 @@ typedef struct map1905EncapDPPTLV {
     uint16_t  frame_len;
     uint8_t  *frame;
 } map_1905_encap_dpp_tlv_t;
+
+/*#######################################################################
+# DPP Message TLV ("Section 17.2.80")                                   #
+########################################################################*/
+typedef struct map1905EncapEapolTLV {
+    uint8_t   tlv_type;
+    uint16_t  frame_len;
+    uint8_t  *frame;
+} map_1905_encap_eapol_tlv_t;
 
 /*#######################################################################
 # DPP CCE Indication TLV ("Section 17.2.82")                            #

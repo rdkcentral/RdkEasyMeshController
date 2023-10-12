@@ -41,9 +41,10 @@ void map_onboarding_handler_fini(void);
  *  @param
  *      al_mac          - AL MAC address of the agent
  *      recv_iface      - Receiving interface Name
+ *      easymesh_plus   - easymesh_plus agent indication
  *  @return The reference to map_ale_info_t on success otherwise NULL.
  */
-map_ale_info_t* map_handle_new_agent_onboarding(uint8_t *al_mac, char* recv_iface);
+map_ale_info_t* map_handle_new_agent_onboarding(uint8_t *al_mac, char* recv_iface, bool easymesh_plus);
 
 /** @brief This API prepares the controller for new radio onboarding
  *
@@ -103,11 +104,20 @@ uint16_t map_get_dead_agent_detection_interval();
  */
 uint16_t map_get_topology_query_retry_interval_sec();
 
-/** @brief Reset topology timer interval
+/** @brief (Re)-start sending topology discovery on an interface
  *
- *  @param      None
+ *  @param
+ *      ifname    - interface name
  *  @return     None
  */
-void map_restart_topology_discovery(void);
+void map_restart_topology_discovery(const char *ifname);
+
+/** @brief Stop sending topology discovery on an interface
+ *
+ *  @param
+ *      ifname    - interface name
+ *  @return     None
+ */
+void map_stop_topology_discovery(const char *ifname);
 
 #endif /* MAP_CTRL_ONBOARDING_HANDLER_H_ */

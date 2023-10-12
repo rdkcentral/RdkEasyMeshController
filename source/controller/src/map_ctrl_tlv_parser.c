@@ -170,7 +170,8 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
     map_bss_info_t   *bss     = map_dm_get_bss_from_ale(ale, iface->mac_address);
     map_radio_info_t *radio;
     int               channel = iface->ieee80211_ap_channel_center_freq_1;
-    uint8_t           current_op_class, supported_freq, current_bw = 0, bw = 0;
+    uint8_t           current_op_class, supported_freq, center_channel;
+    uint16_t          current_bw = 0, bw = 0;
     bool              is_center_channel = false;
 
     if (!bss || !(radio = bss->radio)) {
@@ -191,6 +192,7 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
         case IEEE80211_AP_CHANNEL_BAND_40MHZ:  bw =  40; break;
         case IEEE80211_AP_CHANNEL_BAND_80MHZ:  bw =  80; break;
         case IEEE80211_AP_CHANNEL_BAND_160MHZ: bw = 160; break;
+        case IEEE80211_AP_CHANNEL_BAND_320MHZ: bw = 320; break;
         default:                                         return;
     }
 
@@ -226,9 +228,15 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
             if (current_bw != bw) {
                 current_op_class = 0;
             } else {
-                int check_channel = is_center_channel ? map_get_center_channel(current_op_class, channel) : channel;
-                if (!map_is_channel_in_op_class(current_op_class, check_channel)) {
-                    current_op_class = 0;
+                if (is_center_channel) {
+                    if (map_get_center_channel(current_op_class, channel, &center_channel) ||
+                        !map_is_channel_in_op_class(current_op_class, center_channel)) {
+                        current_op_class = 0;
+                    }
+                } else {
+                    if (!map_is_channel_in_op_class(current_op_class, channel)) {
+                        current_op_class = 0;
+                    }
                 }
             }
         }
@@ -269,15 +277,29 @@ static int update_radio_op_classes(map_radio_info_t *radio, map_ap_radio_basic_c
 
     /* Update allowed channels based on config and cap_op_class_list */
     map_update_radio_channels(radio);
+
+    /* Update channel preference */
     map_ctrl_chan_sel_update(radio);
 
     return 0;
 }
 
+static void update_radio_channel_configurable(map_ale_info_t *bhsta_ale, map_backhaul_sta_iface_t *bhsta_iface)
+{
+    map_radio_info_t *bhsta_radio = map_dm_get_radio(bhsta_ale, bhsta_iface->radio_id);
+
+    if (bhsta_radio) {
+        bhsta_radio->channel_configurable = !bhsta_iface->active;
+        map_dm_radio_set_capabilities(bhsta_radio);
+    }
+}
+
 static map_sta_info_t *handle_sta_connect(map_bss_info_t *bss, mac_addr mac, uint16_t assoc_time)
 {
-    map_sta_info_t *sta;
-    bool            do_cap_query = false;
+    map_ale_info_t           *bhsta_ale;
+    map_backhaul_sta_iface_t *bhsta_iface = map_find_bhsta_iface_gbl(mac, &bhsta_ale);
+    map_sta_info_t           *sta;
+    bool                      do_cap_query = false;
 
     /* Currently a sta can only be linked to one BSS -> move if it already existed */
     if (!(sta = map_dm_get_sta_gbl(mac))) {
@@ -287,6 +309,13 @@ static map_sta_info_t *handle_sta_connect(map_bss_info_t *bss, mac_addr mac, uin
         }
         sta->assoc_ts = map_dm_get_sta_assoc_ts(assoc_time);
         do_cap_query  = true;
+
+        /* If there is a BTM steering request for this station and
+           there was no BTM response yet finalize the steering
+        */
+        map_dm_sta_steering_finalize(sta);
+
+        map_dm_create_assoc(sta);
     } else {
         /* Check if current and old BSS is the same */
         if (sta->bss != bss) {
@@ -298,10 +327,10 @@ static map_sta_info_t *handle_sta_connect(map_bss_info_t *bss, mac_addr mac, uin
         }
     }
 
-    /* Change active state of backhaul sta iface */
-    map_backhaul_sta_iface_t *bhsta_iface = map_find_bhsta_iface_gbl(mac);
+    /* For connected bh_sta: change active state of backhaul sta iface */
     if (bhsta_iface) {
         bhsta_iface->active = true;
+        update_radio_channel_configurable(bhsta_ale, bhsta_iface);
     }
 
     if (do_cap_query) {
@@ -324,12 +353,22 @@ static void handle_sta_disconnect(map_bss_info_t *bss, mac_addr mac)
     map_sta_info_t *sta = map_dm_get_sta(bss, mac); /* will only find sta when it was really connected to this bss */
 
     if (sta) {
+        map_ale_info_t           *bhsta_ale;
+        map_backhaul_sta_iface_t *bhsta_iface = map_find_bhsta_iface_gbl(mac, &bhsta_ale);
+
         log_ctrl_d("%s: sta[%s] has left bss[%s]", __FUNCTION__, sta->mac_str, bss->bssid_str);
 
-        /* Change active state of backhaul sta iface */
-        map_backhaul_sta_iface_t *bhsta_iface = map_find_bhsta_iface_gbl(mac);
+        map_dm_create_disassoc(sta);
+
+        /* For disconnected bh_sta:
+           - change active state of backhaul sta iface
+        */
         if (bhsta_iface) {
+            log_ctrl_i("backhaul sta[%s] band[%s] disconnected from bss[%s]", sta->mac_str,
+                       map_get_freq_band_str(bss->radio->supported_freq), bss->bssid_str);
+
             bhsta_iface->active = false;
+            update_radio_channel_configurable(bhsta_ale, bhsta_iface);
         }
 
         map_dm_remove_sta(sta);
@@ -477,6 +516,49 @@ int map_parse_neighbor_device_list_tlv(map_ale_info_t *ale, i1905_neighbor_devic
 /*#######################################################################
 #                       MAP R1 TLV HANDLERS                             #
 ########################################################################*/
+
+/* MAP_R1 17.2.1 */
+int map_parse_ap_supported_service_tlv(UNUSED map_ale_info_t *ale, map_supported_service_tlv_t* tlv,
+                                                bool *is_controller, bool *is_agent, bool *is_em_plus)
+{
+    uint8_t i;
+
+    if (is_controller) {
+        *is_controller = false;
+    }
+    if (is_agent) {
+        *is_agent = false;
+    }
+    if (is_em_plus) {
+        *is_em_plus = false;
+    }
+
+    if (tlv == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < tlv->services_nr; i++) {
+        if (tlv->services[i] == MAP_SERVICE_CONTROLLER) {
+            if (is_controller) {
+                *is_controller = true;
+            }
+        }
+        if (tlv->services[i] == MAP_SERVICE_AGENT) {
+            if (is_agent) {
+                *is_agent = true;
+            }
+        }
+        if (tlv->services[i] == MAP_SERVICE_EMEX_CONTROLLER || tlv->services[i] == MAP_SERVICE_EMEX_AGENT) {
+            if (is_em_plus) {
+                *is_em_plus = true;
+            }
+        }
+    }
+
+    return 0;
+
+}
+
 /* MAP_R1 17.2.4 */
 int map_parse_ap_operational_bss_tlv(map_ale_info_t *ale, map_ap_operational_bss_tlv_t* tlv)
 {
@@ -518,7 +600,6 @@ int map_parse_ap_operational_bss_tlv(map_ale_info_t *ale, map_ap_operational_bss
         /* Update BSSs */
         if (update_radio_bsss(radio, tlv_radio)) {
             log_ctrl_e("failed to update bsss of radio[%s]", mac_string(radio->radio_id));
-            continue;
         }
     }
 
@@ -563,7 +644,7 @@ int map_parse_ap_operational_bss_tlv(map_ale_info_t *ale, map_ap_operational_bss
          NOTE: As the oper channel report can come with a delay, don't do this too fast
     */
     if (map_is_channel_selection_enabled() && ale->radios_nr > 0 && map_is_all_radio_M1_received(ale)) {
-        uint64_t last_chan_sel_req  = get_clock_diff_secs(get_current_time(), ale->last_chan_sel_req_time); /* Should be per radio */
+        uint64_t last_chan_sel_req  = acu_timestamp_delta_sec(ale->last_chan_sel_req_time); /* Should be per radio */
         bool     do_chan_pref_query = false;
 
         map_dm_foreach_radio(ale, radio) {
@@ -1005,9 +1086,9 @@ int map_parse_channel_scan_cap_tlv(map_ale_info_t *ale, map_channel_scan_cap_tlv
             map_op_class_t *op_class = &radio->scan_caps.op_class_list.op_classes[j];
             char buf[MAP_CS_BUF_LEN];
 
-            log_ctrl_d("  op_class:%d",        op_class->op_class);
-            log_ctrl_d("    channel_count:%d", map_cs_nr(&op_class->channels));
-            log_ctrl_d("    channel_list:%s",  map_cs_nr(&op_class->channels) > 0 ? map_cs_to_string(&op_class->channels, ' ', buf, sizeof(buf)) : "all");
+            log_ctrl_t("  op_class:%d",        op_class->op_class);
+            log_ctrl_t("    channel_count:%d", map_cs_nr(&op_class->channels));
+            log_ctrl_t("    channel_list:%s",  map_cs_nr(&op_class->channels) > 0 ? map_cs_to_string(&op_class->channels, ' ', buf, sizeof(buf)) : "all");
         }
         log_ctrl_d("*****************************");
     }
@@ -1056,17 +1137,17 @@ int map_parse_channel_scan_result_tlv(map_ale_info_t *ale, map_channel_scan_resu
         map_channel_scan_neighbor_t *nb = &tlv->neighbors[i];
         map_scan_result_t           *scan_result;
 
-        log_ctrl_d("Neighbor [%d]:",              i);
-        log_ctrl_d("\tbssid: %s",                 mac_string(nb->bssid));
-        log_ctrl_d("\tssid len: %u",              nb->ssid_len);
-        log_ctrl_d("\tssid: %s",                  nb->ssid);
-        log_ctrl_d("\trssi: %d dBm",              RCPI_TO_RSSI(nb->rcpi));
-        log_ctrl_d("\tch_bw_len: %u",             nb->ch_bw_len);
-        log_ctrl_d("\tch_bw: %s MHz",             nb->ch_bw);
-        log_ctrl_d("\tbss_load_elem_present: %u", nb->bss_load_elem_present);
+        log_ctrl_t("Neighbor [%d]:",              i);
+        log_ctrl_t("\tbssid: %s",                 mac_string(nb->bssid));
+        log_ctrl_t("\tssid len: %u",              nb->ssid_len);
+        log_ctrl_t("\tssid: %s",                  nb->ssid);
+        log_ctrl_t("\trssi: %d dBm",              RCPI_TO_RSSI(nb->rcpi));
+        log_ctrl_t("\tch_bw_len: %u",             nb->ch_bw_len);
+        log_ctrl_t("\tch_bw: %s MHz",             nb->ch_bw);
+        log_ctrl_t("\tbss_load_elem_present: %u", nb->bss_load_elem_present);
         if (nb->bss_load_elem_present == 1) {
-            log_ctrl_d("\tchannel_utilization: %u", nb->channel_utilization);
-            log_ctrl_d("\tsta_count: %u",           nb->stas_nr);
+            log_ctrl_t("\tchannel_utilization: %u", nb->channel_utilization);
+            log_ctrl_t("\tsta_count: %u",           nb->stas_nr);
         }
 
         if (!(scan_result = calloc(1, sizeof(*scan_result)))) {
@@ -1104,7 +1185,7 @@ int map_parse_channel_scan_result_tlv(map_ale_info_t *ale, map_channel_scan_resu
 /* MAP_R2 17.2.41 */
 int map_parse_timestamp_tlv(UNUSED map_ale_info_t *ale, map_timestamp_tlv_t* tlv)
 {
-    log_ctrl_d("Timestamp: %s", tlv->timestamp);
+    log_ctrl_t("Timestamp: %s", tlv->timestamp);
     return 0;
 }
 
@@ -1207,9 +1288,9 @@ int map_parse_cac_status_report_tlv(map_ale_info_t *ale, map_cac_status_report_t
             available_pairs[i].channel                      = tlv->available_pairs[i].channel;
             available_pairs[i].minutes_since_cac_completion = tlv->available_pairs[i].minutes_since_cac_completion;
 
-            log_ctrl_d("     Opclass: %u", tlv->available_pairs[i].op_class);
-            log_ctrl_d("     Channel: %u", tlv->available_pairs[i].channel);
-            log_ctrl_d("     Passed Time after CAC completion: %u min", tlv->available_pairs[i].minutes_since_cac_completion);
+            log_ctrl_t("     Opclass: %u", tlv->available_pairs[i].op_class);
+            log_ctrl_t("     Channel: %u", tlv->available_pairs[i].channel);
+            log_ctrl_t("     Passed Time after CAC completion: %u min", tlv->available_pairs[i].minutes_since_cac_completion);
         }
     } else {
         /* corrupted/zero number of available channels */
@@ -1236,9 +1317,9 @@ int map_parse_cac_status_report_tlv(map_ale_info_t *ale, map_cac_status_report_t
             non_occupancy_pairs[i].channel                                  = tlv->non_occupancy_pairs[i].channel;
             non_occupancy_pairs[i].seconds_remaining_non_occupancy_duration = tlv->non_occupancy_pairs[i].seconds_remaining_non_occupancy_duration;
 
-            log_ctrl_d("     Opclass: %u", tlv->non_occupancy_pairs[i].op_class);
-            log_ctrl_d("     Channel: %u", tlv->non_occupancy_pairs[i].channel);
-            log_ctrl_d("     Remainin Non-Occupancy Duration: %u seconds", tlv->non_occupancy_pairs[i].seconds_remaining_non_occupancy_duration);
+            log_ctrl_t("     Opclass: %u", tlv->non_occupancy_pairs[i].op_class);
+            log_ctrl_t("     Channel: %u", tlv->non_occupancy_pairs[i].channel);
+            log_ctrl_t("     Remainin Non-Occupancy Duration: %u seconds", tlv->non_occupancy_pairs[i].seconds_remaining_non_occupancy_duration);
         }
     } else {
         /* corrupted/zero number of non-occupancy channels */
@@ -1265,9 +1346,9 @@ int map_parse_cac_status_report_tlv(map_ale_info_t *ale, map_cac_status_report_t
             ongoing_cac_pairs[i].channel                          = tlv->ongoing_cac_pairs[i].channel;
             ongoing_cac_pairs[i].seconds_remaining_cac_completion = tlv->ongoing_cac_pairs[i].seconds_remaining_cac_completion;
 
-            log_ctrl_d("     Opclass: %u", tlv->ongoing_cac_pairs[i].op_class);
-            log_ctrl_d("     Channel: %u", tlv->ongoing_cac_pairs[i].channel);
-            log_ctrl_d("     Remaining CAC completion Duration: %u seconds", tlv->ongoing_cac_pairs[i].seconds_remaining_cac_completion);
+            log_ctrl_t("     Opclass: %u", tlv->ongoing_cac_pairs[i].op_class);
+            log_ctrl_t("     Channel: %u", tlv->ongoing_cac_pairs[i].channel);
+            log_ctrl_t("     Remaining CAC completion Duration: %u seconds", tlv->ongoing_cac_pairs[i].seconds_remaining_cac_completion);
         }
     } else {
         /* corrupted/zero number of non-occupancy channels */
@@ -1276,6 +1357,7 @@ int map_parse_cac_status_report_tlv(map_ale_info_t *ale, map_cac_status_report_t
     }
 
     ale->cac_status_report.valid = true;
+    map_dm_ale_set_cac_status(ale);
 
     return 0;
 
@@ -1297,50 +1379,80 @@ fail:
 /* MAP_R2 17.2.46 */
 int map_parse_cac_cap_tlv(map_ale_info_t *ale, map_cac_cap_tlv_t* tlv)
 {
+    map_radio_info_t *radio;
     size_t i, j, k;
 
     log_ctrl_d("CAC CAPABILITIES:");
     log_ctrl_d("*****************************");
 
+    /* Reset EU weatherband flag */
+    map_dm_foreach_radio(ale, radio) {
+        radio->cac_caps.has_eu_weatherband = false;
+    }
+
     for (i = 0; i < tlv->radios_nr; i++) {
         map_cac_cap_tlv_radio_t *tlv_radio = &tlv->radios[i];
-        map_radio_info_t        *radio     = map_dm_get_radio(ale, tlv_radio->radio_id);
-        map_cac_method_t        *cac_method_tmp;
+        map_cac_method_t        *new_cac_methods;
 
-        if (!radio) {
+        if (!(radio = map_dm_get_radio(ale, tlv_radio->radio_id))) {
             log_ctrl_e("%s: radio[%s] not found", __FUNCTION__, mac_string(tlv_radio->radio_id));
             continue;
         }
 
-        if (!(cac_method_tmp = calloc(tlv_radio->cac_methods_nr, sizeof(*cac_method_tmp)))) {
+        if (!(new_cac_methods = calloc(tlv_radio->cac_methods_nr, sizeof(*new_cac_methods)))) {
             log_ctrl_e("%s: calloc failed", __FUNCTION__);
             return -1;
         }
 
         for (j = 0; j < tlv_radio->cac_methods_nr; j++) {
-            cac_method_tmp[j].cac_method                  = tlv_radio->cac_methods[j].cac_method;
-            cac_method_tmp[j].cac_duration                = tlv_radio->cac_methods[j].cac_duration;
-            cac_method_tmp[j].op_class_list.op_classes_nr = tlv_radio->cac_methods[j].op_classes_nr;
+            map_cac_cap_tlv_method_t *tlv_cac_method = &tlv_radio->cac_methods[j];
+            map_cac_method_t         *cac_method     = &new_cac_methods[j];
+            map_op_class_list_t      *op_class_list  = &cac_method->op_class_list;
 
-            cac_method_tmp[j].op_class_list.op_classes = calloc(cac_method_tmp[j].op_class_list.op_classes_nr, sizeof(map_op_class_t));
-            if (!cac_method_tmp[j].op_class_list.op_classes) {
+            cac_method->cac_method       = tlv_cac_method->cac_method;
+            cac_method->cac_duration     = tlv_cac_method->cac_duration;
+            op_class_list->op_classes_nr = tlv_cac_method->op_classes_nr;
+
+            op_class_list->op_classes = calloc(op_class_list->op_classes_nr, sizeof(map_op_class_t));
+            if (!op_class_list->op_classes) {
                 log_ctrl_e("%s: calloc failed", __FUNCTION__);
-                map_dm_free_cac_methods(cac_method_tmp, tlv_radio->cac_methods_nr);
+                map_dm_free_cac_methods(new_cac_methods, tlv_radio->cac_methods_nr);
                 return -1;
             }
 
-            for (k = 0; k < cac_method_tmp[j].op_class_list.op_classes_nr; k++) {
-                map_op_class_t *op_class = &cac_method_tmp[j].op_class_list.op_classes[k];
+            for (k = 0; k < op_class_list->op_classes_nr; k++) {
+                map_op_class_t *op_class = &op_class_list->op_classes[k];
 
-                op_class->op_class = tlv_radio->cac_methods[j].op_classes[k].op_class;
-                map_cs_copy(&op_class->channels, &tlv_radio->cac_methods[j].op_classes[k].channels);
+                op_class->op_class = tlv_cac_method->op_classes[k].op_class;
+                map_cs_copy(&op_class->channels, &tlv_cac_method->op_classes[k].channels);
+            }
+
+            /* Check if radio has EU weatherband.
+               Using country code is difficult -> check for continuous cac method with large duration
+            */
+            if (cac_method->cac_method == MAP_CAC_METHOD_CONTINUOUS && cac_method->cac_duration >= 600) {
+                for (k = 0; !radio->cac_caps.has_eu_weatherband && k < op_class_list->op_classes_nr; k++) {
+                    map_op_class_t *op_class = &op_class_list->op_classes[k];
+                    int             c;
+
+                    if (!map_is_5G_weatherband_op_class(op_class->op_class)) {
+                        continue;
+                    }
+
+                    map_cs_foreach(&op_class->channels, c) {
+                        if (map_is_5G_weatherband_channel(op_class->op_class, c)) {
+                            radio->cac_caps.has_eu_weatherband = true;
+                            break;
+                        }
+                    }
+                }
             }
         }
 
         map_dm_free_cac_methods(radio->cac_caps.cac_method, radio->cac_caps.cac_method_count);
 
         radio->cac_caps.cac_method_count = tlv_radio->cac_methods_nr;
-        radio->cac_caps.cac_method       = cac_method_tmp;
+        radio->cac_caps.cac_method       = new_cac_methods;
 
         log_ctrl_d("Radio[%s]",            mac_string(radio->radio_id));
         log_ctrl_d(" cac_method_count:%d", radio->cac_caps.cac_method_count);
@@ -1356,9 +1468,9 @@ int map_parse_cac_cap_tlv(map_ale_info_t *ale, map_cac_cap_tlv_t* tlv)
                 map_op_class_t *op_class = &method->op_class_list.op_classes[k];
                 char buf[MAP_CS_BUF_LEN];
 
-                log_ctrl_d("  op_class:%d",        op_class->op_class);
-                log_ctrl_d("    channel_count:%d", map_cs_nr(&op_class->channels));
-                log_ctrl_d("    channel_list:%s",  map_cs_to_string(&op_class->channels, ' ', buf, sizeof(buf)));
+                log_ctrl_t("  op_class:%d",        op_class->op_class);
+                log_ctrl_t("    channel_count:%d", map_cs_nr(&op_class->channels));
+                log_ctrl_t("    channel_list:%s",  map_cs_to_string(&op_class->channels, ' ', buf, sizeof(buf)));
             }
         }
         log_ctrl_d("*****************************");
@@ -1470,9 +1582,9 @@ int map_parse_ap_ext_metrics_response_tlv(map_ale_info_t *ale, map_ap_ext_metric
 /* MAP_R2 17.2.62 */
 int map_parse_assoc_sta_ext_link_metrics_tlv(map_ale_info_t *ale, map_assoc_sta_ext_link_metrics_tlv_t* tlv)
 {
-    map_assoc_sta_ext_link_metrics_tlv_bss_t *ext_metrics = NULL;
-    map_sta_info_t                           *sta = map_dm_get_sta_from_ale(ale, tlv->sta_mac);
-    int                                       i;
+    map_sta_ext_bss_metrics_t *ext_metrics = NULL;
+    map_sta_info_t            *sta = map_dm_get_sta_from_ale(ale, tlv->sta_mac);
+    int                        i;
 
     if (!sta) {
         log_ctrl_e("%s: sta[%s] not found", __FUNCTION__, mac_string(tlv->sta_mac));
@@ -1512,7 +1624,7 @@ int map_parse_assoc_sta_ext_link_metrics_tlv(map_ale_info_t *ale, map_assoc_sta_
 /* MAP_R2 17.2.65 */
 int map_parse_backhaul_sta_radio_capability_tlv(map_ale_info_t *ale, map_backhaul_sta_radio_cap_tlv_t **tlvs, size_t tlvs_nr)
 {
-    uint8_t i;
+    size_t i;
 
     /* Remove old backhaul sta interfaces */
     SFREE(ale->backhaul_sta_iface_list);
@@ -1539,6 +1651,7 @@ int map_parse_backhaul_sta_radio_capability_tlv(map_ale_info_t *ale, map_backhau
             maccpy(bhsta_iface->mac_address, tlv->bsta_mac);
             /* Check if it is connected(active) */
             bhsta_iface->active = !!map_dm_get_sta_gbl(bhsta_iface->mac_address);
+            update_radio_channel_configurable(ale, bhsta_iface);
         }
     }
 
@@ -1582,6 +1695,27 @@ int map_parse_ap_wifi6_cap_tlv(map_ale_info_t *ale, map_ap_wifi6_cap_tlv_t *tlv)
     return 0;
 }
 
+/* MAP_R3 17.2.73 */
+int map_parse_assoc_wifi6_sta_status_tlv(map_ale_info_t *ale, map_assoc_wifi6_sta_status_tlv_t *tlv)
+{
+    map_sta_info_t *sta               = map_dm_get_sta_from_ale(ale, tlv->sta_mac);
+    uint8_t i;
+
+    if (!sta) {
+        log_ctrl_e("%s: sta[%s] not found", __FUNCTION__, mac_string(tlv->sta_mac));
+        return -1;
+    }
+
+    sta->wifi6_sta_tid_info.TID_nr = tlv->TID_nr;
+
+    for (i=0; i < sta->wifi6_sta_tid_info.TID_nr; i++) {
+        sta->wifi6_sta_tid_info.TID[i] = tlv->TID[i];
+        sta->wifi6_sta_tid_info.queue_size[i] = tlv->queue_size[i];
+    }
+
+    return 0;
+}
+
 /* MAP_R3 17.2.79 */
 int map_parse_1905_encap_dpp_tlv(map_ale_info_t *ale, map_1905_encap_dpp_tlv_t *tlv)
 {
@@ -1600,6 +1734,25 @@ int map_parse_1905_encap_dpp_tlv(map_ale_info_t *ale, map_1905_encap_dpp_tlv_t *
             return ret;
         }
         memcpy(ale->dpp_info.encap_msg.frame, tlv->frame, tlv->frame_len);
+        ret = 0;
+    }
+
+    return ret;
+}
+
+/* MAP_R3 17.2.80 */
+int map_parse_1905_encap_eapol_tlv(map_ale_info_t *ale, map_1905_encap_eapol_tlv_t *tlv)
+{
+    int ret = -1;
+
+    if (tlv->frame_len && tlv->frame) {
+        free(ale->dpp_info.encap_eapol.frame);
+        ale->dpp_info.encap_eapol.frame_len = tlv->frame_len;
+        ale->dpp_info.encap_eapol.frame = calloc(tlv->frame_len, sizeof(uint8_t));
+        if (ale->dpp_info.encap_eapol.frame == NULL) {
+            return ret;
+        }
+        memcpy(ale->dpp_info.encap_eapol.frame, tlv->frame, tlv->frame_len);
         ret = 0;
     }
 

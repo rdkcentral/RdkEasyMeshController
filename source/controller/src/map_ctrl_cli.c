@@ -24,17 +24,20 @@
 #include "map_ctrl_chan_sel.h"
 
 #include "map_cli.h"
+#include "map_cli_subscription.h"
 #include "map_data_model_dumper.h"
+#include "map_blocklist.h"
 #include "map_utils.h"
 
 /*#######################################################################
 #                       DEFINES                                         #
 ########################################################################*/
-#define JSON_PARSE                                             \
-    json.object = json_tokener_parse(payload);                 \
-    if (!json.object ||                                        \
-        !json_object_is_type(json.object, json_type_object)) { \
-        goto out;                                              \
+#define JSON_PARSE                                              \
+    memset(&json, 0, sizeof(json));                             \
+    json.object = json_tokener_parse(payload ? payload : "{}"); \
+    if (!json.object ||                                         \
+        !json_object_is_type(json.object, json_type_object)) {  \
+        goto out;                                               \
     }
 
 #define CHECK_PRINT_HELP(help_str)                 \
@@ -59,6 +62,7 @@
 typedef struct map_subscription_s {
     const char *event;
     cli_function_t handler;
+    uint32_t flags;
 } map_subscription_t;
 
 /*#######################################################################
@@ -79,7 +83,9 @@ static const char *g_help =
     "map_cli --command version\n"
     "map_cli --command dumpCtrlInfo\n"
     "map_cli --command dumpInterfaces\n"
-    "map_cli --command dumpChanSel --payload '{\"extended\": false}'\n"
+    "map_cli --command dumpBlockList\n"
+    "map_cli --command dumpOpClasses\n"
+    "map_cli --command dumpChanSel "PAYLOAD_HELP"\n"
     "map_cli --command dumpTunneledMessage --payload '{\"mac\": \"AA:BB:CC:DD:EE:FF\",\"msgtype\":\"assoc|reassoc|btm|wnm|anqp\"}'\n"
     "map_cli --command dumpAPMetrics --payload '{\"bssid\":\"AA:BB:CC:DD:EE:FF\"}'\n"
     "map_cli --command dumpRadioMetrics --payload '{\"almac\":\"AA:BB:CC:DD:EE:FF\", \"radio_id\":\"AA:BB:CC:DD:EE:FF\"}'\n"
@@ -96,6 +102,7 @@ static const char *g_help =
     "map_cli --command sendAPCapabilityQuery --payload '{\"almac\":\"AA:BB:CC:DD:EE:FF\"}'\n"
     "map_cli --command sendChannelPreferenceQuery --payload '{\"almac\":\"AA:BB:CC:DD:EE:FF\"}'\n"
     "map_cli --command sendClientCapabilityQuery --payload '{\"almac\":\"AA:BB:CC:DD:EE:FF\", \"stamac\":\"AA:BB:CC:DD:EE:FF\"}'\n"
+    "map_cli --command sendAssocStaLinkMetricsQuery --payload '{\"almac\":\"AA:BB:CC:DD:EE:FF\", \"stamac\":\"AA:BB:CC:DD:EE:FF\"}'\n"
     "map_cli --command sendUnassocStaLinkMetricsQuery "PAYLOAD_HELP"\n"
     "map_cli --command sendBeaconMetricsQuery "PAYLOAD_HELP"\n"
     "map_cli --command sendCombinedInfrastructureMetrics --payload '{\"almac\": \"AA:BB:CC:DD:EE:FF\"}'\n"
@@ -117,6 +124,19 @@ static const char *g_help =
     "map_cli --command sendWFACAPI "PAYLOAD_HELP"\n";
 
 /* Command specific help */
+static const char *g_help_dump_chan_sel =
+    "~Dump Channel selection Help~\n"
+    "-Payload format-\n"
+    "   {\n"
+    "       \"almac\": \"AA:BB:CC:DD:EE:FF\", (optional)\n"
+    "       \"extended\": true|false (optional)\n"
+    "   }\n\n"
+    "-Example-\n"
+    "map_cli --command dumpChanSel\n"
+    "map_cli --command dumpChanSel --payload '{\"extended\": true}'\n"
+    "map_cli --command dumpChanSel --payload '{\"almac\": \"AA:BB:CC:DD:EE:FF\"}'\n"
+    "map_cli --command dumpChanSel --payload '{\"almac\": \"AA:BB:CC:DD:EE:FF\", \"extended\": true}'\n";
+
 static const char *g_help_dump_sta_metrics =
     "~Dump STA Metrics Help~\n"
     "This function dumps STA metrics with two options as \"metrics\" which the information comes from the Associated STA Link Metrics TLV and \"extended_metrics\" which the information comes from Associated STA Extended Link Metrics TLV. \"metrics\" option shows info for the BSS that sta is currently associated. \"extended_metrics\" opt shows current and old BSSs info.\n\n"
@@ -470,7 +490,7 @@ static void map_cli_fd_cb(UNUSED int fd, void *userdata)
 
 static int json_get_mac(struct json_object *json, const char *field, mac_addr mac)
 {
-    struct json_object *json_mac;
+    struct json_object *json_mac = NULL;
 
     return json_object_object_get_ex(json, field, &json_mac) &&
            json_object_is_type(json_mac, json_type_string)   &&
@@ -487,16 +507,23 @@ static map_ale_info_t *json_get_ale(struct json_object *json, const char *field)
 /* Looks for "args" field with value "help" */
 static bool check_print_help(struct json_object *json, const char *help_str)
 {
-    struct json_object *json_args;
+    struct json_object *json_args = NULL;
+    const char *str;
 
     if (json_object_object_get_ex(json, "args", &json_args) &&
         json_object_is_type(json_args, json_type_string)    &&
-        !strcmp(json_object_get_string(json_args), "help"))
+        (str = json_object_get_string(json_args)) &&
+        !strcmp(str, "help"))
     {
         map_cli_printf("%s", help_str);
         return true;
     }
     return false;
+}
+
+static const char *yes_no(bool b)
+{
+    return b ? "yes" : "no";
 }
 
 /*#######################################################################
@@ -529,17 +556,67 @@ static void cli_dump_interfaces(UNUSED const char *event, UNUSED const char *pay
     i1905_dump_interfaces(map_cli_printf);
 }
 
-static void cli_dump_chan_sel(UNUSED const char *event, UNUSED const char *payload, UNUSED void *context)
+static void cli_dump_blocklist(UNUSED const char *event, UNUSED const char *payload, UNUSED void *context)
+{
+    map_blocklist_dump(map_cli_printf);
+}
+
+static void cli_dump_op_classes(UNUSED const char *event, UNUSED const char *payload, UNUSED void *context)
+{
+    int               i, count;
+    uint8_t           op_class, band, channel;
+    uint16_t          bw;
+    bool              is_center_channel;
+    map_channel_set_t channel_set, channel_set2;
+    char              buf[MAP_CS_BUF_LEN];
+
+    map_cli_printf("OPCLASS     BAND    BANDW   CENTER  CHAN_NR  CHANNELS\n");
+
+    /* Go over all possible op classes */
+    for (op_class = 0; op_class < 255; op_class++) {
+        if (map_get_band_from_op_class(op_class, &band) ||
+            map_get_bw_from_op_class(op_class, &bw) || bw == 161 ||
+            map_get_is_center_channel_from_op_class(op_class, &is_center_channel) ||
+            (!is_center_channel && map_get_channel_set_from_op_class(op_class, &channel_set)) ||
+            (is_center_channel && map_get_center_channel_set_from_op_class(op_class, &channel_set))) {
+            continue; /* not a valid one... */
+        }
+
+        map_cli_printf("%7d %8s %5dMHz %8s %8d",
+                       op_class, map_get_freq_band_str(band), bw,
+                       yes_no(is_center_channel), map_cs_nr(&channel_set));
+
+        /* Print channels in groups of 16 */
+        for (i = 0; i < map_cs_nr(&channel_set); i += 16) {
+            /* Copy and keep channel indexes [i, i + 15] */
+            map_cs_copy(&channel_set2, &channel_set);
+
+            count = 0;
+            map_cs_foreach_safe(&channel_set2, channel) {
+                if ((count < i) || (count > i + 15)) {
+                    map_cs_unset(&channel_set2, channel);
+                }
+                count++;
+            }
+
+            map_cli_printf("%*s%s\n", (i > 0) ? 45 : 2, "", map_cs_to_string(&channel_set2, ',', buf, sizeof(buf)));
+        }
+    }
+}
+
+static void cli_dump_chan_sel(UNUSED const char *event, const char *payload, UNUSED void *context)
 {
     /*
      * payload:
      *   {
+     *      "almac": "AA:BB:CC:DD:EE:FF",
      *      "extended": false|true
      *   }
      */
 
-    bool extended = false;
-    bool args_ok = false;
+    map_ale_info_t *ale = NULL;
+    bool            extended = false;
+    bool            args_ok = false;
 
     struct {
         struct json_object *object;
@@ -547,6 +624,16 @@ static void cli_dump_chan_sel(UNUSED const char *event, UNUSED const char *paylo
     } json;
 
     JSON_PARSE
+
+    CHECK_PRINT_HELP(g_help_dump_chan_sel)
+
+    /* almac is optional */
+    if (json_object_object_get_ex(json.object, "almac", NULL)) {
+        if (!(ale = json_get_ale(json.object, "almac"))) {
+            map_cli_printf("ALE not found\n");
+            goto out;
+        }
+    }
 
     /* extended is optional  */
     if (json_object_object_get_ex(json.object, "extended", &json.extended)) {
@@ -557,7 +644,7 @@ static void cli_dump_chan_sel(UNUSED const char *event, UNUSED const char *paylo
     }
 
     args_ok = true;
-    map_ctrl_chan_sel_dump(map_cli_printf, extended);
+    map_ctrl_chan_sel_dump(map_cli_printf, ale, extended);
 
 out:
     JSON_PUT_CHECK_ARGS_OK
@@ -582,10 +669,10 @@ static void cli_dump_tunneled_msg(UNUSED const char *event, const char *payload,
     }
 
     if (!json_object_object_get_ex(json.object, "msgtype", &json.msgtype) ||
-        !json_object_is_type(json.msgtype, json_type_string)) {
+        !json_object_is_type(json.msgtype, json_type_string) ||
+        !(type_str = json_object_get_string(json.msgtype))) {
         goto out;
     }
-    type_str = json_object_get_string(json.msgtype);
 
     if (!strcmp(type_str, "reassoc")) {
         type = TUNNELED_MSG_PAYLOAD_REASSOC_REQ;
@@ -773,9 +860,11 @@ static void cli_dump_sta_metrics(UNUSED const char *event, const char *payload, 
         map_cli_printf("STA: %s\n\n", acu_mac_string(mac));
         map_cli_printf("BSS[0]\n\n");
         map_cli_printf("    bssid: %s\n", acu_mac_string(sta->bss->bssid));
-        map_cli_printf("    dl_mac_datarate: %u Mbps\n", link_metrics->dl_mac_datarate);
-        map_cli_printf("    ul_mac_datarate: %u Mbps\n", link_metrics->ul_mac_datarate);
-        map_cli_printf("    rssi: %d dBm\n", RCPI_TO_RSSI(link_metrics->rssi));
+        if (link_metrics) {
+            map_cli_printf("    dl_mac_datarate: %u Mbps\n", link_metrics->dl_mac_datarate);
+            map_cli_printf("    ul_mac_datarate: %u Mbps\n", link_metrics->ul_mac_datarate);
+            map_cli_printf("    rssi: %d dBm\n", RCPI_TO_RSSI(link_metrics->rssi));
+        }
     } else if (!strcmp(type, "extended_metrics")) {
         map_cli_printf("--Associated STA Extended Link Metrics--\n\n");
         map_cli_printf("STA: %s\n\n", acu_mac_string(mac));
@@ -868,7 +957,7 @@ static void cli_get_scan_results(UNUSED const char *event, const char *payload, 
     }
 
     /* DUMP Scan Results */
-    map_cli_printf((get_all_results) ? "~ALL Scan Results~\n\n" : "~Last Scan Results~\n\n");
+    map_cli_printf("%s", get_all_results ? "~ALL Scan Results~\n\n" : "~Last Scan Results~\n\n");
     if (!get_all_results) {
         map_cli_printf("Timestamp: %s\n", radio->last_scan_info.last_scan_ts);
         map_cli_printf("Scan count: %d\n", radio->last_scan_info.last_scan_cnt);
@@ -1117,9 +1206,15 @@ static void cli_send_autoconfig_renew(UNUSED const char *event, const char *payl
 
     args_ok = true;
     if (ale) {
-        map_send_autoconfig_renew_ucast(ale, IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA);
+        if (map_send_autoconfig_renew_ucast(ale, IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA)) {
+            map_cli_printf("map_send_autoconfig_renew_ucast() failed\n");
+            goto out;
+        }
     } else {
-        map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA);
+        if (map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA)) {
+            map_cli_printf("map_send_autoconfig_renew() failed\n");
+            goto out;
+        }
     }
 
     map_cli_printf("OK\n");
@@ -1235,6 +1330,52 @@ static void cli_send_client_capability_query(UNUSED const char *event, const cha
 
     args_ok = true;
     if (map_send_client_capability_query(sta, MID_NA)) {
+        goto out;
+    }
+
+    map_cli_printf("OK\n");
+
+out:
+    JSON_PUT_CHECK_ARGS_OK
+}
+
+static void cli_send_assoc_sta_link_metrics_query(UNUSED const char *event, const char *payload, UNUSED void *context)
+{
+    /*
+     * payload:
+     *   {
+     *      "almac": "AA:BB:CC:DD:EE:FF",
+     *      "stamac": "AA:BB:CC:DD:EE:FF",
+     *   }
+     */
+
+    map_ale_info_t *ale     = NULL;
+    map_sta_info_t *sta     = NULL;
+    mac_addr        sta_mac;
+    bool            args_ok = false;
+
+    struct {
+        struct json_object *object;
+    } json;
+
+    JSON_PARSE
+
+    /* Get ale */
+    if (!(ale = json_get_ale(json.object, "almac"))) {
+        map_cli_printf("ALE not found\n");
+        goto out;
+    }
+
+    /* Get sta */
+    if (json_get_mac(json.object, "stamac", sta_mac) ||
+        !(sta = map_dm_get_sta_from_ale(ale, sta_mac))) {
+        map_cli_printf("STA not found\n");
+        goto out;
+    }
+
+
+    args_ok = true;
+    if (map_send_assoc_sta_link_metrics_query(sta, MID_NA)) {
         goto out;
     }
 
@@ -1911,8 +2052,8 @@ static void cli_send_unsuccess_assoc_policy_config(UNUSED const char *event, con
     map_policy_config_tlvs_t             tlvs                       = {0};
     map_unsuccessful_assoc_policy_tlv_t  unsuccess_assoc_policy_tlv = {0};
     map_ale_info_t                      *ale;
-    int8_t                               report = -1;
-    int32_t                              max_reporting_rate = -1;
+    int8_t                               report = 0;
+    int32_t                              max_reporting_rate = 0;
     bool                                 args_ok = false;
 
     struct {
@@ -2028,7 +2169,9 @@ static void cli_send_bh_bss_policy_config(UNUSED const char *event, const char *
     }
 
     tlvs.bh_bss_config_tlvs_nr = bssid_count;
-    tlvs.bh_bss_config_tlvs = calloc(1, bssid_count * sizeof(map_backhaul_bss_configuration_tlv_t));
+    if (!(tlvs.bh_bss_config_tlvs = calloc(1, bssid_count * sizeof(map_backhaul_bss_configuration_tlv_t)))) {
+        goto out;
+    }
     for (i = 0; i < l; i++) {
         struct json_object *bssid_obj = json_object_array_get_idx(json.bssid_list.object, i);
         if (NULL == bssid_obj) {
@@ -2954,8 +3097,9 @@ static void cli_send_wfa_capi(UNUSED const char *event, const char *payload, UNU
      *   }
      */
 
-    char *args    = NULL;
-    bool  args_ok = false;
+    char *args      = NULL;
+    const char *str = NULL;
+    bool  args_ok   = false;
     int   ret;
 
     struct {
@@ -2973,7 +3117,7 @@ static void cli_send_wfa_capi(UNUSED const char *event, const char *payload, UNU
     }
 
     /* Must dup as command handling uses strtok which modifies the string */
-    if (NULL == (args = strdup(json_object_get_string(json.args)))) {
+    if (!(str = json_object_get_string(json.args)) || !(args = strdup(str))) {
         goto out;
     }
 
@@ -2991,46 +3135,49 @@ out:
 ########################################################################*/
 static map_subscription_t g_cli_subscriptions[] = {
     /* DUMP /GET */
-    { "help",                              cli_help },
-    { "version",                           cli_version },
-    { "dumpCtrlInfo",                      cli_dump_info },
-    { "dumpInterfaces",                    cli_dump_interfaces },
-    { "dumpChanSel",                       cli_dump_chan_sel },
-    { "dumpTunneledMessage",               cli_dump_tunneled_msg },
-    { "dumpAPMetrics",                     cli_dump_ap_metrics },
-    { "dumpRadioMetrics",                  cli_dump_radio_metrics },
-    { "dumpStaMetrics",                    cli_dump_sta_metrics },
-    { "getChannelScanResults",             cli_get_scan_results },
+    { "help",                                   cli_help,                                   (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
+    { "version",                                cli_version,                                (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
+    { "dumpCtrlInfo",                           cli_dump_info,                              (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
+    { "dumpInterfaces",                         cli_dump_interfaces,                        (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
+    { "dumpBlockList",                          cli_dump_blocklist,                         (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
+    { "dumpOpClasses",                          cli_dump_op_classes,                        (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
+    { "dumpChanSel",                            cli_dump_chan_sel,                          (SUBS_FLAG_MODE_FULL) },
+    { "dumpTunneledMessage",                    cli_dump_tunneled_msg,                      (SUBS_FLAG_MODE_FULL) },
+    { "dumpAPMetrics",                          cli_dump_ap_metrics,                        (SUBS_FLAG_MODE_FULL) },
+    { "dumpRadioMetrics",                       cli_dump_radio_metrics,                     (SUBS_FLAG_MODE_FULL) },
+    { "dumpStaMetrics",                         cli_dump_sta_metrics,                       (SUBS_FLAG_MODE_FULL) },
+    { "getChannelScanResults",                  cli_get_scan_results,                       (SUBS_FLAG_MODE_FULL) },
 
     /* SET */
-    { "setChannel",                        cli_set_channel },
+    { "setChannel",                             cli_set_channel,                            (SUBS_FLAG_MODE_FULL) },
 
     /* SEND */
-    { "sendTopologyQuery",                 cli_send_topology_query },
-    { "sendLinkMetricQuery",               cli_send_link_metric_query },
-    { "sendAutoconfigRenew",               cli_send_autoconfig_renew },
-    { "sendAPCapabilityQuery",             cli_send_ap_capability_query },
-    { "sendChannelPreferenceQuery",        cli_send_channel_preference_query },
-    { "sendClientCapabilityQuery",         cli_send_client_capability_query },
-    { "sendUnassocStaLinkMetricsQuery",    cli_send_unassoc_sta_link_metrics_query },
-    { "sendBeaconMetricsQuery",            cli_send_beacon_metrics_query },
-    { "sendCombinedInfrastructureMetrics", cli_send_combined_infrastructure_metrics },
-    { "sendClientSteeringRequest",         cli_send_client_steering_request },
-    { "sendClientAssocControlRequest",     cli_send_client_assoc_control_request },
-    { "sendBackhaulStaCapabilityQuery",    cli_send_backhaul_sta_capability_query },
-    { "sendBackhaulSteeringRequest",       cli_send_backhaul_steering_request },
-    { "sendUnsuccessAssocPolicyConf",      cli_send_unsuccess_assoc_policy_config },
-    { "sendBhBssPolicyConf",               cli_send_bh_bss_policy_config },
-    { "sendChannelScanRequest",            cli_send_channel_scan_request },
-    { "sendCACRequest",                    cli_send_cac_request },
-    { "sendCACTermination",                cli_send_cac_termination },
-    { "sendChScanReportPolicyConf",        cli_send_ch_scan_reporting_policy_config },
-    { "sendDPPCCEIndication",              cli_send_dpp_cce_indication },
-    { "sendProxiedEncapDPP",               cli_send_proxied_encap_dpp },
-    { "sendRawMessage",                    cli_send_raw_message },
+    { "sendTopologyQuery",                      cli_send_topology_query,                    (SUBS_FLAG_MODE_FULL) },
+    { "sendLinkMetricQuery",                    cli_send_link_metric_query,                 (SUBS_FLAG_MODE_FULL) },
+    { "sendAutoconfigRenew",                    cli_send_autoconfig_renew,                  (SUBS_FLAG_MODE_FULL) },
+    { "sendAPCapabilityQuery",                  cli_send_ap_capability_query,               (SUBS_FLAG_MODE_FULL) },
+    { "sendChannelPreferenceQuery",             cli_send_channel_preference_query,          (SUBS_FLAG_MODE_FULL) },
+    { "sendClientCapabilityQuery",              cli_send_client_capability_query,           (SUBS_FLAG_MODE_FULL) },
+    { "sendAssocStaLinkMetricsQuery",           cli_send_assoc_sta_link_metrics_query,      (SUBS_FLAG_MODE_FULL) },
+    { "sendUnassocStaLinkMetricsQuery",         cli_send_unassoc_sta_link_metrics_query,    (SUBS_FLAG_MODE_FULL) },
+    { "sendBeaconMetricsQuery",                 cli_send_beacon_metrics_query,              (SUBS_FLAG_MODE_FULL) },
+    { "sendCombinedInfrastructureMetrics",      cli_send_combined_infrastructure_metrics,   (SUBS_FLAG_MODE_FULL) },
+    { "sendClientSteeringRequest",              cli_send_client_steering_request,           (SUBS_FLAG_MODE_FULL) },
+    { "sendClientAssocControlRequest",          cli_send_client_assoc_control_request,      (SUBS_FLAG_MODE_FULL) },
+    { "sendBackhaulStaCapabilityQuery",         cli_send_backhaul_sta_capability_query,     (SUBS_FLAG_MODE_FULL) },
+    { "sendBackhaulSteeringRequest",            cli_send_backhaul_steering_request,         (SUBS_FLAG_MODE_FULL) },
+    { "sendUnsuccessAssocPolicyConf",           cli_send_unsuccess_assoc_policy_config,     (SUBS_FLAG_MODE_FULL) },
+    { "sendBhBssPolicyConf",                    cli_send_bh_bss_policy_config,              (SUBS_FLAG_MODE_FULL) },
+    { "sendChannelScanRequest",                 cli_send_channel_scan_request,              (SUBS_FLAG_MODE_FULL) },
+    { "sendCACRequest",                         cli_send_cac_request,                       (SUBS_FLAG_MODE_FULL) },
+    { "sendCACTermination",                     cli_send_cac_termination,                   (SUBS_FLAG_MODE_FULL) },
+    { "sendChScanReportPolicyConf",             cli_send_ch_scan_reporting_policy_config,   (SUBS_FLAG_MODE_FULL) },
+    { "sendDPPCCEIndication",                   cli_send_dpp_cce_indication,                (SUBS_FLAG_MODE_FULL) },
+    { "sendProxiedEncapDPP",                    cli_send_proxied_encap_dpp,                 (SUBS_FLAG_MODE_FULL) },
+    { "sendRawMessage",                         cli_send_raw_message,                       (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
 
     /* VARIOUS */
-    { "sendWFACapi",                       cli_send_wfa_capi },
+    { "sendWFACapi",                            cli_send_wfa_capi,                          (SUBS_FLAG_MODE_FULL) },
 };
 
 /*#######################################################################
@@ -3065,7 +3212,7 @@ int map_cli_init(void)
 
     for (i = 0; i < ARRAY_SIZE(g_cli_subscriptions); i++) {
         map_subscription_t *s = &g_cli_subscriptions[i];
-        if (0 != cli_subscribe(g_cli, s->event, s->handler, NULL)) {
+        if (0 != cli_subscribe(g_cli, s->event, s->handler, s->flags, NULL)) {
             log_ctrl_e("can not subscribe cli event: %s", s->event);
             goto fail;
         }

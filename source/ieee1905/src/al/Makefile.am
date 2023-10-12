@@ -15,13 +15,12 @@ AM_CFLAGS += -DMULTIAP -D_FLAVOUR_AIRTIES_ -DSEND_EMPTY_TLVS -DFIX_BROKEN_TLVS -
 lib_LIBRARIES = libal.a
 
 libal_a_CPPFLAGS = -I$(srcdir)/internal_interfaces \
-                 -I$(srcdir)/src_independent \
-                 -I$(srcdir)/src_independent/extensions/map \
-                 -I$(top_srcdir)/source/libplatform/include \
-                 -I$(top_srcdir)/source/ieee1905/src/common/interfaces \
-                 -I$(top_srcdir)/source/ieee1905/src/factory/interfaces \
-                 -I$(top_srcdir)/source/ieee1905/src/factory/interfaces/extensions/map \
-                 -I$(top_srcdir)/source/ssp
+                   -I$(srcdir)/src_independent \
+                   -I$(srcdir)/src_independent/extensions/map \
+                   -I$(top_srcdir)/source/libplatform/include \
+                   -I$(top_srcdir)/source/ieee1905/src/common/interfaces \
+                   -I$(top_srcdir)/source/ieee1905/src/factory/interfaces \
+                   -I$(top_srcdir)/source/ieee1905/src/factory/interfaces/extensions/map
 
 libal_a_SOURCES = $(srcdir)/src_independent/al_recv.c \
                   $(srcdir)/src_independent/al_send.c \
@@ -34,5 +33,3 @@ libal_a_SOURCES = $(srcdir)/src_independent/al_recv.c \
                   $(srcdir)/src_linux/platform_interfaces.c \
                   $(srcdir)/src_linux/platform_os.c
 
-libal_a_LIBADD = ${top_builddir}/source/ieee1905/src/common/libcommon.a \
-                 ${top_builddir}/source/ieee1905/src/factory/libfactory.a

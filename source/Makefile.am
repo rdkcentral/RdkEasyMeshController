@@ -6,6 +6,6 @@
 
 SUBDIRS = libplatform \
           ieee1905 \
-          ssp \
           controller \
+          ssp \
           tools

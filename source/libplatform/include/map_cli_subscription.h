@@ -7,10 +7,15 @@
 #ifndef MAP_CLI_SUBSCRIPTION_H_
 #define MAP_CLI_SUBSCRIPTION_H_
 
+#include <stdint.h>
+
 typedef struct subscription_s subscription_t;
 typedef struct subscriptions_s subscriptions_t;
+
 typedef void (*subscription_function_t)(const char *event, const char *payload, void *context);
 
+#define SUBS_FLAG_MODE_FULL             (0x0001)
+#define SUBS_FLAG_MODE_REDUCED          (0x0002)
 
 /**
  * @brief Get event of subscription.
@@ -40,6 +45,14 @@ subscription_function_t subscription_function(subscription_t *subscription);
 void *subscription_context(subscription_t *subscription);
 
 /**
+ * @brief Subscription flags
+ *
+ * @param[in] subscription
+ * @return
+ */
+uint32_t subscription_flags(subscription_t *subscription);
+
+/**
  * @brief Get subscription
  *
  * @param[in] subscriptions
@@ -65,12 +78,14 @@ int subscriptions_del(subscriptions_t *subscriptions,
  * @param[in/out] subscriptions
  * @param[in]     event
  * @param[in]     function
+ * @param[in]     flags
  * @param[in]     context
  * @return 0 if successful, -1 if not.
  */
 int subscriptions_add(subscriptions_t *subscriptions,
                       const char *event,
                       subscription_function_t function,
+                      uint32_t flags,
                       void *context);
 
 /**

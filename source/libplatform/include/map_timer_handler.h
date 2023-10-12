@@ -45,8 +45,8 @@ int map_timer_handler_init(void);
  *
  *  @return -1 or error, 0 on success
  */
-int map_timer_register_callback(uint16_t    frequency_sec,
-                                const char *timer_id ,
+int map_timer_register_callback(uint32_t    frequency_sec,
+                                const char *timer_id,
                                 void       *args,
                                 timer_cb_t  cb);
 
@@ -115,6 +115,17 @@ int map_timer_restart_callback(const char* timer_id);
  *
  *  @return 0 on success, < 0 on failure
  */
-int map_timer_change_callback(const char *timer_id, uint16_t frequency_sec, void *args);
+int map_timer_change_callback(const char *timer_id, uint32_t frequency_sec, void *args);
+
+/** @brief Get time before timer will expire
+ *
+ *
+ *  @param
+ *    timer_id        - pointer to char will be unique timer that we are searching for.
+ *    remaining_sec   - time in seconds before timer will expire
+ *
+ *  @return 0 on success, < 0 on failure
+ */
+int map_timer_remaining(const char *timer_id, uint32_t *remaining_sec);
 
 #endif /* MAP_TIMER_HANDLER_H_ */
