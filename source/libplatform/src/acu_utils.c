@@ -83,7 +83,7 @@ static acu_retcode_t mac_from_string(const char *s, uint8_t *m, size_t l)
 }
 
 /* Convert uint8_t array to aa:bb:... */
-static acu_retcode_t mac_to_string(const uint8_t *m, mac_addr_str s, size_t l)
+static acu_retcode_t mac_to_string(const uint8_t *m, char *s, size_t l)
 {
     static char hex[]={'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
     size_t i, p = 0;
