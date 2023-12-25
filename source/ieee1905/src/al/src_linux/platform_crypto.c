@@ -68,6 +68,11 @@
 #include <openssl/bn.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <openssl/opensslv.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+#include <openssl/core_names.h>
+#include <openssl/param_build.h>
+#endif
 
 #define LOG_TAG "crypto"
 
@@ -127,9 +132,24 @@ uint8_t PLATFORM_GET_RANDOM_BYTES(uint8_t *p, uint16_t len)
     }
 }
 
-uint8_t PLATFORM_GENERATE_DH_KEY_PAIR(uint8_t **priv, uint16_t *priv_len, uint8_t **pub, uint16_t *pub_len)
+uint8_t PLATFORM_GENERATE_DH_KEY_PAIR(uint8_t **priv, uint16_t *priv_len, uint8_t **pub,
+                                      uint16_t *pub_len)
 {
-    DH *dh;
+    BIGNUM *p = NULL;
+    BIGNUM *g = NULL;
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+    DH *dh = NULL;
+#else
+    OSSL_PARAM_BLD *param_bld = NULL;
+    OSSL_PARAM *params = NULL;
+    EVP_PKEY_CTX *dh_ctx = NULL;
+    EVP_PKEY *param_pkey = NULL;
+    EVP_PKEY_CTX *pkey_ctx = NULL;
+    EVP_PKEY *pkey = NULL;
+    BIGNUM *bn_priv = NULL;
+    BIGNUM *bn_pub = NULL;
+    int selection = OSSL_KEYMGMT_SELECT_ALL;
+#endif
 
     if (NULL == priv     ||
         NULL == priv_len ||
@@ -138,70 +158,249 @@ uint8_t PLATFORM_GENERATE_DH_KEY_PAIR(uint8_t **priv, uint16_t *priv_len, uint8_
         return 0;
     }
 
-    if (NULL == (dh = DH_new())) {
-        return 0;
+    /* Create prime and generator by converting binary to BIGNUM format */
+    p = BN_bin2bn(g_dh1536_p, sizeof(g_dh1536_p), NULL);
+    if (p == NULL) {
+        goto bail;
+    }
+    g = BN_bin2bn(g_dh1536_g, sizeof(g_dh1536_g), NULL);
+    if (g == NULL) {
+        goto bail;
     }
 
-    /* Convert binary to BIGNUM format */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-    if (NULL == (dh->p = BN_bin2bn(g_dh1536_p, sizeof(g_dh1536_p), NULL))) {
-        DH_free(dh);
-        return 0;
-    }
-    if (NULL == (dh->g = BN_bin2bn(g_dh1536_g, sizeof(g_dh1536_g), NULL))) {
-        DH_free(dh);
-        return 0;
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+    if (NULL == (dh = DH_new())) {
+        goto bail;
     }
 #else
-    if (!DH_set0_pqg(dh, BN_bin2bn(g_dh1536_p, sizeof(g_dh1536_p), NULL), NULL, BN_bin2bn(g_dh1536_g, sizeof(g_dh1536_g), NULL))) {
-        DH_free(dh);
-        return 0;
+    param_bld = OSSL_PARAM_BLD_new();
+    if (param_bld == NULL) {
+        goto bail;
     }
 #endif
+
+    /* Set prime and generator */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    dh->p = p;
+    dh->g = g;
+#elif OPENSSL_VERSION_NUMBER < 0x30000000L
+    if (DH_set0_pqg(dh, p, NULL, g) != 1) {
+        goto bail;
+    }
+#else
+    if (OSSL_PARAM_BLD_push_BN(param_bld, OSSL_PKEY_PARAM_FFC_P, p) != 1 ||
+        OSSL_PARAM_BLD_push_BN(param_bld, OSSL_PKEY_PARAM_FFC_G, g) != 1) {
+        goto bail;
+    }
+    params = OSSL_PARAM_BLD_to_param(param_bld);
+    if (params == NULL) {
+        goto bail;
+    }
+#endif
+
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
     /* Obtain key pair */
     if (0 == DH_generate_key(dh)) {
-        DH_free(dh);
-        return 0;
+        goto bail;
     }
+#else
+    /* Create DH context */
+    dh_ctx = EVP_PKEY_CTX_new_from_name(NULL, "DH", NULL);
+    if (dh_ctx == NULL) {
+        goto bail;
+    }
+    if (EVP_PKEY_fromdata_init(dh_ctx) != 1) {
+        goto bail;
+    }
+    if (EVP_PKEY_fromdata(dh_ctx, &param_pkey, selection, params) != 1 || param_pkey == NULL) {
+        goto bail;
+    }
+
+    /* Create key pair */
+    pkey_ctx = EVP_PKEY_CTX_new_from_pkey(NULL, param_pkey, NULL);
+    if (pkey_ctx == NULL) {
+        goto bail;
+    }
+    if (EVP_PKEY_keygen_init(pkey_ctx) != 1) {
+        goto bail;
+    }
+    if (EVP_PKEY_keygen(pkey_ctx, &pkey) != 1 || pkey == NULL) {
+        goto bail;
+    }
+#endif
+
+    /* Get private key */
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
     *priv_len = BN_num_bytes(dh->priv_key);
-#else
+#elif OPENSSL_VERSION_NUMBER < 0x30000000L
     *priv_len = BN_num_bytes(DH_get0_priv_key(dh));
+#else
+    if (EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_PRIV_KEY, &bn_priv) != 1 || bn_priv == NULL) {
+        goto bail;
+    }
+    *priv_len = BN_num_bytes(bn_priv);
 #endif
-    *priv     = (uint8_t *)calloc(1, *priv_len);
+    *priv = (uint8_t *)calloc(1, *priv_len);
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
     BN_bn2bin(dh->priv_key, *priv);
-#else
+#elif OPENSSL_VERSION_NUMBER < 0x30000000L
     BN_bn2bin(DH_get0_priv_key(dh), *priv);
+#else
+    BN_bn2bin(bn_priv, *priv);
 #endif
 
+    /* Get public key */
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
     *pub_len = BN_num_bytes(dh->pub_key);
-#else
+#elif OPENSSL_VERSION_NUMBER < 0x30000000L
     *pub_len = BN_num_bytes(DH_get0_pub_key(dh));
+#else
+    if (EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_PUB_KEY, &bn_pub) != 1 || bn_pub == NULL) {
+        goto bail;
+    }
+    *pub_len = BN_num_bytes(bn_pub);
 #endif
-    *pub     = malloc(*pub_len);
+    *pub = malloc(*pub_len);
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
     BN_bn2bin(dh->pub_key, *pub);
-#else
+#elif OPENSSL_VERSION_NUMBER < 0x30000000L
     BN_bn2bin(DH_get0_pub_key(dh), *pub);
+#else
+    BN_bn2bin(bn_pub, *pub);
 #endif
 
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
     DH_free(dh);
     /* NOTE: This internally frees "dh->p" and "dh->q", thus no need for us
              to do anything else.
     */
+#else
+    /* Release resources */
+    BN_clear_free(bn_pub);
+    BN_clear_free(bn_priv);
+    EVP_PKEY_free(pkey);
+    EVP_PKEY_CTX_free(pkey_ctx);
+    EVP_PKEY_free(param_pkey);
+    EVP_PKEY_CTX_free(dh_ctx);
+    OSSL_PARAM_free(params);
+    OSSL_PARAM_BLD_free(param_bld);
+    BN_clear_free(g);
+    BN_clear_free(p);
+#endif
 
     return 1;
+
+bail:
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+    if (dh) {
+        DH_free(dh);
+    } else {
+        BN_clear_free(g);
+        BN_clear_free(p);
+    }
+#else
+    if (*pub) {
+        free(*pub);
+        *pub = NULL;
+    }
+    BN_clear_free(bn_pub);
+    if (*priv) {
+        free(*priv);
+        *priv = NULL;
+    }
+    BN_clear_free(bn_priv);
+    EVP_PKEY_free(pkey);
+    EVP_PKEY_CTX_free(pkey_ctx);
+    EVP_PKEY_free(param_pkey);
+    EVP_PKEY_CTX_free(dh_ctx);
+    OSSL_PARAM_free(params);
+    OSSL_PARAM_BLD_free(param_bld);
+    BN_clear_free(g);
+    BN_clear_free(p);
+#endif
+
+    return 0;
 }
 
-uint8_t PLATFORM_COMPUTE_DH_SHARED_SECRET(uint8_t **shared_secret, uint16_t *shared_secret_len, uint8_t *remote_pub,
-                                          uint16_t remote_pub_len, uint8_t *local_priv, uint8_t local_priv_len)
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+static EVP_PKEY *create_dh_pkey(BIGNUM *p, BIGNUM *g, BIGNUM *bn_priv, BIGNUM *bn_pub)
 {
-    DH     *dh;
-    BIGNUM *pub_key;
-    size_t  rlen;
-    int     keylen;
+    OSSL_PARAM_BLD *param_bld = NULL;
+    OSSL_PARAM *params = NULL;
+    EVP_PKEY_CTX *dh_ctx = NULL;
+    EVP_PKEY *dh_pkey = NULL;
+    int selection = EVP_PKEY_KEYPAIR;
+
+    param_bld = OSSL_PARAM_BLD_new();
+    if (param_bld == NULL) {
+        goto bail;
+    }
+
+    /* Set prime, generator and private or public key */
+    if (OSSL_PARAM_BLD_push_BN(param_bld, OSSL_PKEY_PARAM_FFC_P, p) != 1 ||
+        OSSL_PARAM_BLD_push_BN(param_bld, OSSL_PKEY_PARAM_FFC_G, g) != 1) {
+        goto bail;
+    }
+    if (bn_priv) {
+        if (OSSL_PARAM_BLD_push_BN(param_bld, OSSL_PKEY_PARAM_PRIV_KEY, bn_priv) != 1) {
+            goto bail;
+        }
+    }
+    if (bn_pub) {
+        if (OSSL_PARAM_BLD_push_BN(param_bld, OSSL_PKEY_PARAM_PUB_KEY, bn_pub) != 1) {
+            goto bail;
+        }
+    }
+    params = OSSL_PARAM_BLD_to_param(param_bld);
+    if (params == NULL) {
+        goto bail;
+    }
+
+    dh_ctx = EVP_PKEY_CTX_new_from_name(NULL, "DH", NULL);
+    if (dh_ctx == NULL) {
+        goto bail;
+    }
+    if (EVP_PKEY_fromdata_init(dh_ctx) != 1) {
+        goto bail;
+    }
+    if (EVP_PKEY_fromdata(dh_ctx, &dh_pkey, selection, params) != 1 || dh_pkey == NULL) {
+        goto bail;
+    }
+
+    /* Release resources */
+    EVP_PKEY_CTX_free(dh_ctx);
+    OSSL_PARAM_free(params);
+    OSSL_PARAM_BLD_free(param_bld);
+
+    return dh_pkey;
+
+bail:
+    EVP_PKEY_free(dh_pkey);
+    EVP_PKEY_CTX_free(dh_ctx);
+    OSSL_PARAM_free(params);
+    OSSL_PARAM_BLD_free(param_bld);
+
+    return NULL;
+}
+#endif
+
+uint8_t PLATFORM_COMPUTE_DH_SHARED_SECRET(uint8_t **shared_secret, uint16_t *shared_secret_len,
+                                          uint8_t *remote_pub, uint16_t remote_pub_len,
+                                          uint8_t *local_priv, uint8_t local_priv_len)
+{
+    BIGNUM *p = NULL;
+    BIGNUM *g = NULL;
+    BIGNUM *bn_priv = NULL;
+    BIGNUM *bn_pub = NULL;
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+    DH *dh = NULL;
+    size_t rlen;
+#else
+    EVP_PKEY *dh_priv = NULL;
+    EVP_PKEY *dh_pub = NULL;
+    EVP_PKEY_CTX *pkey_ctx = NULL;
+#endif
+    size_t secret_len = 0;
 
     if (NULL == shared_secret     ||
         NULL == shared_secret_len ||
@@ -210,66 +409,123 @@ uint8_t PLATFORM_COMPUTE_DH_SHARED_SECRET(uint8_t **shared_secret, uint16_t *sha
         return 0;
     }
 
+    /* Create prime and generator by converting binary to BIGNUM format */
+    p = BN_bin2bn(g_dh1536_p, sizeof(g_dh1536_p), NULL);
+    if (p == NULL) {
+        goto bail;
+    }
+    g = BN_bin2bn(g_dh1536_g, sizeof(g_dh1536_g), NULL);
+    if (g == NULL) {
+        goto bail;
+    }
+    bn_priv = BN_bin2bn(local_priv, local_priv_len, NULL);
+    if (bn_priv == NULL) {
+        goto bail;
+    }
+    bn_pub = BN_bin2bn(remote_pub, remote_pub_len, NULL);
+    if (bn_pub == NULL) {
+        goto bail;
+    }
+
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
     if (NULL == (dh = DH_new())) {
-        return 0;
-    }
-
-    /* Convert binary to BIGNUM format */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-    if (NULL == (dh->p = BN_bin2bn(g_dh1536_p,sizeof(g_dh1536_p), NULL))) {
-        DH_free(dh);
-        return 0;
-    }
-    if (NULL == (dh->g = BN_bin2bn(g_dh1536_g, sizeof(g_dh1536_g), NULL))) {
-        DH_free(dh);
-        return 0;
-    }
-#else
-    if (!DH_set0_pqg(dh, BN_bin2bn(g_dh1536_p, sizeof(g_dh1536_p), NULL), NULL, BN_bin2bn(g_dh1536_g, sizeof(g_dh1536_g), NULL))) {
-        DH_free(dh);
-        return 0;
-    }
-#endif
-    if (NULL == (pub_key = BN_bin2bn(remote_pub, remote_pub_len, NULL))) {
-        DH_free(dh);
-        return 0;
-    }
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-    if (NULL == (dh->priv_key = BN_bin2bn(local_priv, local_priv_len, NULL))) {
-        BN_clear_free(pub_key);
-        DH_free(dh);
-        return 0;
-    }
-#else
-    if(!DH_set0_key(dh,NULL,BN_bin2bn(local_priv, local_priv_len, NULL))) {
-        BN_clear_free(pub_key);
-        DH_free(dh);
-        return 0;
+        goto bail;
     }
 #endif
 
-    /* Allocate output buffer */
-    rlen           = DH_size(dh);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    dh->p = p;
+    dh->g = g;
+    dh->priv_key = bn_priv;
+#elif OPENSSL_VERSION_NUMBER < 0x30000000L
+    if (DH_set0_pqg(dh, p, NULL, g) != 1) {
+        BN_clear_free(bn_priv);
+        goto bail;
+    }
+    if (DH_set0_key(dh, NULL, bn_priv) != 1) {
+        goto bail;
+    }
+#else
+    dh_priv = create_dh_pkey(p, g, bn_priv, NULL);
+    if (dh_priv == NULL) {
+        goto bail;
+    }
+    dh_pub = create_dh_pkey(p, g, NULL, bn_pub);
+    if (dh_pub == NULL) {
+        goto bail;
+    }
+#endif
+
+    /* Allocate output buffer and extract secret onto it */
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+    rlen = DH_size(dh);
     *shared_secret = malloc(rlen);
-
-    /* Compute the shared secret and save it in the output buffer */
-    keylen = DH_compute_key(*shared_secret, pub_key, dh);
-    if (keylen < 0) {
-        *shared_secret_len = 0;
-        free(*shared_secret);
-        *shared_secret = NULL;
-        BN_clear_free(pub_key);
-        DH_free(dh);
-
-        return 0;
-    } else {
-        *shared_secret_len = keylen;
+    secret_len = DH_compute_key(*shared_secret, bn_pub, dh);
+    if (secret_len <= 0) {
+        goto bail;
     }
 
-    BN_clear_free(pub_key);
     DH_free(dh);
+    BN_clear_free(bn_pub);
+#else
+    pkey_ctx = EVP_PKEY_CTX_new_from_pkey(NULL, dh_priv, NULL);
+    if (pkey_ctx == NULL) {
+        goto bail;
+    }
+    if (EVP_PKEY_derive_init(pkey_ctx) != 1) {
+        goto bail;
+    }
+    if (EVP_PKEY_derive_set_peer(pkey_ctx, dh_pub) != 1) {
+        goto bail;
+    }
+    if (EVP_PKEY_derive(pkey_ctx, NULL, &secret_len) != 1 || secret_len == 0) {
+        goto bail;
+    }
+    *shared_secret = malloc(secret_len);
+    if (EVP_PKEY_derive(pkey_ctx, *shared_secret, &secret_len) != 1) {
+        goto bail;
+    }
+
+    /* Release resources */
+    EVP_PKEY_CTX_free(pkey_ctx);
+    EVP_PKEY_free(dh_pub);
+    EVP_PKEY_free(dh_priv);
+    BN_clear_free(bn_pub);
+    BN_clear_free(bn_priv);
+    BN_clear_free(g);
+    BN_clear_free(p);
+#endif
+
+    *shared_secret_len = secret_len;
 
     return 1;
+
+bail:
+    *shared_secret_len = 0;
+    if (*shared_secret) {
+        free(*shared_secret);
+        *shared_secret = NULL;
+    }
+#if OPENSSL_VERSION_NUMBER < 0x30000000L
+    if (dh) {
+        DH_free(dh);
+    } else {
+        BN_clear_free(bn_priv);
+        BN_clear_free(g);
+        BN_clear_free(p);
+    }
+    BN_clear_free(bn_pub);
+#else
+    EVP_PKEY_CTX_free(pkey_ctx);
+    EVP_PKEY_free(dh_pub);
+    EVP_PKEY_free(dh_priv);
+    BN_clear_free(bn_pub);
+    BN_clear_free(bn_priv);
+    BN_clear_free(g);
+    BN_clear_free(p);
+#endif
+
+    return 0;
 }
 
 uint8_t PLATFORM_SHA256(uint8_t num_elem, uint8_t **addr, uint32_t *len, uint8_t *digest)
@@ -318,27 +574,52 @@ uint8_t PLATFORM_SHA256(uint8_t num_elem, uint8_t **addr, uint32_t *len, uint8_t
     return res;
 }
 
-
-uint8_t PLATFORM_HMAC_SHA256(uint8_t *key, uint32_t keylen, uint8_t num_elem, uint8_t **addr, uint32_t *len, uint8_t *hmac)
+uint8_t PLATFORM_HMAC_SHA256(uint8_t *key, uint32_t keylen, uint8_t num_elem, uint8_t **addr,
+                             uint32_t *len, uint8_t *hmac)
 {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    EVP_MD_CTX   *ctx;
+    EVP_PKEY     *pkey;
+    size_t        mdlen = 32;
+#else
     HMAC_CTX     *ctx;
-    size_t        i;
     unsigned int  mdlen = 32;
+#endif
+    size_t        i;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    ctx = EVP_MD_CTX_new();
+#elif OPENSSL_VERSION_NUMBER >= 0x10100000L
     ctx = HMAC_CTX_new();
-    if (!ctx) {
-        return 0;
-    }
 #else
     HMAC_CTX  ctx_aux;
     ctx = &ctx_aux;
 
     HMAC_CTX_init(ctx);
 #endif
-
-    if (HMAC_Init_ex(ctx, key, keylen, EVP_sha256(), NULL) != 1) {
+    if (!ctx) {
         return 0;
+    }
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_HMAC, NULL, key, keylen);
+    if (pkey == NULL) {
+        goto bail;
+    }
+    if (EVP_DigestSignInit(ctx, NULL, EVP_sha256(), NULL, pkey) != 1) {
+        goto bail;
+    }
+
+    for (i = 0; i < num_elem; i++) {
+        EVP_DigestSignUpdate(ctx, addr[i], len[i]);
+    }
+
+    if (EVP_DigestSignFinal(ctx, hmac, &mdlen) != 1) {
+        goto bail;
+    }
+#else
+    if (HMAC_Init_ex(ctx, key, keylen, EVP_sha256(), NULL) != 1) {
+        goto bail;
     }
 
     for (i = 0; i < num_elem; i++) {
@@ -346,16 +627,33 @@ uint8_t PLATFORM_HMAC_SHA256(uint8_t *key, uint32_t keylen, uint8_t num_elem, ui
     }
 
     if (HMAC_Final(ctx, hmac, &mdlen) != 1) {
-        return 0;
+        goto bail;
     }
+#endif
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    /* Release resources */
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    EVP_PKEY_free(pkey);
+    EVP_MD_CTX_free(ctx);
+#elif OPENSSL_VERSION_NUMBER >= 0x10100000L
     HMAC_CTX_free(ctx);
 #else
     HMAC_CTX_cleanup(ctx);
 #endif
 
     return 1;
+
+bail:
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    EVP_PKEY_free(pkey);
+    EVP_MD_CTX_free(ctx);
+#elif OPENSSL_VERSION_NUMBER >= 0x10100000L
+    HMAC_CTX_free(ctx);
+#else
+    HMAC_CTX_cleanup(ctx);
+#endif
+
+    return 0;
 }
 
 uint8_t PLATFORM_AES_ENCRYPT(uint8_t *key, uint8_t *iv, uint8_t *data, uint32_t data_len)

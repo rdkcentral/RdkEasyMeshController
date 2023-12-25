@@ -290,7 +290,6 @@
 #define DM_PROCSTATUS_OBJ       DM_DEVINFO_OBJ      "ProcessStatus."
 #define DM_PROCSTATUS_CPUUSAGE  DM_PROCSTATUS_OBJ   "CPUUsage"
 #define DM_PROCSTATUS_CPUTEMP   DM_PROCSTATUS_OBJ   "CPUTemperature"
-#define DM_PROCSTATUS_CPUTEMP   DM_PROCSTATUS_OBJ   "CPUTemperature"
 /* Device.WiFi.DataElements.AssociationEvent */
 #define DM_ASSOCEVT_OBJ         DM_DATAELEMS_OBJ    "AssociationEvent."
 #define DM_ASSOCEVT_DATANOE     DM_ASSOCEVT_OBJ     "AssociationEventDataNumberOfEntries"
