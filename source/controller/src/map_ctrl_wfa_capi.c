@@ -530,7 +530,7 @@ static int capi_dev_set_config(capi_params_t *params, map_printf_cb_t print_cb)
         free(tlv);
     }
 
-    map_profile_dump(cfg);
+    map_profile_dump();
 
     capi_response(print_cb, CAPI_STATUS_COMPLETE, "");
     return 0;
@@ -653,7 +653,7 @@ static int capi_dev_send_1905(capi_params_t *params, map_printf_cb_t print_cb)
             log_ctrl_i("  Send Autoconfig Renew");
             i1905_get_mcast_mac(mcast_mac);
 
-            if (map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, &mid)) {
+            if (map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, &mid, false)) {
                 goto fail;
             }
         }

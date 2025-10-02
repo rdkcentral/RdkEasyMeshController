@@ -116,7 +116,7 @@ typedef struct deviceInfo {
 typedef void (*i1905_packet_cb_t)(char *if_name, uint8_t *packet, uint16_t packet_len);
 
 /* Initialize platform os layer */
-uint8_t PLATFORM_OS_INIT(i1905_interface_cb_t interface_cb, i1905_packet_cb_t packet_cb);
+uint8_t PLATFORM_OS_INIT(i1905_interface_cb_t interface_cb, i1905_packet_cb_t packet_cb, i1905_key_info_cb_t key_info_cb);
 
 /* Fini platform os layer */
 void PLATFORM_OS_FINI(void);
@@ -132,6 +132,18 @@ void PLATFORM_OS_FREE_LIST_OF_1905_INTERFACES(char **interfaces, uint8_t nr);
 
 /* Get info about a specific interface */
 void PLATFORM_OS_GET_1905_INTERFACE_INFO(char *if_name, i1905_interface_info_t *info);
+
+/* Get interface mac address */
+int PLATFORM_OS_GET_1905_INTERFACE_MAC(char *if_name, mac_addr mac);
+
+/* Set interface type */
+void PLATFORM_OS_SET_1905_INTERFACE_TYPE(char *if_name, uint16_t type);
+
+/* Set 802.11 media specific info */
+void PLATFORM_OS_SET_1905_INTERFACE_80211_MEDIA_SPECIFIC_INFO(char *if_name, mac_addr network_membership,
+                                                              uint8_t role, uint8_t ap_channel_band,
+                                                              uint8_t ap_channel_center_freq_1,
+                                                              uint8_t ap_channel_center_freq_2);
 
 /* Check if interface is up (to avoid expesive interface info call) */
 bool PLATFORM_OS_IS_INTERFACE_UP(char *if_name);
@@ -150,5 +162,8 @@ mac_addr* PLATFORM_OS_GET_GATEWAY_MAC(void);
 
 /* Check if log level is at least trace */
 bool PLATFORM_OS_LOG_LEVEL_TRACE(void);
+
+/* Get secure 1905 key information for ale */
+int PLATFORM_OS_GET_KEY_INFO(uint8_t *al_mac, map_1905_sec_key_info_t *key_info);
 
 #endif /* PLATFORM_OS_H_ */

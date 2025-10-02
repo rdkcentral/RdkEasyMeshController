@@ -33,7 +33,7 @@
 
 #include <libubox/uloop.h>
 
-#include "ccsp_trace.h"
+//#include <ccsp_trace.h>
 
 #include "map_utils.h"
 #include "map_config.h"
@@ -68,6 +68,10 @@ static int get_module_loglevel(map_cfg_t *cfg, int module)
 
 static void map_vlog_file(int level, const char *format, va_list args)
 {
+  (void) level;
+  (void) format;
+  (void) args;
+	/*
     char buffer[1024];
 
     vsnprintf(buffer, sizeof(buffer), format, args);
@@ -91,6 +95,7 @@ static void map_vlog_file(int level, const char *format, va_list args)
         default:
             break;
     }
+    */
 }
 
 void map_vlog_ext(int module, int level, bool check_level, const char *format, va_list args)
@@ -115,7 +120,7 @@ void map_vlog_ext(int module, int level, bool check_level, const char *format, v
         vfprintf(stderr, format, args);
         fprintf(stderr, "\n");
     } else {
-        vsyslog(level, format, args);
+        vsyslog(level > LOG_DEBUG ? LOG_DEBUG : level, format, args);
     }
 }
 

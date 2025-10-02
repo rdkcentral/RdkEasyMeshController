@@ -82,6 +82,22 @@ extern mac_addr g_mcast_mac_lldp;
 #define is_multicast_ether_addr(addr) \
     memcmp(addr, g_mcast_mac_1905, ETHER_ADDR_LEN) == 0
 
+/**
+ * @brief increment_counter_48 increments a 48-bit counter
+ * @param array counter
+ * @return void
+ * @note counter is incremented in place
+*/
+void increment_counter_48(uint8_t *array);
+
+/**
+ * @brief compare_counter_48 compares two 48-bit counters
+ * @param array1 first counter
+ * @param array2 second counter
+ * @return 1 if array1 > array2, -1 if array1 < array2, 0 if array1 == array2
+ */
+int compare_counter_48(const uint8_t* array1, const uint8_t* array2);
+
 // "MIDs" are "message IDs" used inside 1905 protocol messages. They must be
 // monotonically increased as explained in "Section 7.8"
 //

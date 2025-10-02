@@ -64,56 +64,72 @@
 
 
 /* Information element Id's */
-#define IEEE80211_EID_SSID              0
-#define IEEE80211_EID_SUPP_RATES        1
-#define IEEE80211_EID_HT_CAP           45
-#define IEEE80211_EID_SUPP_EXT_RATES   50
-#define IEEE80211_EID_RRM_ENABLED_CAP  70
-#define IEEE80211_EID_EXT_CAP         127
-#define IEEE80211_EID_VHT_CAP         191
-#define IEEE80211_EID_VENDOR_SPECIFIC 221
-#define IEEE80211_EXTID_CAP           255
+#define IEEE80211_EID_SSID                          0
+#define IEEE80211_EID_SUPP_RATES                    1
+#define IEEE80211_EID_HT_CAP                       45
+#define IEEE80211_EID_SUPP_EXT_RATES               50
+#define IEEE80211_EID_RRM_ENABLED_CAP              70
+#define IEEE80211_EID_EXT_CAP                     127
+#define IEEE80211_EID_VHT_CAP                     191
+#define IEEE80211_EID_VENDOR_SPECIFIC             221
+#define IEEE80211_EID_FRAGMENT                    242
+#define IEEE80211_EXTID_CAP                       255
 
-#define IEEE80211_EXTID_HE_CAP         35
+#define IEEE80211_EXTID_HE_CAP                     35
+#define IEEE80211_EXTID_MULTI_LINK                107
+#define IEEE80211_EXTID_EHT_CAP                   108
 
-#define IEEE80211_EID_HT_CAP_LEN              sizeof(ieee80211_ht_cap)
-#define IEEE80211_EID_RRM_ENABLED_CAP_LEN     5
-#define IEEE80211_EID_EXT_CAP_MIN_LEN         3
-#define IEEE80211_EID_VHT_CAP_LEN             sizeof(ieee80211_vht_cap)
-#define IEEE80211_EID_VENDOR_SPECIFIC_MIN_LEN 3
-#define IEEE80211_EXTID_MIN_LEN               1
+#define IEEE80211_MULTI_LINK_SEID_PER_STA_PROFILE   0
+#define IEEE80211_MULTI_LINK_SEID_FRAGMENT        254
 
-#define IEEE80211_EXTID_HE_CAP_MIN_LEN        sizeof(ieee80211_he_cap)
+
+/* Minimum length of IEs */
+#define IEEE80211_EID_HT_CAP_LEN                          sizeof(ieee80211_ht_cap)
+#define IEEE80211_EID_RRM_ENABLED_CAP_LEN                 5
+#define IEEE80211_EID_EXT_CAP_MIN_LEN                     3
+#define IEEE80211_EID_VHT_CAP_LEN                         sizeof(ieee80211_vht_cap)
+#define IEEE80211_EID_VENDOR_SPECIFIC_MIN_LEN             3
+#define IEEE80211_EXTID_MIN_LEN                           1
+
+#define IEEE80211_EXTID_HE_CAP_MIN_LEN                    sizeof(ieee80211_he_cap)
+#define IEEE80211_EXTID_MULTI_LINK_CTRL_LEN               2
+#define IEEE80211_EXTID_MULTI_LINK_MIN_LEN                (IEEE80211_EXTID_MULTI_LINK_CTRL_LEN + 1) /* Control + info.len */
+#define IEEE80211_EXTID_EHT_CAP_MIN_LEN                   sizeof(ieee80211_eht_cap)
+
+#define IEEE80211_MULTI_LINK_SEID_PER_STA_PROFILE_MIN_LEN (IEEE80211_EXTID_MULTI_LINK_CTRL_LEN + 1) /* Control + info.len */
+
+
+/* Bit fields for various IEs */
 /* Fixed capabiltiy bits */
-#define IEEE80211_CAP_RRM BIT(12)
+#define IEEE80211_CAP_RRM                                     BIT(12)
 
 /* RRM Enabled Capabilities IE */
 /* Byte 1 */
-#define IEEE80211_RRM_CAPS_BEACON_REQUEST_PASSIVE BIT(4)
-#define IEEE80211_RRM_CAPS_BEACON_REQUEST_ACTIVE  BIT(5)
+#define IEEE80211_RRM_CAPS_BEACON_REQUEST_PASSIVE             BIT(4)
+#define IEEE80211_RRM_CAPS_BEACON_REQUEST_ACTIVE              BIT(5)
 
 /* Ext cap */
 /* Byte 3 */
-#define IEEE80211_EXT_CAPS_BTM BIT(3)
+#define IEEE80211_EXT_CAPS_BTM                                BIT(3)
 
 /* HT Cap */
-#define IEEE80211_HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET      BIT(1)
-#define IEEE80211_HT_CAP_INFO_SHORT_GI20MHZ               BIT(5)
-#define IEEE80211_HT_CAP_INFO_SHORT_GI40MHZ               BIT(6)
+#define IEEE80211_HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET          BIT(1)
+#define IEEE80211_HT_CAP_INFO_SHORT_GI20MHZ                   BIT(5)
+#define IEEE80211_HT_CAP_INFO_SHORT_GI40MHZ                   BIT(6)
 
 /* VHT Cap */
-#define IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160MHZ          BIT(2)
-#define IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ BIT(3)
-#define IEEE80211_VHT_CAP_SHORT_GI_80                     BIT(5)
-#define IEEE80211_VHT_CAP_SHORT_GI_160                    BIT(6)
-#define IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE           BIT(11)
-#define IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE           BIT(19)
+#define IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160MHZ              BIT(2)
+#define IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ     BIT(3)
+#define IEEE80211_VHT_CAP_SHORT_GI_80                         BIT(5)
+#define IEEE80211_VHT_CAP_SHORT_GI_160                        BIT(6)
+#define IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE               BIT(11)
+#define IEEE80211_VHT_CAP_MU_BEAMFORMER_CAPABLE               BIT(19)
 
 /* HE Cap */
-#define IEEE80211_HE_CAP_PHY_CAP_40MHZ_24G                BIT(1)
-#define IEEE80211_HE_CAP_PHY_CAP_40MHZ_80MGHZ_5G_6G       BIT(2)
-#define IEEE80211_HE_CAP_PHY_CAP_160MHZ_5G_6G             BIT(3)
-#define IEEE80211_HE_CAP_PHY_CAP_8080MHZ_5G_6G            BIT(4)
+#define IEEE80211_HE_CAP_PHY_CAP_40MHZ_24G                    BIT(1)
+#define IEEE80211_HE_CAP_PHY_CAP_40MHZ_80MGHZ_5G_6G           BIT(2)
+#define IEEE80211_HE_CAP_PHY_CAP_160MHZ_5G_6G                 BIT(3)
+#define IEEE80211_HE_CAP_PHY_CAP_8080MHZ_5G_6G                BIT(4)
 
 #define IEEE80211_HE_CAP_PHY_CAP_FULL_BANDWIDTH_UL_MU_MIMO    BIT(6) /* PHY_CAP B22 - Byte 2 Bit 6 */
 #define IEEE80211_HE_CAP_PHY_CAP_PARTIAL_BANDWIDTH_UL_MU_MIMO BIT(7) /* PHY_CAP B23 - Byte 2 Bit 7 */
@@ -121,11 +137,31 @@
 #define IEEE80211_HE_CAP_PHY_CAP_MU_BEAMFORMER                BIT(1) /* PHY_CAP B33 - Byte 4 Bit 1 */
 #define IEEE80211_HE_CAP_PHY_CAP_PARTIAL_BANDWIDTH_DL_MU_MIMO BIT(6) /* PHY_CAP B54 - Byte 6 Bit 6 */
 
-/* MAP IE */
+/* MULTI LINK IE */
+#define IEEE80211_MULTI_LINK_CTRL_TYPE_MASK                   (BIT(2) | BIT(1) | BIT(0))
+#define IEEE80211_MULTI_LINK_CTRL_TYPE_BASIC                  0
+#define IEEE80211_MULTI_LINK_CTRL_LINK_ID_PRESENT             BIT(4)
+#define IEEE80211_MULTI_LINK_CTRL_BSS_PARAM_CH_COUNT_PRESENT  BIT(5)
+#define IEEE80211_MULTI_LINK_CTRL_MSD_INFO_PRESENT            BIT(6)
+#define IEEE80211_MULTI_LINK_CTRL_EML_CAP_PRESENT             BIT(7)
+#define IEEE80211_MULTI_LINK_CTRL_MLD_CAP_PRESENT             BIT(8)
+
+#define IEEE80211_MULTI_LINK_EML_CAP_EMLSR                    BIT(1)
+#define IEEE80211_MULTI_LINK_EML_CAP_EMLMR                    BIT(7)
+
+#define IEEE80211_MULTI_LINK_MLD_CAP_MAX_SYM_LINKS_MASK       (BIT(3) | BIT(2) | BIT(1) | BIT(0))
+
+#define IEEE80211_MULTI_LINK_STA_PROFILE_CTRL_COMPLETE        BIT(4)
+#define IEEE80211_MULTI_LINK_STA_PROFILE_CTRL_MAC_PRESENT     BIT(5)
+#define IEEE80211_MULTI_LINK_STA_PROFILE_CTRL_NSTR_LP_PRESENT BIT(9)
+
+/* WFA Vendor specific IEs */
 #define WFA_OUI_BYTE_0                   0x50
 #define WFA_OUI_BYTE_1                   0x6F
 #define WFA_OUI_BYTE_2                   0x9A
 #define WFA_VENDOR_IE_MIN_LEN            4
+
+/* MAP IE */
 #define WFA_EID_MAP                      27
 #define WFA_SUB_EID_MAP_EXTENSION        6
 #define WFA_SUB_EID_MAP_EXTENSION_LEN    1
@@ -142,23 +178,32 @@ typedef struct ieee802_11_elems {
     uint8_t *rates;
     uint8_t *ext_rates;
     uint8_t *ht_cap;
-    uint8_t *he_cap;
     uint8_t *rrm_enabled_cap;
     uint8_t *ext_cap;
     uint8_t *vht_cap;
+    uint8_t *he_cap;
+    uint8_t *eht_cap;
     uint8_t *map;
     uint8_t *mbo;
+    uint8_t *multi_link;
+    uint8_t *multi_link_defrag;
+    uint8_t *multi_link_sta_profile;
 
-    uint8_t ssid_len;
-    uint8_t rates_len;
-    uint8_t ext_rates_len;
-    uint8_t ht_cap_len;
-    uint8_t rrm_enabled_cap_len;
-    uint8_t ext_cap_len;
-    uint8_t vht_cap_len;
-    uint8_t he_cap_len;
-    uint8_t map_len;
-    uint8_t mbo_len;
+    uint8_t  ssid_len;
+    uint8_t  rates_len;
+    uint8_t  ext_rates_len;
+    uint8_t  ht_cap_len;
+    uint8_t  rrm_enabled_cap_len;
+    uint8_t  ext_cap_len;
+    uint8_t  vht_cap_len;
+    uint8_t  he_cap_len;
+    uint8_t  eht_cap_len;
+    uint8_t  map_len;
+    uint8_t  mbo_len;
+    uint8_t  multi_link_len;
+    uint16_t multi_link_left; /* length of assoc ies after end of multi link event (could contain fragments) */
+    uint16_t multi_link_defrag_len;
+    uint16_t multi_link_sta_profile_len;
 } ieee802_11_elems;
 
 typedef struct {
@@ -197,6 +242,33 @@ typedef struct {
     //uint16_t tx_mcs_map_8080;
 } STRUCT_PACKED ieee80211_he_cap;
 
+typedef struct {
+    uint8_t mac_cap_info[2];
+    uint8_t phy_cap_info[9];
+
+    /* TODO: mcs map */
+} STRUCT_PACKED ieee80211_eht_cap;
+
+typedef struct {
+    uint16_t ctrl;
+    struct {
+        uint8_t  len;
+        mac_addr mld_mac;
+    } info;
+
+    /* Sub elements follow after skipping common len after "ctrl" */
+} STRUCT_PACKED ieee80211_multi_link;
+
+typedef struct {
+    uint16_t ctrl;
+    struct {
+        uint8_t len;
+        mac_addr aff_mac;
+    } info;
+
+    /* Capabilities and tags follow */
+} STRUCT_PACKED ieee80211_multi_link_sta_profile;
+
 /*#######################################################################
 #                       ENDIAN CONVERSION                               #
 ########################################################################*/
@@ -227,6 +299,11 @@ static inline uint32_t map_le_to_host32(uint32_t v)
 /*#######################################################################
 #                       IE PARSING                                      #
 ########################################################################*/
+static void free_elems(ieee802_11_elems *elems)
+{
+    SFREE(elems->multi_link_defrag);
+}
+
 static int parse_ies(ieee802_11_elems *elems, uint8_t *ies, int len)
 {
     uint8_t *pos  = ies;
@@ -301,6 +378,18 @@ static int parse_ies(ieee802_11_elems *elems, uint8_t *ies, int len)
                                 elems->he_cap_len = ext_id_elen;
                             }
                         break;
+                        case IEEE80211_EXTID_EHT_CAP:
+                            if (NULL == elems->eht_cap && ext_id_elen >= IEEE80211_EXTID_EHT_CAP_MIN_LEN) {
+                                elems->eht_cap = &pos[1];
+                                elems->eht_cap_len = ext_id_elen;
+                            }
+                        break;
+                        case IEEE80211_EXTID_MULTI_LINK:
+                            if (NULL == elems->multi_link && ext_id_elen >= IEEE80211_EXTID_MULTI_LINK_MIN_LEN) {
+                                elems->multi_link = &pos[1];
+                                elems->multi_link_len = ext_id_elen;
+                                elems->multi_link_left = left - elen;
+                            }
                         default:
                         break;
                     }
@@ -339,6 +428,187 @@ static int parse_ies(ieee802_11_elems *elems, uint8_t *ies, int len)
     return ok;
 }
 
+/* Defrag IE.  Note: left = length of ies after this ie */
+static uint8_t *defrag_ie(uint8_t *ie, uint8_t len, uint16_t left, bool is_ext, uint16_t *defrag_len)
+{
+    uint8_t  max_len = is_ext ? 254 : 255;
+    uint8_t *pos = ie;
+    uint8_t *defrag_ie;
+    uint8_t *defrag_pos;
+    uint8_t  elen;
+
+    /*  Check if IE is fragmented and can be de-fragmented */
+    if (len < max_len || left < 2 || ie[len] != IEEE80211_EID_FRAGMENT) {
+        return NULL;
+    }
+
+    /* Allocate length of IE + remainder of IES (defragmented IE can never be bigger) */
+    if (!(defrag_ie = defrag_pos = malloc(len + left))) {
+        return NULL;
+    }
+
+    /* Copy first fragment */
+    memcpy(defrag_pos, pos, len);
+    pos        += len;
+    defrag_pos += len;
+
+    /* Copy next fragments */
+    do {
+        elen = pos[1];
+
+        pos += 2;
+        left -= 2;
+
+        if (elen > left) {
+            break;
+        }
+
+        memcpy(defrag_pos, pos, elen);
+        pos        += elen;
+        defrag_pos += elen;
+        left       -= elen;
+
+        /* Continue if this fragment has max size and another is following */
+    } while (left >= 2 && elen == 255 && pos[0] == IEEE80211_EID_FRAGMENT);
+
+    *defrag_len = defrag_pos - defrag_ie;
+
+    return defrag_ie;
+}
+
+static void parse_multi_link_ie(ieee802_11_elems *elems, mac_addr aff_sta_mac)
+{
+    /* This function parses the multi link ie and searches in the sub elements for the aff_sta_mac
+
+       If that is found, some IE are replaced.
+
+       NOTE:
+       - the multi_link IE can be fragmented and the station profile inside the multi_link IE can be fragmented again
+       - to test fragmented IE, dummy vendor TLV can be added in function wlc_mlo_filter_ie_for_assocreq (wlc_mlo.c)
+    */
+
+    int                   ok = 1;
+    uint8_t              *pos;
+    uint16_t              left;
+    uint8_t               info_len;
+    ieee80211_multi_link *ml;
+
+    /* Defragment */
+    elems->multi_link_defrag = defrag_ie(elems->multi_link, elems->multi_link_len, elems->multi_link_left, true, &elems->multi_link_defrag_len);
+
+    pos  = elems->multi_link_defrag ? elems->multi_link_defrag     : elems->multi_link;
+    left = elems->multi_link_defrag ? elems->multi_link_defrag_len : elems->multi_link_len;
+
+    /* Find Start of first sub element */
+    ml       = (ieee80211_multi_link *)pos;
+    info_len = IEEE80211_EXTID_MULTI_LINK_CTRL_LEN + ml->info.len;
+
+    if (left < info_len) {
+        return;
+    }
+
+    /* Only parse the basic type */
+    if ((map_le_to_host16(ml->ctrl) & IEEE80211_MULTI_LINK_CTRL_TYPE_MASK) != IEEE80211_MULTI_LINK_CTRL_TYPE_BASIC) {
+        return;
+    }
+
+    pos += info_len;
+    left -= info_len;
+
+    while (left >= 2) {
+        ieee80211_multi_link_sta_profile *sta_profile;
+        ieee802_11_elems                  sp_elems;
+        uint8_t                           sub_id   = *pos++;
+        uint16_t                          sub_elen = *pos++;
+
+        left -= 2;
+        if (sub_elen > left) {
+            break;
+        }
+
+        /* Only parse Sta profile sub element */
+        if (sub_id != IEEE80211_MULTI_LINK_SEID_PER_STA_PROFILE) {
+            goto next;
+        }
+
+        if (sub_elen < IEEE80211_MULTI_LINK_SEID_PER_STA_PROFILE_MIN_LEN) {
+            goto next;
+        }
+
+        sta_profile = (ieee80211_multi_link_sta_profile *)pos;
+        info_len    = IEEE80211_EXTID_MULTI_LINK_CTRL_LEN + sta_profile->info.len;
+
+        if (sub_elen < info_len) {
+            /* Invalid */
+            break;
+        }
+
+        /* MAC must be present */
+        if (!(map_le_to_host16(sta_profile->ctrl) & IEEE80211_MULTI_LINK_STA_PROFILE_CTRL_MAC_PRESENT)) {
+            break;
+        }
+
+        /* Check if it is for affiliated MAC we are looking for */
+        if (maccmp(sta_profile->info.aff_mac, aff_sta_mac)) {
+            goto next;
+        }
+
+        /* Check if sta profile is fragmented
+           Defragmentation is "in place", destroying original multi link IE
+
+           Which is ok because we break out of the parsing anyhow
+        */
+        if (elems->multi_link_defrag) {
+            uint8_t *frag_pos  = pos;  /* pos still points at the start of the defragmented IE */
+            uint8_t  frag_len  = sub_elen;
+            uint8_t  frag_left = left;
+
+            while (frag_len == 255 && left >= (frag_len + 2) && frag_pos[frag_len] == IEEE80211_MULTI_LINK_SEID_FRAGMENT) {
+               /* Skip fragment */
+               frag_pos  += frag_len;
+               frag_left -= frag_len;
+
+               frag_len   = frag_pos[1];
+               frag_left -= 2;
+
+               /* Move remainder 2 bytes back */
+               memmove(frag_pos, frag_pos + 2, frag_left);
+               frag_left -= frag_len;
+
+               sub_elen += frag_len;
+            }
+        }
+
+        /* Store pointer */
+        elems->multi_link_sta_profile = (uint8_t *)sta_profile;
+        elems->multi_link_sta_profile_len = sub_elen;
+
+        /* Parse elements again (skip 2 byte fixed capabilities) */
+        info_len += 2;
+        if (sub_elen < info_len) {
+            /* Invalid */
+            break;
+        }
+
+        if ((ok = parse_ies(&sp_elems, pos + info_len, sub_elen - info_len))) {
+            /* Replace ies */
+            /* TODO: 80211 spec contains special inheritance rules -> to be checked when we have more MLO clients */
+            #define REPLACE_IE(ie) if (sp_elems.ie) {elems->ie = sp_elems.ie; elems->ie##_len = sp_elems.ie##_len;}
+            REPLACE_IE(rates)
+            REPLACE_IE(ext_rates)
+            REPLACE_IE(ht_cap)
+            REPLACE_IE(vht_cap)
+            REPLACE_IE(he_cap)
+            REPLACE_IE(eht_cap)
+        }
+        break;
+
+next:
+        left -= sub_elen;
+        pos  += sub_elen;
+    }
+}
+
 static int parse_ies_check_ssid(ieee802_11_elems *elems, uint8_t *ies, int len, uint8_t *match_ssid, int match_ssid_len)
 {
     int ok = parse_ies(elems, ies, len);
@@ -350,7 +620,6 @@ static int parse_ies_check_ssid(ieee802_11_elems *elems, uint8_t *ies, int len, 
     }
 
     return ok;
-
 }
 
 static int parse_ies_check_ssid_offset(ieee802_11_elems *elems, uint8_t *body, int body_len, int offset, uint8_t *match_ssid, int match_ssid_len)
@@ -408,6 +677,14 @@ static bool has_ofdm(uint8_t *rates, int len)
 
 /* 11AX has 3 SGI options - use 0.8 us */
                                                        /*    1 SS,    2 SS,    3 SS,    4 SS */
+/* TODO: get real 11BE table... */
+static uint32_t pr_11be     [/* bw */ 5][/* ss */ 4] = {{  143400,  286800,  430100,  573500}, /*  20MHz - MCS 11 */
+                                                        {  286800,  573500,  860300, 1147100}, /*  40MHz - MCS 11 */
+                                                        {  600500, 1201000, 1801500, 2402000}, /*  80MHz - MCS 11 */
+                                                        { 1201000, 2402000, 3602900, 4803900}, /* 160MHz - MCS 11 */
+                                                        { 2402000, 4804000, 7205800, 9607800}, /* 320MHz - MCS 11 */
+                                                       };
+
 static uint32_t pr_11ax     [/* bw */ 4][/* ss */ 4] = {{  143400,  286800,  430100,  573500}, /*  20MHz - MCS 11 */
                                                         {  286800,  573500,  860300, 1147100}, /*  40MHz - MCS 11 */
                                                         {  600500, 1201000, 1801500, 2402000}, /*  80MHz - MCS 11 */
@@ -442,23 +719,29 @@ uint32_t map_get_max_phy_rate(map_sta_capability_t *caps)
     /* Limit to 4 SS */
     int ss = min(4, caps->max_tx_spatial_streams) - 1;
     int b  = caps->max_bandwidth;
-    int bw = b >= 160 ? 3 : b >= 80 ? 2 : b >= 40 ? 1 : 0;
+    int bw = b >= 320 ? 4 : b >= 160 ? 3 : b >= 80 ? 2 : b >= 40 ? 1 : 0;
 
     switch(caps->supported_standard) {
+        case STD_80211_BE:
+            bw = min(bw, 4);
+            return pr_11be[bw][ss];
+        break;
         case STD_80211_ANACAX:
         case STD_80211_ACAX:
         case STD_80211_ANAX:
         case STD_80211_NAX:
         case STD_80211_AX:
+            bw = min(bw, 3);
             return pr_11ax[bw][ss];
         break;
         case STD_80211_ANAC:
         case STD_80211_AC:
+            bw = min(bw, 3);
             return caps->sgi_support ? pr_11ac_sgi[bw][ss] : pr_11ac[bw][ss];
         break;
         case STD_80211_AN:
         case STD_80211_N:
-            bw = min(1, bw);
+            bw = min(bw, 1);
             return caps->sgi_support ? pr_11n_sgi[bw][ss] : pr_11n[bw][ss];
         break;
         case STD_80211_A:
@@ -479,7 +762,8 @@ uint32_t map_get_max_phy_rate(map_sta_capability_t *caps)
 /*#######################################################################
 #                       PARSE ASSOC BODY                                #
 ########################################################################*/
-int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int body_len, int supported_freq, uint8_t *match_ssid, int match_ssid_len)
+int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int body_len, int supported_freq,
+                               uint8_t *match_ssid, int match_ssid_len, mac_addr aff_sta_mac)
 {
     ieee802_11_elems  elems     = {0};
     uint16_t          fixed_cap = 0;
@@ -537,9 +821,20 @@ int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int bo
         return -1;
     } while(0);
 
+    /* For affiliated STA: parse nested multi link IE */
+    if (aff_sta_mac) {
+        if (elems.multi_link) {
+            parse_multi_link_ie(&elems, aff_sta_mac);
+        } else {
+            log_lib_w("parsing ies for affiliated STA but multi_link IE was not found");
+        }
+    }
+
+
     /* Fill in capability */
 
     /* Caps from he/vht/he ie */
+    ieee80211_eht_cap *eht_cap      = (ieee80211_eht_cap *)elems.eht_cap;
     ieee80211_he_cap  *he_cap       = (ieee80211_he_cap  *)elems.he_cap;
     ieee80211_vht_cap *vht_cap      = (ieee80211_vht_cap *)elems.vht_cap;
     ieee80211_ht_cap  *ht_cap       = (ieee80211_ht_cap  *)elems.ht_cap;
@@ -556,24 +851,20 @@ int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int bo
 
     /* Standard */
     if (supported_freq == IEEE80211_FREQUENCY_BAND_6_GHZ) {
-        caps->supported_standard = STD_80211_AX;
-    } else if (he_cap) {
-        if (supported_freq != IEEE80211_FREQUENCY_BAND_2_4_GHZ) {
-            caps->supported_standard = (vht_cap && ht_cap)? STD_80211_ANACAX:
-                                       (vht_cap)? STD_80211_ACAX:STD_80211_ANAX;
-        } else {
-           caps->supported_standard = STD_80211_NAX;
-        }
-    } else if (supported_freq != IEEE80211_FREQUENCY_BAND_2_4_GHZ && vht_cap) {
-        caps->supported_standard = STD_80211_AC;
-    } else if (ht_cap) {
-        caps->supported_standard = STD_80211_N;
-    } else if (supported_freq == IEEE80211_FREQUENCY_BAND_2_4_GHZ) {
-        caps->supported_standard = is_erp ? STD_80211_G : STD_80211_B;
-    } else {
-        caps->supported_standard = STD_80211_A;
+        caps->supported_standard = eht_cap ? STD_80211_BE : STD_80211_AX;
+    } else if (supported_freq == IEEE80211_FREQUENCY_BAND_5_GHZ) {
+        caps->supported_standard = (he_cap && vht_cap && ht_cap) ? STD_80211_ANACAX :
+                                   (he_cap && vht_cap) ? STD_80211_ACAX :
+                                   (he_cap && ht_cap) ? STD_80211_ANAX :
+                                   (vht_cap) ? STD_80211_AC :
+                                   (ht_cap) ? STD_80211_N : STD_80211_A;
+    } else { /* 2.4ghz */
+        caps->supported_standard = he_cap ? STD_80211_NAX :
+                                   ht_cap ? STD_80211_N :
+                                   is_erp ? STD_80211_G : STD_80211_B;
     }
 
+    caps->eht_support = eht_cap ? 1 : 0;
     caps->he_support  = he_cap  ? 1 : 0;
     caps->vht_support = vht_cap ? 1 : 0;
     caps->ht_support  = ht_cap  ? 1 : 0;
@@ -597,6 +888,11 @@ int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int bo
         caps->max_bandwidth          = ht_cap_info & IEEE80211_HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET ? 40 : 20;
         caps->max_tx_spatial_streams = ht_mcs_set_to_ss(ht_cap->supported_mcs_set);  /* ?? - actually gives rx set */
         caps->max_rx_spatial_streams = ht_mcs_set_to_ss(ht_cap->supported_mcs_set);
+    }
+
+    /* TODO: parse eht_cap - for now just overrule the bandwith */
+    if (supported_freq == IEEE80211_FREQUENCY_BAND_6_GHZ && eht_cap) {
+        caps->max_bandwidth = 320;
     }
 
     /* SGI from HE, VHT and HT */
@@ -684,7 +980,74 @@ int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int bo
     /* Max phy rate */
     caps->max_phy_rate = map_get_max_phy_rate(caps);
 
+    /* MLD Modes */
+    if (elems.multi_link) {
+        /* - EMLSR and  EMLR: EML_CAP field from the MLD common info.
+           - STR and NSTR: MLD_CAP field from the MLD common info + sta profile control field
+        */
+
+        /* Common */
+        ieee80211_multi_link *ml      = (ieee80211_multi_link *)elems.multi_link;
+        uint16_t              ctrl    = map_le_to_host16(ml->ctrl);
+        uint8_t              *pos     = elems.multi_link + sizeof(ieee80211_multi_link); /* = After MLD MAC */
+        uint8_t              *end     = elems.multi_link + IEEE80211_EXTID_MULTI_LINK_CTRL_LEN + ml->info.len;
+        uint16_t              eml_cap = 0;
+        uint16_t              mld_cap = 0;
+
+        /* Length check */
+        if (end > (elems.multi_link + elems.multi_link_len)) {
+            goto skip_mld_modes;
+        }
+
+        /* Expect basic type */
+        if ((ctrl & IEEE80211_MULTI_LINK_CTRL_TYPE_MASK) != IEEE80211_MULTI_LINK_CTRL_TYPE_BASIC) {
+            goto skip_mld_modes;
+        }
+
+        /* Bits set in the ctrl field determine the locaction of eml and mld cap */
+        if (ctrl & IEEE80211_MULTI_LINK_CTRL_LINK_ID_PRESENT) {
+            pos++; /* 1 byte - should not be present according to hostapd */
+        }
+        if (ctrl & IEEE80211_MULTI_LINK_CTRL_BSS_PARAM_CH_COUNT_PRESENT) {
+            pos++; /* 1 byte - should not be present according to hostapd */
+        }
+        if (ctrl & IEEE80211_MULTI_LINK_CTRL_MSD_INFO_PRESENT) {
+            pos += 2; /* 2 bytes - should not be present according to hostapd */
+        }
+        if (ctrl & IEEE80211_MULTI_LINK_CTRL_EML_CAP_PRESENT) {
+            eml_cap = (pos[1] << 8) + pos[0]; /* Little endian... */
+            pos += 2;
+        }
+        if (ctrl & IEEE80211_MULTI_LINK_CTRL_MLD_CAP_PRESENT) {
+            mld_cap = (pos[1] << 8) + pos[0]; /* Little endian... */
+            pos += 2;
+        }
+        /* Check that we are still in the control field */
+        if (pos > end) {
+            goto skip_mld_modes;
+        }
+
+        /* Fill in supported mld modes */
+        caps->mld_modes.emlsr = eml_cap & IEEE80211_MULTI_LINK_EML_CAP_EMLSR;
+        caps->mld_modes.emlmr = eml_cap & IEEE80211_MULTI_LINK_EML_CAP_EMLMR;
+        caps->mld_modes.str   = mld_cap & IEEE80211_MULTI_LINK_MLD_CAP_MAX_SYM_LINKS_MASK;
+
+        /* For STR/NSTR: also check sta profile control */
+        if (caps->mld_modes.str && elems.multi_link_sta_profile) {
+            ieee80211_multi_link_sta_profile *sp = (ieee80211_multi_link_sta_profile *)elems.multi_link_sta_profile;
+            uint16_t sta_ctrl                    = map_le_to_host16(sp->ctrl);
+
+            caps->mld_modes.nstr = sta_ctrl & IEEE80211_MULTI_LINK_STA_PROFILE_CTRL_NSTR_LP_PRESENT;
+            caps->mld_modes.str = !caps->mld_modes.nstr;
+        }
+
+skip_mld_modes:
+        ;
+    }
+
     caps->valid = true;
+
+    free_elems(&elems);
 
     return 0;
 }

@@ -187,7 +187,7 @@ static uint8_t _relayed_CMDU[] = {
     /* CMDU_TYPE_AP_AUTOCONFIGURATION_SEARCH    */  1,
     /* CMDU_TYPE_AP_AUTOCONFIGURATION_RESPONSE  */  0,
     /* CMDU_TYPE_AP_AUTOCONFIGURATION_WSC       */  0,
-    /* CMDU_TYPE_AP_AUTOCONFIGURATION_RENEW     */  1,
+    /* CMDU_TYPE_AP_AUTOCONFIGURATION_RENEW     */  0xff,
     /* CMDU_TYPE_PUSH_BUTTON_EVENT_NOTIFICATION */  1,
     /* CMDU_TYPE_PUSH_BUTTON_JOIN_NOTIFICATION  */  1,
     /* CMDU_TYPE_HIGHER_LAYER_QUERY             */  0,
@@ -395,6 +395,10 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
     uint8_t       current_fragment;
     uint16_t      tlvs_nr;
     uint8_t       error;
+    uint8_t      *message = NULL;
+    uint16_t      message_len       = 0;
+    uint16_t      message_offset    = 0;
+    uint16_t      last_fragment_len = 0;
 
     if (NULL == packet_streams) {
         /* Invalid arguments */
@@ -413,17 +417,29 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
         return NULL;
     }
 
+    /* Calculate the message length */
+    for (current_fragment = 0; current_fragment<fragments_nr; current_fragment++) {
+        message_len += *(packet_lenghts+current_fragment) - CMDU_HDR_SIZE;
+    }
+    /* Allocate message buffer */
+    if (!(message = malloc(message_len))) {
+        log_i1905_e("malloc() failed");
+        return NULL;
+    }
+
     /* Allocate the return structure.
     *  Initially it will contain an empty list of TLVs that we will later
     *  re-allocate and fill.
     */
     ret = malloc(sizeof(i1905_cmdu_t) * 1);
     if (!ret) {
+        free(message);
         return NULL;
     }
     ret->list_of_TLVs = malloc(sizeof(uint8_t *) * 1);
     if (!ret->list_of_TLVs) {
         free(ret);
+        free(message);
         return NULL;
     }
     ret->list_of_TLVs[0] = NULL;
@@ -433,7 +449,7 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
     error = 0;
     for (current_fragment = 0; current_fragment<fragments_nr; current_fragment++) {
         uint8_t  *p;
-        uint16_t  bytes_left;
+        uint16_t  stream_len = 0;      /* Eliminate false warning */
         uint8_t   i;
 
         uint8_t   message_version;
@@ -446,16 +462,13 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
         uint8_t   relay_indicator;
         uint8_t   last_fragment_indicator;
 
-        uint8_t  *parsed;
-
-        bytes_left = 0;
         /* We want to traverse fragments in order, thus lets search for the
         *  fragment whose 'fragment_id' matches 'current_fragment' (which will
         *  monotonically increase starting at '0')
         */
         for (i = 0; i < fragments_nr; i++) {
             p = *(packet_streams+i);
-            bytes_left = *(packet_lenghts+i);
+            stream_len = *(packet_lenghts+i);
 
             /* The 'fragment_id' field is the 7th byte (offset 6) */
             if (current_fragment == *(p+6)) {
@@ -468,12 +481,13 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
             break;
         }
 
-        if (bytes_left < 8) {
+        if (stream_len < CMDU_HDR_SIZE) {
             /* Packet too short to have cmdu header */
             error = 8;
             break;
         }
-        bytes_left -= 8;
+        /* Remove CMDU header */
+        stream_len -= CMDU_HDR_SIZE;
 
         /* At this point 'p' points to the stream whose 'fragment_id' is 'current_fragment' */
 
@@ -539,107 +553,113 @@ i1905_cmdu_t *parse_1905_CMDU_from_packets(uint8_t **packet_streams, uint16_t *p
             break;
         }
 
-        /* We can now parse the TLVs. 'p' is pointing to the first one at this moment */
-        while (1) {
-            parsed = parse_1905_TLV_from_packet(p, bytes_left);
-            if (NULL == parsed) {
-                /* Error while parsing a TLV
-                *  Dump TLV for visual inspection
-                */
+        /* Append new stream */
+        memcpy(message + message_offset, p, stream_len);
+        message_offset += stream_len;
 
-                /* FRV: TODO: THIS CODE DOES NOT CHECK IF TLV GOES BEYOND CMDU */
+        /* Keep last fragment len to be able to check position */
+        last_fragment_len = stream_len;
+    }
 
-                char      aux1[200];
-                char      aux2[10];
 
-                uint8_t  *p2 = p;
-                uint16_t  len;
+    uint8_t *p = message;
+    uint8_t *parsed_tlv;
+    uint16_t bytes_left = message_offset;
 
-                uint8_t   first_time;
-                uint8_t   j;
-                uint8_t   aux;
+    /* We can now parse the TLVs from cmdu. */
+    while (p && 0 == error && bytes_left > 0) {
+        parsed_tlv = parse_1905_TLV_from_packet(p, bytes_left);
+        if (NULL == parsed_tlv) {
+            /* Error while parsing a TLV
+            *  Dump TLV for visual inspection
+            */
 
-                _E1B(&p2, &aux);
-                _E2B(&p2, &len);
+            char      aux1[200];
+            char      aux2[10];
 
-                log_i1905_w("Parsing error. Dumping bytes: %d ", error);
+            uint8_t  *p2 = p;
+            uint16_t  len;
 
-                /* Limit dump length */
-                if (len > 200) {
-                    len = 200;
-                }
+            uint8_t   first_time;
+            uint8_t   j;
+            uint8_t   aux;
 
-                aux1[0]    = 0x0;
-                aux2[0]    = 0x0;
-                first_time = 1;
-                for (j = 0; j < len + 3; j++) {
-                    snprintf(aux2, 6, "0x%02x ", p[j]);
-                    strncat(aux1, aux2, 200 - strlen(aux1)-1);
+            _E1B(&p2, &aux);
+            _E2B(&p2, &len);
 
-                    if (0 != j && 0 == (j + 1) % 8) {
-                        if (1 == first_time) {
-                            log_i1905_t("[PLATFORM]   - Payload        = %s", aux1);
-                            first_time = 0;
-                        } else {
-                            log_i1905_t("[PLATFORM]                      %s", aux1);
-                        }
-                        aux1[0] = 0x0;
+            log_i1905_w("Parsing error. Dumping bytes: %d ", error);
+
+            /* Do not allow TLV to go beyond CMDU */
+            if (len > message_offset) {
+                len = message_offset;
+            }
+
+            /* Limit dump length */
+            if (len > 200) {
+                len = 200;
+            }
+
+            aux1[0]    = 0x0;
+            aux2[0]    = 0x0;
+            first_time = 1;
+            for (j = 0; j < len + 3; j++) {
+                snprintf(aux2, 6, "0x%02x ", p[j]);
+                strncat(aux1, aux2, 200 - strlen(aux1)-1);
+
+                if (0 != j && 0 == (j + 1) % 8) {
+                    if (1 == first_time) {
+                        log_i1905_t("[PLATFORM]   - Payload        = %s", aux1);
+                        first_time = 0;
+                    } else {
+                        log_i1905_t("[PLATFORM]                      %s", aux1);
                     }
+                    aux1[0] = 0x0;
                 }
-
-                error = 6;
-                break;
             }
 
-            /* FRV: End_of_message_TLV should only be present at the end of the last fragment,
-            *       some ale send it in every packet.
-            *
-            *       Parsing error when
-            *         "no end_of_message_TLV" and "bytes_left == 0" and "last_fragment bit set"
-            *       Advance to next fragment if:
-            *         "end_of_message_TLV present" or "bytes_left == 0"
-            */
-            if (TLV_TYPE_END_OF_MESSAGE == *parsed) {
-                /* No more TLVs */
-                free_1905_TLV_structure(parsed);
-                break;
-            }
-
-            /* Advance 'p' to the next TLV */
-            uint8_t  tlv_type;
-            uint16_t tlv_len;
-
-            _E1B(&p, &tlv_type);
-            _E2B(&p, &tlv_len);
-
-            p += tlv_len;
-            bytes_left -= (3 + tlv_len);
-
-            /* Add this new TLV to the list (the list needs to be re-allocated
-            *  with more space first)
-            */
-            tlvs_nr++;
-            uint8_t **new_list_of_TLVs = realloc(ret->list_of_TLVs, sizeof(uint8_t *) * (tlvs_nr + 1));
-            if (!new_list_of_TLVs) {
-                error = 10;
-                break;
-            }
-            ret->list_of_TLVs = new_list_of_TLVs;
-            ret->list_of_TLVs[tlvs_nr - 1] = parsed;
-            ret->list_of_TLVs[tlvs_nr]     = NULL;
-
-            if (0 == bytes_left) {
-                /* Advance to next packet, except last fragment should have had an end_of_message_TLV */
-                if (1 == last_fragment_indicator) {
-                    error = 9;
-                }
-                break;
-            }
-        }
-        if (0 != error) {
+            error = 6;
             break;
         }
+
+        /* Advance 'p' to the next TLV */
+        uint8_t  tlv_type;
+        uint16_t tlv_len;
+
+        _E1B(&p, &tlv_type);
+        _E2B(&p, &tlv_len);
+
+        p += tlv_len;
+        bytes_left -= (3 + tlv_len);
+
+        if (TLV_TYPE_END_OF_MESSAGE == tlv_type) {
+            if(bytes_left >= last_fragment_len) {
+                /*
+                 * We didn't reached the last fragment yet.
+                 * End of Message TLV should only be present at the end of the last fragment. Skip it
+                 */
+                free_1905_TLV_structure(parsed_tlv);
+                continue;
+            } else {
+                /* No more TLVs end of message */
+                free_1905_TLV_structure(parsed_tlv);
+                break;
+            }
+        }
+
+        /* Add this new TLV to the list (the list needs to be re-allocated
+        *  with more space first)
+        */
+        tlvs_nr++;
+        uint8_t **new_list_of_TLVs = realloc(ret->list_of_TLVs, sizeof(uint8_t *) * (tlvs_nr + 1));
+        if (!new_list_of_TLVs) {
+            error = 9;
+            break;
+        }
+        ret->list_of_TLVs = new_list_of_TLVs;
+        ret->list_of_TLVs[tlvs_nr - 1] = parsed_tlv;
+        ret->list_of_TLVs[tlvs_nr]     = NULL;
     }
+    SFREE(message);
 
     if (0 == error) {
         /* Ok then... we now have our output structure properly filled.
@@ -716,13 +736,10 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
 {
     uint8_t **ret;
 
-    uint16_t  tlv_start;
-    uint16_t  tlv_stop;
-
-    uint8_t   fragments_nr;
-
-    uint32_t  max_tlvs_block_size;
-    uint32_t  max_last_tlvs_block_size;
+    uint16_t  tlv_start         = 0;
+    uint16_t  tlv_stop          = 0;
+    uint16_t  jumbo_tlv_offset  = 0;
+    uint8_t   fragments_nr      = 0;
 
     uint8_t   error = 0;
 
@@ -758,8 +775,6 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
     }
     (*lens)[0] = 0;
 
-    fragments_nr = 0;
-
     /* Let's create as many streams as needed so that all of them fit in
     *  MAX_NETWORK_SEGMENT_SIZE bytes.
     *
@@ -782,9 +797,7 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
     *    - X bytes (size of all TLVs contained in the fragment)
     *    - 3 bytes (TLV_TYPE_END_OF_MESSAGE TLV) - only in last fragment
     *
-    *  In other words, X (the size of all the TLVs that are going to be inside
-    *  this fragmen) can not be greater than MAX_NETWORK_SEGMENT_SIZE - 6 - 6 -
-    *  - 4- 2 - 1 - 1 - 2 - 2 - 1 - 1 = MAX_NETWORK_SEGMENT_SIZE - 26 bytes.
+    *  Jumbo TLVs can partially involve into multiple fragment since EM R3.(section 15.2)
     *
     *  And another 3 bytes need to be reserved in for the last fragment
     *
@@ -795,67 +808,16 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
     #error Invalid MAX_NETWORK_SEGMENT_SIZE
 #endif
 
-    max_tlvs_block_size      = MAX_NETWORK_SEGMENT_SIZE - ETH_8021Q_HDR_SIZE - CMDU_HDR_SIZE;
-    max_last_tlvs_block_size = max_tlvs_block_size - 3;
-    tlv_start                = 0;
-    tlv_stop                 = 0;
     do {
-        uint8_t  *s;
-        uint16_t  i;
+        uint8_t  *s, *s2;
 
         uint16_t  current_X_size = 0;
-        uint8_t   no_space = 0;
 
         uint8_t   reserved_field;
         uint8_t   fragment_id;
         uint8_t   indicators;
 
-        uint16_t  tlv_stream_size = 0;
-
-        while (memory_structure->list_of_TLVs[tlv_stop]) {
-            uint8_t  *p;
-            uint8_t  *tlv_stream;
-            /* Max block size is different for last fragment (no next TLV) */
-            uint32_t break_size = memory_structure->list_of_TLVs[tlv_stop + 1] ?
-                                  max_tlvs_block_size : max_last_tlvs_block_size;
-
-            p = memory_structure->list_of_TLVs[tlv_stop];
-
-            tlv_stream = forge_1905_TLV_from_structure(p, &tlv_stream_size);
-            free(tlv_stream);
-
-            if (current_X_size + tlv_stream_size <= break_size) {
-                tlv_stop++;
-            } else {
-                /* There is no space for more TLVs */
-                no_space = 1;
-                break;
-            }
-
-            current_X_size += tlv_stream_size;
-        }
-        if (tlv_start == tlv_stop) {
-            if (1 == no_space) {
-                /* One *single* TLV does not fit in a fragment!
-                *  This is an error... there is no way to split one single TLV into
-                *  several fragments according to the standard.
-                */
-                log_i1905_e("single TLV does not fit (length %d)", tlv_stream_size);
-                error = 1;
-                break;
-            } else {
-                /* If we end up here, it means tlv_start = tlv_stop = 0 --> this
-                *  CMDU contains no TLVs (which is something that can happen...
-                *  for example, in the "topology query" CMDU).
-                *  Just keep executing...
-                */
-            }
-        }
-
-        /* Now that we know how many TLVs are going to be embedded inside this
-        *  fragment (from 'tlv_start' up to -and not including- 'tlv_stop'),
-        *  let's build it
-        */
+        /* Create a new fragment */
         fragments_nr++;
 
         /* Allocate memory for next fragment, realloc ret and lens arrays */
@@ -881,16 +843,11 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
         (*lens)[fragments_nr-1] = 0; /* To be updated a few lines later */
         (*lens)[fragments_nr]   = 0;
 
-        s = ret[fragments_nr-1];
+        s2 = s = ret[fragments_nr-1]; /* Save a backup pointer to update fields later */
 
         reserved_field = 0;
         fragment_id    = fragments_nr-1;
         indicators     = 0;
-
-        /* Set 'last_fragment_indicator' flag (bit #7) */
-        if (NULL == memory_structure->list_of_TLVs[tlv_stop]) {
-            indicators |= 1 << 7;
-        }
 
         /* Set 'relay_indicator' flag (bit #6) */
         /* Again this hack as relayed CMDU is only handled for 1905 TLV
@@ -913,26 +870,63 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
         _I1B(&fragment_id,                       &s);
         _I1B(&indicators,                        &s);
 
-        for (i = tlv_start; i < tlv_stop; i++) {
-            uint8_t  *tlv_stream      = NULL;
+        while (memory_structure->list_of_TLVs[tlv_stop]) {
+            uint8_t  *tlv_stream = NULL;
             uint16_t  tlv_stream_size = 0;
+            uint16_t  bytes_copied    = 0;
 
-            tlv_stream = forge_1905_TLV_from_structure(memory_structure->list_of_TLVs[i], &tlv_stream_size);
+            /* Max block size is different for last fragment (no next TLV) */
+            uint32_t break_size = memory_structure->list_of_TLVs[tlv_stop + 1] ? MAX_TLV_SIZE : MAX_LAST_TLV_SIZE;
 
-            if(tlv_stream == NULL) {
+            tlv_stream = forge_1905_TLV_from_structure(memory_structure->list_of_TLVs[tlv_stop], &tlv_stream_size);
+            if (!tlv_stream) {
                 log_i1905_e("forged NULL tlv stream out of memory structure");
+                tlv_stop++; /* Advance to the next tlv */
+                break;
+            }
+
+            if (current_X_size + tlv_stream_size <= break_size) {
+                bytes_copied = tlv_stream_size;
+                memcpy(s, tlv_stream, bytes_copied);
+                s += bytes_copied;
+                tlv_stop++; /* Advance to the next tlv */
+            } else if (tlv_stream_size > break_size) { /* Jumbo TLV */
+                uint16_t  bytes_left_fragment  = break_size - current_X_size;
+                uint16_t  bytes_left_jumbo_tlv = tlv_stream_size - jumbo_tlv_offset;
+
+                if (bytes_left_jumbo_tlv > bytes_left_fragment) {
+                    memcpy(s, tlv_stream + jumbo_tlv_offset, bytes_left_fragment);
+                    s += bytes_left_fragment;
+                    bytes_copied = bytes_left_fragment;
+                    jumbo_tlv_offset += bytes_copied;
+                    SFREE(tlv_stream);
+                    break; /* Loop over to create a new fragment */
+                } else {
+                    memcpy(s, tlv_stream + jumbo_tlv_offset, bytes_left_jumbo_tlv);
+                    s += bytes_left_jumbo_tlv;
+                    bytes_copied = bytes_left_jumbo_tlv;
+                    jumbo_tlv_offset = 0;
+                    tlv_stop++; /* Advance to the next tlv */
+                }
             } else {
-                memcpy(s, tlv_stream, tlv_stream_size);
+                /* There is no space for more TLVs */
+                SFREE(tlv_stream);
+                break;
             }
             SFREE(tlv_stream);
-
-            s += tlv_stream_size;
+            current_X_size += bytes_copied;
         }
 
-        /* Don't forget to add the last three octects representing the
-        *  TLV_TYPE_END_OF_MESSAGE message for the last fragment
+        /* For the last fragment add TLV_TYPE_END_OF_MESSAGE
+        *  and set 'last fragment indicator'
         */
         if (NULL == memory_structure->list_of_TLVs[tlv_stop]) {
+
+            /* Set 'last_fragment_indicator' flag (bit #7) */
+            indicators |= 1 << 7;
+            s2 +=7;
+            _I1B(&indicators, &s2); /* Override indicators */
+
             *s = 0x0; s++;
             *s = 0x0; s++;
             *s = 0x0; s++;
@@ -945,7 +939,6 @@ uint8_t **forge_1905_CMDU_from_structure(i1905_cmdu_t *memory_structure, uint16_
         *  the next one starts where we have stopped.
         */
         tlv_start = tlv_stop;
-
     } while (memory_structure->list_of_TLVs[tlv_start]);
 
     /* Finally! If we get this far without errors we are already done, otherwise
@@ -1161,6 +1154,14 @@ char *convert_1905_CMDU_type_to_string(uint16_t cmdu_type)
         CMDU_STR(CMDU_TYPE_MAP_DIRECT_ENCAP_DPP)
         CMDU_STR(CMDU_TYPE_MAP_CHIRP_NOTIFICATION)
         CMDU_STR(CMDU_TYPE_MAP_1905_ENCAP_EAPOL)
+        CMDU_STR(CMDU_TYPE_MAP_BSS_CONFIGURATION_REQUEST)
+        CMDU_STR(CMDU_TYPE_MAP_BSS_CONFIGURATION_RESPONSE)
+        CMDU_STR(CMDU_TYPE_MAP_BSS_CONFIGURATION_RESULT)
+        CMDU_STR(CMDU_TYPE_MAP_AGENT_LIST)
+
+        /* MAP R6 */
+        CMDU_STR(CMDU_TYPE_MAP_EARLY_AP_CAPABILITY_REPORT)
+        CMDU_STR(CMDU_TYPE_MAP_AVAILABLE_SPECTRUM_INQUIRY)
 
         default: return "CMDU_TYPE_UNKNOWN";
     }

@@ -172,6 +172,69 @@ bool acu_mac_array_equal(mac_addr *macs1, size_t macs_nr1, mac_addr *macs2, size
     return (macs_nr1 == macs_nr2) && !memcmp(macs1, macs2, macs_nr1 * sizeof(mac_addr));
 }
 
+int acu_mac_add_to_array(mac_addr mac, mac_addr **macs, size_t *macs_nr)
+{
+    mac_addr *array;
+    size_t count;
+
+    if (!macs || !macs_nr || *macs_nr == SIZE_MAX) {
+        return ACU_EINVAL;
+    }
+
+    count = *macs_nr + 1;
+    array = (mac_addr *)reallocarray(*macs, count, sizeof(mac_addr));
+    if (array == NULL) {
+        return ACU_ENOMEM;
+    }
+
+    acu_maccpy(&array[count - 1], mac);
+    *macs = array;
+    *macs_nr = count;
+
+    return ACU_OK;
+}
+
+int acu_mac_del_from_array(mac_addr mac, mac_addr **macs, size_t *macs_nr)
+{
+    mac_addr *array;
+    size_t count;
+    size_t i = 0;
+    bool found = false;
+
+    if (!macs || !macs_nr || *macs_nr == 0) {
+        return ACU_EINVAL;
+    }
+
+    array = *macs;
+    count = *macs_nr - 1;
+    do {
+        if (!acu_maccmp(mac, array[i])) {
+            found = true;
+            break;
+        }
+        ++i;
+    } while (i < *macs_nr);
+
+    if (!found) {
+        return ACU_OK;
+    }
+
+    while (i < count) {
+        acu_maccpy(array[i], array[i + 1]);
+        ++i;
+    }
+
+    array = (mac_addr *)reallocarray(*macs, count, sizeof(mac_addr));
+    if (array == NULL && count > 0) {
+        return ACU_ENOMEM;
+    }
+
+    *macs = array;
+    *macs_nr = count;
+
+    return ACU_OK;
+}
+
 /*#######################################################################
 #                       STRING OPERATIONS                               #
 ########################################################################*/
@@ -498,6 +561,7 @@ acu_retcode_t acu_evloop_timer_remaining(acu_evloop_timer_t *evloop_timer,
 	return (r >= 0) ? ACU_OK : ACU_EINVAL;
 }
 
+#ifndef UNIT_TEST
 void acu_evloop_fd_delete(acu_evloop_fd_t *evloop_fd)
 {
 	if (NULL != evloop_fd) {
@@ -505,6 +569,7 @@ void acu_evloop_fd_delete(acu_evloop_fd_t *evloop_fd)
 		SFREE(evloop_fd);
 	}
 }
+#endif // UNIT_TEST
 
 acu_evloop_fd_t *acu_evloop_fd_add_ex(int fd, UNUSED unsigned flags,
 		acu_evloop_fd_cb_t cb, void *userdata)

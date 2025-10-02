@@ -131,12 +131,10 @@ static uint8_t map_periodic_ap_capability_query_timer_cb(UNUSED char* timer_id, 
 /* Send config renew */
 static uint8_t map_config_renew_timer_cb(UNUSED char* timer_id, UNUSED void *arg)
 {
-    if (map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA)){
+    if (map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA, true)){
         log_ctrl_e("map_send_autoconfig_renew failed");
         return 0; /* Restart timer */
     }
-
-    map_reset_all_agent_nodes_onboarding_status();
 
     return 1; /* Remove timer */
 }

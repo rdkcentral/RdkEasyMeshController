@@ -28,6 +28,7 @@
 #define MAP_RADIO_OOB_UNASSOC_MEASUREMENT_SUPPORTED 0x02
 
 #define MAP_ONBOARD_DEP_BITMASK (MAP_RADIO_M1_RECEIVED | MAP_RADIO_CONFIGURED | MAP_RADIO_OPER_CHAN_REPORT_RECEIVED | MAP_RADIO_POLICY_CONFIG_ACK_RECEIVED | MAP_RADIO_AP_CAPABILITY_REPORT_RECEIVED)
+#define MAP_ONBOARD_DEP_BITMASK_TEARDOWN (MAP_RADIO_M1_RECEIVED | MAP_RADIO_CONFIGURED | MAP_RADIO_POLICY_CONFIG_ACK_RECEIVED | MAP_RADIO_AP_CAPABILITY_REPORT_RECEIVED)
 
 typedef enum _map_bss_states {
     MAP_BSS_ACTIVE                            = 0x0001,
@@ -47,6 +48,7 @@ typedef enum _map_radio_states {
     MAP_RADIO_AP_CAPABILITY_REPORT_RECEIVED   = 0x0400,
     MAP_RADIO_INITIAL_SCAN_RESULTS_RECEIVED   = 0x0800,
     MAP_RADIO_CHANNEL_PREFERENCE_QUERY_SENT   = 0x1000,
+    MAP_RADIO_TEARDOWN_SENT                   = 0x2000,
 } map_radio_states_t;
 
 typedef enum _map_ale_states {
@@ -78,18 +80,14 @@ static inline int is_state_bit_set(uint16_t state, uint16_t bit)
 #define is_bss_active(bss_state) (is_state_bit_set(bss_state,MAP_BSS_ACTIVE))
 
 /* Radio state macros */
-#define MUTUALLY_EXCLUSIVE_RADIO_STATES (MAP_RADIO_CONFIGURED | MAP_RADIO_M1_SENT | \
-                                         MAP_RADIO_M1_RECEIVED | MAP_RADIO_M2_SENT)
+#define MUTUALLY_EXCLUSIVE_RADIO_STATES (MAP_RADIO_CONFIGURED | MAP_RADIO_M1_RECEIVED | \
+                                         MAP_RADIO_M2_SENT | MAP_RADIO_TEARDOWN_SENT)
 
 #define set_radio_state_on(radio_state) (set_state_bit(radio_state,MAP_RADIO_ON))
 
 #define set_radio_state_configured(radio_state) {\
                                                   set_state_bit(radio_state,MAP_RADIO_CONFIGURED);\
                                                 }
-#define set_radio_state_M1_sent(radio_state) { \
-                                                reset_state_bit(radio_state, MUTUALLY_EXCLUSIVE_RADIO_STATES);\
-                                                set_state_bit(radio_state,MAP_RADIO_M1_SENT); \
-                                             }
 
 #define set_radio_state_M1_receive(radio_state) { \
                                                    reset_state_bit(radio_state, MUTUALLY_EXCLUSIVE_RADIO_STATES);\
@@ -98,6 +96,10 @@ static inline int is_state_bit_set(uint16_t state, uint16_t bit)
 
 #define set_radio_state_M2_sent(radio_state) { \
                                                 set_state_bit(radio_state,MAP_RADIO_M2_SENT); \
+                                             }
+
+#define set_radio_state_teardown_sent(radio_state) { \
+                                                set_state_bit(radio_state,MAP_RADIO_TEARDOWN_SENT); \
                                              }
 
 #define set_radio_state_policy_config_ack_received(radio_state) \
@@ -140,9 +142,9 @@ static inline int is_state_bit_set(uint16_t state, uint16_t bit)
 #define is_radio_on(radio_state) (is_state_bit_set(radio_state,MAP_RADIO_ON))
 #define is_radio_freq_supported(radio_state) (is_state_bit_set(radio_state,MAP_RADIO_FREQUENCY_SUPPORTED))
 #define is_radio_configured(radio_state) (is_state_bit_set(radio_state,MAP_RADIO_CONFIGURED))
-#define is_radio_M1_sent(radio_state) (is_state_bit_set(radio_state,MAP_RADIO_M1_SENT))
 #define is_radio_M1_received(radio_state) (is_state_bit_set(radio_state,MAP_RADIO_M1_RECEIVED))
 #define is_radio_M2_sent(radio_state) (is_state_bit_set(radio_state,MAP_RADIO_M2_SENT))
+#define is_radio_teardown_sent(radio_state) (is_state_bit_set(radio_state,MAP_RADIO_TEARDOWN_SENT))
 #define is_unassoc_measurement_inprogress(radio_state) (is_state_bit_set(radio_state,MAP_RADIO_UNASSOC_MEASUREMENT_IN_PROGRESS))
 
 #define is_unassoc_measurement_supported(radio_state) (is_ib_unassoc_measurement_supported(radio_state) || is_oob_unassoc_measurement_supported(radio_state))
@@ -198,20 +200,29 @@ bool map_is_5g_low_op_class(uint8_t op_class);
 /* Check if operating class is 5G high band */
 bool map_is_5g_high_op_class(uint8_t op_class);
 
+/* Check if operating class is 80 + 80 */
+bool map_is_80p80_op_class(uint8_t op_class);
+
+/* Check if op_class is 6G 320MHz */
+bool map_is_6G_320MHz_op_class(uint8_t op_class);
+
 /* Check if channel is in operating class */
-bool map_is_channel_in_op_class(uint8_t op_class, uint8_t channel);
+bool map_is_channel_in_op_class(uint8_t op_class, uint8_t ctl_or_center_channel);
 
 /* Get center channel from ctl_channel for operating classes that use center channels */
 int map_get_center_channel(uint8_t op_class, uint8_t ctl_channel, uint8_t *center_channel);
 
-/* Get first ctl channel from center_channel for op_class that uses center channels */
-int map_get_first_ctl_channel(uint8_t op_class, uint8_t center_channel, uint8_t *ctl_channel);
+/* Get center channel from ctl_channel for 6G 320MHz operating class */
+int map_get_center_channel_6G_320MHz(uint8_t op_class, bool upper, uint8_t ctl_channel, uint8_t *center_channel);
 
 /* Get extension channel type */
 int map_get_ext_channel_type(uint8_t op_class);
 
-/* Get 20MHz subband range (only works for 80 and 160MHz) */
-int map_get_subband_channel_range(uint8_t op_class, uint8_t channel, uint8_t *from, uint8_t *to);
+/* Get 20MHz subband range */
+int map_get_subband_channel_range(uint8_t op_class, uint8_t ctl_channel, uint8_t *from, uint8_t *to);
+
+/* Get 20MHz subband range for 6G 320MHz operating class */
+int map_get_subband_channel_range_6G_320MHz(uint8_t op_class, bool upper, uint8_t ctl_channel, uint8_t *from, uint8_t *to);
 
 /* Get bandwidth from operating class */
 int map_get_bw_from_op_class(uint8_t op_class, uint16_t *bw);

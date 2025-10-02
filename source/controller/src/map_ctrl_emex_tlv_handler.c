@@ -29,8 +29,216 @@
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
 /*#######################################################################
+#                       GLOBALS                                         #
+########################################################################*/
+static map_emex_common_feature_list_t g_common_feature_list;
+
+/*#######################################################################
 #                       LOCAL FUNCTIONS                                 #
 ########################################################################*/
+map_emex_common_feature_list_t *controller_get_emex_common_feature_list(void)
+{
+    return &g_common_feature_list;
+}
+
+static int8_t map_emex_calculate_common_feature_list(void)
+{
+    map_ale_info_t *ale_info;
+    uint16_t common_feature_count = 0;
+    uint16_t i, j;
+
+    /* Temporary array to manipulate */
+    map_emex_supported_feature_t common_feature_list[MAX_EMEX_FEATURE_COUNT] = {{0}};
+
+    /* Clear previous common feature list */
+    controller_get_emex_common_feature_list()->feature_count = 0;
+    SFREE(controller_get_emex_common_feature_list()->feature_list);
+
+    map_dm_foreach_agent_ale(ale_info) {
+        /* Do not calculate third party agents */
+#ifndef UNIT_TEST
+        if (!ale_info->easymesh_plus) {
+            continue;
+        }
+#endif
+        if (ale_info->emex.feature_profile.feature_count > 0) {
+
+            /* If common feature list is not calculated before, pick first ale's list as common feature list. */
+            if (common_feature_count == 0) {
+                for (i = 0; i < ale_info->emex.feature_profile.feature_count; i++) {
+                    common_feature_list[i].id = ale_info->emex.feature_profile.feature_list[i].id;
+                    common_feature_list[i].version = ale_info->emex.feature_profile.feature_list[i].version;
+                }
+                common_feature_count = ale_info->emex.feature_profile.feature_count;
+                continue;
+            }
+
+            /* Check common features that is not exist in incoming ALE's feature list. Remove from common list if it is not exist. */
+            for (i = 0; i < common_feature_count; i++) {
+                bool found = false;
+
+                /* Search for feature existency */
+                for (j = 0; j < ale_info->emex.feature_profile.feature_count; j++) {
+                        if (common_feature_list[i].id == ale_info->emex.feature_profile.feature_list[j].id) {
+                            if (common_feature_list[i].version > ale_info->emex.feature_profile.feature_list[j].version) {
+                                /* ALE has an older version of this feature. Use older version for feature list. */
+                                common_feature_list[i].version = ale_info->emex.feature_profile.feature_list[j].version;
+                            }
+                            found = true;
+                            break;
+                        }
+                }
+
+                /* Remove if it is not exist in upcoming ale */
+                if (found == false) {
+                    /* Shift all elements and reduce feature list size */
+                    for (j=i; j<common_feature_count; j++) {
+                        common_feature_list[j].id = common_feature_list[j+1].id;
+                        common_feature_list[j].version = common_feature_list[j+1].version;
+                    }
+                    common_feature_list[common_feature_count - 1].id = 0;
+                    common_feature_list[common_feature_count - 1].version = 0;
+                    common_feature_count--;
+                    i--;
+                }
+            }
+        }
+    }
+
+    controller_get_emex_common_feature_list()->feature_count = common_feature_count;
+    controller_get_emex_common_feature_list()->feature_list = calloc(1,
+                                common_feature_count * sizeof(map_emex_supported_feature_t));
+    if (controller_get_emex_common_feature_list()->feature_list == NULL) {
+        log_ctrl_e("Cannot allocate memory!");
+        return 0;
+    }
+
+    for (i = 0; i < common_feature_count; i++) {
+        controller_get_emex_common_feature_list()->feature_list[i].id = common_feature_list[i].id;
+        controller_get_emex_common_feature_list()->feature_list[i].version = common_feature_list[i].version;
+    }
+
+    return 1;
+}
+
+static int8_t parse_emex_feature_profile(struct vendorSpecificTLV* vendor_tlv, map_ale_info_t *ale, bool *changed)
+{
+    int i;
+    int8_t ret = 0;
+
+    do {
+        /* TLV len: emex_tlv_id(2) + agent_version(4) + feature_count(2) */
+        unsigned short min_tlv_len = 2 + 4 + 2;
+        if (vendor_tlv->m_nr < min_tlv_len) {
+            log_ctrl_e("Minimal TLV size check failed!");
+            break;
+        }
+        if (ale == NULL) {
+            log_ctrl_e("ale is not exist");
+            break;
+        }
+
+        /* Iterate 2-byte AirTies EM+ TLV ID to get payload data. */
+        uint8_t *data = vendor_tlv->m + sizeof(uint16_t);
+        uint8_t *buf = data;
+        map_emex_feature_profile_t *fp = &ale->emex.feature_profile;
+        uint16_t feature_count;
+
+        _E4B(&buf, &fp->agent_version);
+        _E2B(&buf, &feature_count);
+
+        /* Compare incoming variable payload size and calculated one. */
+        if (vendor_tlv->m_nr != min_tlv_len +
+            feature_count * sizeof(map_emex_supported_feature_t)) {
+            log_ctrl_e("Size mismatch on payload!");
+            break;
+        }
+
+        /* Feature indication will show that we have extensions on board. */
+        ale->emex.enabled = true;
+
+        /* Allocate feature list if feature count has changed. */
+        if (feature_count != fp->feature_count) {
+            *changed = true;
+            SFREE(fp->feature_list);
+            fp->feature_count = feature_count;
+            /* Check incoming feature size and break if 0. */
+            if (feature_count == 0) {
+                log_ctrl_w("No incoming feature list.");
+                /* EM+ spec notation: k >= 0 */
+                ret = 1;
+                break;
+            }
+            fp->feature_list = calloc(feature_count,
+                sizeof(map_emex_supported_feature_t));
+            if (fp->feature_list == NULL) {
+                log_ctrl_e("Cannot allocate memory!");
+                break;
+            }
+        }
+
+        /* Store incoming agent feature id and version. */
+        for (i = 0; i < feature_count; i++) {
+            _E2B(&buf, &fp->feature_list[i].id);
+            _E2B(&buf, &fp->feature_list[i].version);
+        }
+
+        ret = 1;
+    } while (0);
+
+    return ret;
+}
+
+static int8_t parse_emex_device_info(struct vendorSpecificTLV* vendor_tlv, map_ale_info_t *ale)
+{
+    int8_t ret = 0;
+
+    do {
+        /* TLV len: emex_tlv_id(2) + boot_id(4) + clientid_len(1) + clientsec_len(1) + product(1) + role(1) */
+        unsigned short min_tlv_len = 2 + 4 + 1 + 1 + 1 + 1;
+        if (vendor_tlv->m_nr < min_tlv_len) {
+            log_ctrl_e("Minimal TLV size check failed!");
+            break;
+        }
+        if (ale == NULL) {
+            log_ctrl_e("ale is not exist");
+            break;
+        }
+
+        /* Iterate 2-byte AirTies EM+ TLV ID to get payload data. */
+        uint8_t *data = vendor_tlv->m + sizeof(uint16_t);
+        uint8_t *buf = data;
+        map_emex_device_info_t *di = &ale->emex.device_info;
+
+        _E4B(&buf, &di->boot_id);
+        _E1B(&buf, &di->client_id_len);
+
+        /* Check buffer over flow before fetching client id:
+         * Diff between iterated (buf) and base address of the data + client id len
+         */
+        if (vendor_tlv->m_nr <= (buf - data) + di->client_id_len) {
+            log_ctrl_e("Possible buffer overflow before getting client ID!");
+            break;
+        }
+        _EnB(&buf, di->client_id, di->client_id_len);
+        _E1B(&buf, &di->client_secret_len);
+
+        /* Check exact buffer size after gathering all variable length elements */
+        if (vendor_tlv->m_nr != min_tlv_len + di->client_id_len + di->client_secret_len) {
+            log_ctrl_e("Size mismatch on payload!");
+            break;
+        }
+        _EnB(&buf, di->client_secret, di->client_secret_len);
+        _E1B(&buf, &di->product_class);
+        _E1B(&buf, &di->device_role);
+        di->received = true;
+
+        ret = 1;
+    } while (0);
+
+    return ret;
+}
+
 static int8_t parse_emex_device_metrics(struct vendorSpecificTLV* vendor_tlv, map_ale_info_t *ale)
 {
     int i;
@@ -49,8 +257,6 @@ static int8_t parse_emex_device_metrics(struct vendorSpecificTLV* vendor_tlv, ma
             log_ctrl_e("ale is not exist");
             break;
         }
-
-        ale->emex.enabled = true;
 
         /* Iterate 2-byte AirTies EM+ TLV ID to get payload data. */
         uint8_t *data = vendor_tlv->m + sizeof(uint16_t);
@@ -131,8 +337,6 @@ static int parse_emex_eth_interfaces(i1905_vendor_specific_tlv_t *vendor_tlv, ma
         goto out;
     }
 
-    ale->emex.enabled = true;
-
     _E2B(&p, &tlv_id);
     _E1B(&p, &iface_nr);
 
@@ -212,8 +416,6 @@ static int parse_emex_eth_stats_v2(i1905_vendor_specific_tlv_t *vendor_tlv, map_
     if ((end - p) < (/* tlv_id */ 2 + /* supp_stats_mask */ 2 + /* iface_nr */ 1)) {
         goto out;
     }
-
-    ale->emex.enabled = true;
 
     _E2B(&p, &tlv_id);
     _E2B(&p, &list->supported_stats_mask);
@@ -320,8 +522,6 @@ static int parse_emex_eth_neighbor_devices(i1905_vendor_specific_tlv_t *vendor_t
         goto out;
     }
 
-    ale->emex.enabled = true;
-
     _E2B(&p, &tlv_id);
     _E1B(&p, &iface_nr);
 
@@ -414,6 +614,7 @@ bool map_emex_is_valid_tlv(i1905_vendor_specific_tlv_t* vendor_tlv)
 int8_t map_emex_parse_tlv(map_ale_info_t *ale, i1905_vendor_specific_tlv_t* vendor_tlv)
 {
     int8_t ret = 0;
+    bool feature_changed = false;
 
     if (!ale) {
         return ret;
@@ -427,9 +628,28 @@ int8_t map_emex_parse_tlv(map_ale_info_t *ale, i1905_vendor_specific_tlv_t* vend
 
     /* Convert incoming 2-byte AirTies TLV id into short integer for ease of comparison. */
     uint16_t emex_tlv_id = (vendor_tlv->m[0] << 8) | vendor_tlv->m[1];
-    log_ctrl_d("Received AirTies EM+ TLV (%d)", emex_tlv_id);
+    log_ctrl_t("Received AirTies EM+ TLV (%d)", emex_tlv_id);
     switch (emex_tlv_id)
     {
+        case EMEX_TLV_MESSAGE_TYPE:
+        {
+            /* Currently not handled */
+            break;
+        }
+        case EMEX_TLV_FEATURE_PROFILE:
+        {
+            ret = parse_emex_feature_profile(vendor_tlv, ale, &feature_changed);
+
+            if (feature_changed) {
+                map_emex_calculate_common_feature_list();
+            }
+            break;
+        }
+        case EMEX_TLV_DEVICE_INFO:
+        {
+            ret = parse_emex_device_info(vendor_tlv, ale);
+            break;
+        }
         case EMEX_TLV_DEVICE_METRICS:
         {
             ret = parse_emex_device_metrics(vendor_tlv, ale);
@@ -465,30 +685,32 @@ int8_t map_emex_parse_tlv(map_ale_info_t *ale, i1905_vendor_specific_tlv_t* vend
     return ret;
 }
 
-int8_t map_emex_get_emex_tlv(UNUSED map_ale_info_t *ale, uint16_t emex_tlv_type,
-                             i1905_vendor_specific_tlv_t *vendor_specific_tlv)
+bool map_emex_agent_is_feature_supported(map_ale_info_t *ale, uint16_t id)
 {
-    uint8_t *payload = NULL;
-    uint16_t payload_len = 0;
-    int8_t   ret = -1;
+    map_emex_supported_feature_t *f_list;
+    int i, f_count;
 
-    switch (emex_tlv_type)
-    {
-        default:
-            log_ctrl_e("Unsupported AirTies EM+ TLV type (%d)", emex_tlv_type);
-            break;
+    f_list = ale->emex.feature_profile.feature_list;
+    f_count = ale->emex.feature_profile.feature_count;
+    for (i = 0; i < f_count; i++) {
+        if (id == f_list[i].id)
+        return true;
     }
+    return false;
+}
 
-    if (!ret) {
-        vendor_specific_tlv->tlv_type = TLV_TYPE_VENDOR_SPECIFIC;
-        vendor_specific_tlv->vendorOUI[0] = AIRTIES_VENDOR_OUI_1;
-        vendor_specific_tlv->vendorOUI[1] = AIRTIES_VENDOR_OUI_2;
-        vendor_specific_tlv->vendorOUI[2] = AIRTIES_VENDOR_OUI_3;
-        vendor_specific_tlv->m_nr = payload_len;
-        vendor_specific_tlv->m = (uint8_t *)payload;
+bool map_emex_common_is_feature_supported(uint16_t id)
+{
+    map_emex_common_feature_list_t *cf_list;
+    int i, f_count;
+
+    cf_list = controller_get_emex_common_feature_list();
+    f_count = cf_list->feature_count;
+    for (i = 0; i < f_count; i++) {
+        if (id == cf_list->feature_list[i].id)
+        return true;
     }
-
-    return ret;
+    return false;
 }
 
 int map_emex_handle_cmdu_pre(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
@@ -541,4 +763,6 @@ int8_t map_emex_init(void)
 
 void map_emex_fini(void)
 {
+    SFREE(controller_get_emex_common_feature_list()->feature_list);
+    controller_get_emex_common_feature_list()->feature_count = 0;
 }

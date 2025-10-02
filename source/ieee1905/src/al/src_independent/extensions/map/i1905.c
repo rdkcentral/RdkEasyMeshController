@@ -44,9 +44,10 @@
 /*#######################################################################
 #                       PUBLIC FUNCTIONS                                #
 ########################################################################*/
-int i1905_init(uint8_t *al_mac, i1905_interface_cb_t interface_cb, i1905_cmdu_cb_t cmdu_cb)
+int i1905_init(uint8_t *al_mac, i1905_interface_cb_t interface_cb,
+               i1905_cmdu_cb_t cmdu_cb, i1905_key_info_cb_t key_info_cb)
 {
-    return start1905AL(al_mac, 0, NULL, interface_cb, cmdu_cb);
+    return start1905AL(al_mac, 0, NULL, interface_cb, cmdu_cb, key_info_cb);
 }
 
 void i1905_fini(void)
@@ -72,6 +73,25 @@ i1905_interface_info_t *i1905_get_interface_info(char *ifname)
 void i1905_free_interface_info(i1905_interface_info_t *info)
 {
     PLATFORM_FREE_1905_INTERFACE_INFO(info);
+}
+
+int i1905_get_interface_mac(char *if_name, mac_addr mac)
+{
+    return PLATFORM_OS_GET_1905_INTERFACE_MAC(if_name, mac);
+}
+
+void i1905_set_interface_type(char *if_name, uint16_t type)
+{
+    PLATFORM_OS_SET_1905_INTERFACE_TYPE(if_name, type);
+}
+
+void i1905_set_interface_80211_media_specific_info(char *if_name, mac_addr network_membership,
+                                                   uint8_t role, uint8_t ap_channel_band,
+                                                   uint8_t ap_channel_center_freq_1,
+                                                   uint8_t ap_channel_center_freq_2)
+{
+    PLATFORM_OS_SET_1905_INTERFACE_80211_MEDIA_SPECIFIC_INFO(if_name, network_membership, role, ap_channel_band,
+                                                             ap_channel_center_freq_1, ap_channel_center_freq_2);
 }
 
 i1905_bridge_t *i1905_get_list_of_bridges(uint8_t *nr)

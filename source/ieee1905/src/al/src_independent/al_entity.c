@@ -104,6 +104,7 @@
 
 #include "platform_interfaces.h"
 #include "platform_os.h"
+#include "platform_crypto.h"
 
 /*#######################################################################
 #                       DEFINES                                         #
@@ -196,6 +197,177 @@ static check_duplicates_t g_check_dup;
 /*#######################################################################
 #                       PRIVATE FUNCTIONS                               #
 ########################################################################*/
+static int decrypt_encrypted_payload_tlv(map_1905_sec_key_info_t *key_info, uint8_t *cmdu_header, uint8_t *tlv,
+                                         uint8_t *src_mac, uint8_t *dst_mac, uint8_t *out, uint16_t *out_len)
+{
+#define NUM_PARAMS          4
+#define CMDU_OCTETS_LEN     6
+
+    uint8_t *decrypted_payload         = NULL;
+    uint16_t decrypted_payload_len     = 0;
+    uint8_t *params[NUM_PARAMS]        = {0};
+    size_t   params_lens[NUM_PARAMS]   = {0};
+    map_encrypted_payload_tlv_t ep_tlv = {0};
+    uint8_t *p = tlv;
+
+    _E1B(&p, &ep_tlv.tlv_type);
+    p += 2; /* p now shows encr_tx_counter (skip tlv_length) ! */
+    _EnB(&p, ep_tlv.encr_tx_counter, ENCRYPTION_TX_COUNTER_LEN);
+    _EnB(&p, ep_tlv.src_al_mac, MAC_ADDR_LEN);
+    _EnB(&p, ep_tlv.dst_al_mac, MAC_ADDR_LEN);
+    _E2B(&p, &ep_tlv.siv_len); /* p now shows siv_output ! */
+
+    /* tx counter (from incoming frame) should be greater than the rx counter (which we increase for each decrypted packet) */
+    if (compare_counter_48(ep_tlv.encr_tx_counter, key_info->encr_rx_counter) != 1) {
+        log_i1905_d("possible replay attack, dropping packet");
+        return -1;
+    }
+
+    decrypted_payload_len = ep_tlv.siv_len - AES_BLOCK_SIZE;
+    decrypted_payload = calloc(1, decrypted_payload_len);
+    if (!decrypted_payload) {
+        log_i1905_e("failed to allocate buffer for decrypted payload");
+        return -1;
+    }
+
+    /* MAP R4 13.3.2 Decryption Requirements
+     * K = 1905 TK (256 bit) corresponding to the sender
+     * Z = value of the AES-SIV Encryption Output field.
+     * AD1 = The first six octets of the received 1905 CMDU.
+     * AD2 = The Encryption Transmission Counter value in the Encrypted Payload TLV.
+     * AD3 = Source 1905 AL MAC Address value in the Encrypted Payload TLV.
+     * AD4 = Destination 1905 AL MAC Address value in the Encrypted Payload TLV.
+     */
+    uint8_t cmdu_octets[CMDU_OCTETS_LEN]           = {0};
+
+    memcpy(cmdu_octets, cmdu_header, sizeof(cmdu_octets));
+    params[0] = cmdu_octets;
+    params[1] = ep_tlv.encr_tx_counter;
+    params[2] = src_mac;
+    params[3] = dst_mac;
+    params_lens[0] = CMDU_OCTETS_LEN;
+    params_lens[1] = ENCRYPTION_TX_COUNTER_LEN;
+    params_lens[2] = ETHER_ADDR_LEN;
+    params_lens[3] = ETHER_ADDR_LEN;
+
+    if (PLATFORM_AES_SIV_DECRYPT(key_info->ptk, key_info->ptk_len, p, ep_tlv.siv_len, NUM_PARAMS, params, params_lens, decrypted_payload) != 1) {
+        log_i1905_e("AES-SIV decryption failed during 1905 decryption");
+        free(decrypted_payload);
+        return -1;
+    }
+
+    memcpy(out, decrypted_payload, decrypted_payload_len);
+    *out_len = decrypted_payload_len;
+
+    free(decrypted_payload);
+    return 0;
+}
+
+static int calculate_mic(uint8_t *stream, uint16_t stream_len,
+                         uint8_t *key, size_t key_len,
+                         map_mic_tlv_t *mic_tlv, i1905_cmdu_t *cmdu)
+{
+    #define CMDU_OCTETS_LEN     6
+    #define MIC_TLV_OCTETS_LEN 13
+
+    uint8_t  mic_value[SHA256_MAC_LEN]    = {0};
+    uint8_t *params[3]                    = {0};
+    uint32_t params_lens[3]               = {0};
+    uint8_t  cmdu_octets[CMDU_OCTETS_LEN] = {0};
+    uint8_t *p = cmdu_octets;
+    uint8_t  reserved = 0;
+
+    _I1B(&cmdu->message_version, &p);
+    _I1B(&reserved, &p);
+    _I2B(&cmdu->message_type, &p);
+    _I2B(&cmdu->message_id, &p);
+
+    uint8_t mic_tlv_octets[MIC_TLV_OCTETS_LEN] = {0};
+
+    /* skip tlv_type while copying */
+    memcpy(mic_tlv_octets, (&mic_tlv->tlv_type) + 1, MIC_TLV_OCTETS_LEN);
+
+    params[0] = cmdu_octets;
+    params[1] = mic_tlv_octets;
+    params[2] = stream;
+    params_lens[0] = CMDU_OCTETS_LEN;
+    params_lens[1] = MIC_TLV_OCTETS_LEN;
+    params_lens[2] = stream_len;
+
+    /* calculate MIC (using HMAC-SHA256) */
+    if (PLATFORM_HMAC_SHA256(key, key_len, 3, params, params_lens, mic_value) == 0) {
+        log_i1905_e("HMAC-SHA256 failed during MIC calculation!");
+        return -1;
+    }
+
+    mic_tlv->mic_len = SHA256_MAC_LEN;
+    memcpy(mic_tlv->mic, mic_value, SHA256_MAC_LEN);
+
+    return 0;
+}
+
+static bool mic_check(i1905_cmdu_t *cmdu,  uint8_t *stream, uint16_t stream_len, map_1905_sec_key_info_t *key_info)
+{
+    map_mic_tlv_t *mic_tlv = NULL;
+    map_mic_tlv_t calculated = {0};
+
+    uint8_t *tlvs_start  = stream + CMDU_HDR_SIZE;
+    uint16_t buf_len = 0;
+    uint8_t *buf = NULL;
+
+    mic_tlv = (map_mic_tlv_t *) i1905_get_tlv_from_cmdu(TLV_TYPE_MIC, cmdu);
+    if (mic_tlv == NULL) {
+        return false;
+    }
+
+    calculated.mic = calloc(1, SHA256_MAC_LEN);
+    if (!calculated.mic) {
+        free(mic_tlv->mic);
+        return false;
+    }
+
+    if (mic_tlv->integrity_tx_counter <= key_info->integrity_rx_counter) {
+        log_i1905_e("possible replay attack, dropping packet");
+        free(mic_tlv->mic);
+        free(calculated.mic);
+        return false;
+    }
+
+    /** keep the size of EOM TLV as it is included in MIC calculation and
+     *  copy rest of the TLVs upto MIC TLV into a buffer for MIC calculation
+     */
+    buf_len = stream_len - (CMDU_HDR_SIZE + SIZEOF_MIC_TLV + SHA256_MAC_LEN);
+
+    buf = calloc(1, buf_len);
+    if (!buf) {
+        free(mic_tlv->mic);
+        free(calculated.mic);
+        return false;
+    }
+    memcpy(buf, tlvs_start, buf_len - TLV_HDR_SIZE); /* leave last 3 bytes as zero for EOM TLV */
+
+    if (calculate_mic(buf, buf_len, key_info->gtk, key_info->gtk_len, &calculated, cmdu) != 0) {
+        log_i1905_e("failed to calculate MIC");
+        free(buf);
+        free(mic_tlv->mic);
+        free(calculated.mic);
+        return false;
+    }
+
+    if (memcmp(mic_tlv->mic, calculated.mic, SHA256_MAC_LEN)) {
+        log_i1905_e("MIC mismatch");
+        free(buf);
+        free(mic_tlv->mic);
+        free(calculated.mic);
+        return false;
+    }
+
+    free(buf);
+    free(mic_tlv->mic);
+    free(calculated.mic);
+    return true;
+}
+
 /* CMDUs can be received in multiple fragments/packets when they are too big to
 *  fit in a single "network transmission unit" (which is never bigger than
 *  MAX_NETWORK_SEGMENT_SIZE).
@@ -235,29 +407,6 @@ static check_duplicates_t g_check_dup;
 *    - 'len' is the length of this 'packet_buffer' in bytes
 */
 
-/* FRV: Notes about fragmentation
-1) The original 1905 stack only keeps the payload (called stream) and does not
-   use the length in the parser.  Also it did expect an end of message TLV in
-   every fragment.
-
-   EM R2 specifically states that there should only be an end of message TLV in
-   the last fragment.
-
-   To handle this:
-     - the length is stored also and checked by the parser.
-     - end of message cmdu in stream that does not have the last fragment bit set
-       is ignored
-
-2)  FUTURE: In EMR1/2, fragmentation is on a TLV boundary.  In EMR3, this restriction
-    is removed.
-
-    Currently, all packets are stored in the streams array. To handle EM3 case,
-    the fragments must first be concatenated and then handled to the parser
-    as one big packet.
-
-    In this case unwanted end of message TLV's must be removed.
-*/
-
 static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t len)
 {
     struct ether_header *eh       = (struct ether_header*) packet_buffer;
@@ -270,6 +419,14 @@ static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t
 
     uint8_t              i, j;
     uint8_t             *p = &packet_buffer[sizeof(struct ether_header)]; /* After ethernet header */
+
+    map_1905_sec_key_info_t key_info;
+    
+    memset(&key_info, 0, sizeof(key_info));
+
+    if (PLATFORM_OS_GET_KEY_INFO(src_addr, &key_info)) {
+        log_i1905_t("Key Info for ale (%s) does not exist...", mac_string(src_addr));
+    }
 
     len -= sizeof(struct ether_header);
     log_i1905_t("Parse Stream Length From Reassembly:%d", len);
@@ -427,6 +584,42 @@ static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t
             }
         }
 
+        /* --- 1905 decrypt start --- */
+        do {
+            /* only decrypt unfragmented frames for phase-1 as per our talk with Koen => (fragment id = 0 and is last fragment) */
+            if (fragment_id == 0 && last_fragment_indicator == 1) {
+                uint8_t decrypted_tlvs[MAX_TLV_SIZE] = {0};
+                uint16_t decrypted_tlvs_len = 0;
+
+                uint8_t *cmdu_header = g_reassemble.mids_in_flight[i].streams[0];
+                uint8_t *tlv = cmdu_header + CMDU_HDR_SIZE;
+
+                /* only try to decrypt messages iff;
+                 * 1. it contains an Encrypted Payload TLV
+                 * 2. we have a valid key for that ale
+                 */
+                if (*tlv == TLV_TYPE_ENCRYPTED_PAYLOAD) {
+                    if (key_info.ptk_len > 0) {
+                        if (decrypt_encrypted_payload_tlv(&key_info, cmdu_header, tlv, src_addr, dst_addr, decrypted_tlvs, &decrypted_tlvs_len) < 0) {
+                            log_i1905_e("Failed to decrypt message");
+                            return NULL;
+                        }
+                        increment_counter_48(key_info.encr_rx_counter);
+
+                        /* replace the encrypted payload with the decrypted payload:
+                         * 1. clean up the old tlvs buffer (excluding the cmdu header)
+                         * 2. copy the decrypted payload into the buffer
+                         * 3. update the lengths array
+                         */
+                        memset(tlv, 0, g_reassemble.mids_in_flight[i].lengths[0] - CMDU_HDR_SIZE);
+                        memcpy(tlv, decrypted_tlvs, decrypted_tlvs_len);
+                        g_reassemble.mids_in_flight[i].lengths[0] = decrypted_tlvs_len + CMDU_HDR_SIZE + TLV_HDR_SIZE; /* 3 bytes for EOM TLV */
+                    }
+                }
+            }
+        } while(0);
+        /* --- 1905 decrypt end --- */
+
         c = parse_1905_CMDU_from_packets(g_reassemble.mids_in_flight[i].streams, g_reassemble.mids_in_flight[i].lengths);
 
         if (NULL == c) {
@@ -435,6 +628,24 @@ static i1905_cmdu_t *reassemble_fragmented_cmdu(uint8_t *packet_buffer, uint16_t
             log_i1905_t("All fragments belonging to this CMDU have already been received and the CMDU structure is ready");
             maccpy(c->cmdu_stream.src_mac_addr, src_addr);
         }
+
+        /* MIC calculation and check start*/
+        do {
+            if (c && fragment_id == 0 && last_fragment_indicator == 1) {
+                bool is_multicast = is_multicast_ether_addr(dst_addr);
+
+                if (is_multicast && key_info.gtk_len > 0) {
+                    if (!mic_check(c, g_reassemble.mids_in_flight[i].streams[0], g_reassemble.mids_in_flight[i].lengths[0], &key_info)) {
+                        log_i1905_e("MIC check failed");
+                        free(c);
+                        c = NULL;
+                        break;
+                    }
+                    increment_counter_48(key_info.integrity_rx_counter);
+                }
+            }
+        } while (0);
+        /* MIC calculation and check end */
 
         for (j = 0; j <= g_reassemble.mids_in_flight[i].last_fragment; j++) {
             free(g_reassemble.mids_in_flight[i].streams[j]);
@@ -791,7 +1002,7 @@ static void packet_cb(char *if_name, uint8_t *packet, uint16_t packet_len)
 ########################################################################*/
 uint8_t start1905AL(mac_addr al_mac_address, uint8_t map_whole_network_flag,
                     UNUSED char *registrar_interface, i1905_interface_cb_t interface_cb,
-                    al1905_cmdu_cb_t cmdu_cb)
+                    al1905_cmdu_cb_t cmdu_cb, i1905_key_info_cb_t key_info_cb)
 {
     /* Initialize platform-specific code */
     if (0 == PLATFORM_INIT()) {
@@ -814,7 +1025,7 @@ uint8_t start1905AL(mac_addr al_mac_address, uint8_t map_whole_network_flag,
     g_cmdu_cb = cmdu_cb;
 
     /* Must be after DMinit as call below adds interfaces */
-    if (0 == PLATFORM_OS_INIT(interface_cb, packet_cb)) {
+    if (0 == PLATFORM_OS_INIT(interface_cb, packet_cb, key_info_cb)) {
         log_i1905_e("Failed to initialize platform os");
         return AL_ERROR_OS;
     }

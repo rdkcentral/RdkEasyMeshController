@@ -50,6 +50,7 @@
 
 #define STRUCT_PACKED __attribute__ ((packed))
 
+#define foreach_bool(b) bool b; int __##b; for (__##b = 0, b = false; __##b < 2; __##b++,  b = __##b)
 
 /* BIT MASKs */
 #define BIT_MASK_7 0x80
@@ -189,6 +190,10 @@ void map_vlog_ext(int module, int level, bool check_level, const char *format, v
 #define log_test_d(...)  map_log(MAP_TEST,       LOG_DEBUG,   "[test]"  _LOG_TAG " " __VA_ARGS__);
 #define log_test_t(...)  map_log(MAP_TEST,       LOG_TRACE,   "[test]"  _LOG_TAG " " __VA_ARGS__);
 
+#define log_ctrl_n_cond(cond, ...) \
+    if ((cond)) {                  \
+        log_ctrl_n(__VA_ARGS__)    \
+    }
 
 /* Ebtables */
 int map_set_ebtables_rules(mac_addr al_mac);

@@ -80,6 +80,7 @@ typedef struct profile_ssid_map_s {
     int                 profile_idx;
     map_profile_type_t  type;
     char                label[65];
+    uint16_t            bss_freq_bands;
     uint8_t             bss_state;
 } profile_ssid_map_t;
 
@@ -115,6 +116,7 @@ static map_profile_cfg_t g_default_profiles[] = {
         .gateway                    = true,
         .extender                   = true,
         .hide                       = false,
+        .mld_id                     = 0,
         .vlan_id                    = -1
     },
     {
@@ -131,6 +133,7 @@ static map_profile_cfg_t g_default_profiles[] = {
         .gateway                    = true,
         .extender                   = true,
         .hide                       = false,
+        .mld_id                     = 1,
         .vlan_id                    = -1
     },
     {
@@ -147,39 +150,42 @@ static map_profile_cfg_t g_default_profiles[] = {
         .gateway                    = true,
         .extender                   = true,
         .hide                       = true,
+        .mld_id                     = 2,
         .vlan_id                    = -1
     }
 };
 
-static profile_ssid_map_t g_dynamic_mapping[8] = { 0 };
-
-static profile_ssid_map_t g_static_mapping[8] = {
+static profile_ssid_map_t g_default_mappings[] = {
     {
         .profile_idx    = 1,
         .ssid_idx       = 1,
         .type           = MAP_PROFILE_TYPE_HOME,
-        .label          = "Home",
+        .label          = "Home2G",
+        .bss_freq_bands = MAP_FREQ_BAND_2G,
         .bss_state      = MAP_FRONTHAUL_BSS
     },
     {
         .profile_idx    = 2,
         .ssid_idx       = 2,
         .type           = MAP_PROFILE_TYPE_HOME,
-        .label          = "Home",
+        .label          = "Home5G",
+        .bss_freq_bands = MAP_FREQ_BAND_5G,
         .bss_state      = MAP_FRONTHAUL_BSS
     },
     {
         .profile_idx    = 3,
         .ssid_idx       = 3,
         .type           = MAP_PROFILE_TYPE_GUEST,
-        .label          = "Guest",
+        .label          = "Guest2G",
+        .bss_freq_bands = MAP_FREQ_BAND_2G,
         .bss_state      = MAP_FRONTHAUL_BSS
     },
     {
         .profile_idx    = 4,
         .ssid_idx       = 4,
         .type           = MAP_PROFILE_TYPE_GUEST,
-        .label          = "Guest",
+        .label          = "Guest5G",
+        .bss_freq_bands = MAP_FREQ_BAND_5G,
         .bss_state      = MAP_FRONTHAUL_BSS
     },
     {
@@ -187,12 +193,13 @@ static profile_ssid_map_t g_static_mapping[8] = {
         .ssid_idx       = 6,
         .type           = MAP_PROFILE_TYPE_BACKHAUL,
         .label          = "Backhaul",
+        .bss_freq_bands = MAP_FREQ_BAND_5G,
         .bss_state      = MAP_BACKHAUL_BSS
     }
 };
 
+/* Set to false if Wi-Fi on host is not relevant */
 static bool g_sync_with_wifi      = true;
-static bool g_use_dynamic_mapping = true;
 
 /*#######################################################################
 #                       DATA FUNCTIONS                                  #
@@ -305,22 +312,6 @@ static int setpsm_ssid(const char *name, int index, const char *value)
     return setpsm_val(rname, value);
 }
 
-static int rmpsm_ssid(const char *name, int index)
-{
-    int  rc;
-    char rname[128];
-
-    snprintf(rname, sizeof(rname), MAP_PSM_SSID_PREFIX "%s", index, name);
-
-    rc = PSM_Del_Record(bus_handle, g_Subsystem, name);
-    if (rc != CCSP_SUCCESS) {
-        log_lib_e("Remove record failed");
-        return -1;
-    }
-
-    return 0;
-}
-
 static int getpsm_ssid_str(const char *name, int index, char *buf, size_t len)
 {
     char rname[128];
@@ -417,7 +408,7 @@ static int setparam_val(const char *name, enum dataType_e type, const char *valu
     rc = CcspBaseIf_setParameterValues(bus_handle, comps[0]->componentName,
         comps[0]->dbusPath, 0, 0, &val, 1, TRUE, &fault);
     if (rc != CCSP_SUCCESS) {
-        log_lib_e("Set parameter values failed");
+        log_lib_e("Set parameter values failed: '%s'", fault ? fault : "Unknown");
         goto bail;
     }
     retval = 0;
@@ -490,9 +481,9 @@ static uint16_t bandwidth_from_string(const char *s)
 
 static int convert_log_level(const char *level_str)
 {
-#define NUM_LEVEL 8
-    char *strs[NUM_LEVEL]   = {"emerge",   "alert",  "crit",   "error", "warn",      "notice",   "info",   "debug"};
-    int   levels[NUM_LEVEL] = {LOG_EMERG, LOG_ALERT, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_NOTICE, LOG_INFO, LOG_DEBUG};
+#define NUM_LEVEL 9
+    char *strs[NUM_LEVEL]   = {"emerge",   "alert",  "crit",   "error", "warn",      "notice",   "info",   "debug",   "trace"};
+    int   levels[NUM_LEVEL] = {LOG_EMERG, LOG_ALERT, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_NOTICE, LOG_INFO, LOG_DEBUG, LOG_TRACE};
     int   i;
 
     for (i = 0; i<NUM_LEVEL; i++) {
@@ -545,6 +536,7 @@ static void dump_profile(map_profile_cfg_t *profile)
     log_lib_i("|    Extender            : %d",   profile->extender);
     log_lib_i("|    Hide                : %d",   profile->hide);
     log_lib_i("|    VLAN ID             : %d",   profile->vlan_id);
+    log_lib_i("|    MLD ID              : %d",   profile->mld_id);
     log_lib_i("----------------------------------------------");
 }
 
@@ -678,7 +670,7 @@ static int set_chan_list(map_channel_set_t *ch_set, char *list, uint8_t freq_ban
 }
 
 static void get_iface_security_mode(const char *supported_security_modes, uint16_t *auth_mode,
-                                    uint16_t *encryption_mode, UNUSED uint8_t profile_idx)
+                                    uint16_t *encryption_mode)
 {
     *auth_mode       = 0;
     *encryption_mode = 0;
@@ -693,6 +685,14 @@ static void get_iface_security_mode(const char *supported_security_modes, uint16
         *auth_mode |= IEEE80211_AUTH_MODE_SAE;
     } else if (strcmp(supported_security_modes,"wpa2-psk-wpa3-sae") == 0) {
         *auth_mode |= IEEE80211_AUTH_MODE_WPA2PSK | IEEE80211_AUTH_MODE_SAE;
+    } else if (strcmp(supported_security_modes,"wpa3-sae-24") == 0) {
+        *auth_mode |= IEEE80211_AUTH_MODE_SAE_24;
+    } else if (strcmp(supported_security_modes,"wpa3-sae-8-24") == 0) {
+        *auth_mode |= IEEE80211_AUTH_MODE_SAE | IEEE80211_AUTH_MODE_SAE_24;
+    } else if (strcmp(supported_security_modes,"wpa2-psk-wpa3-24") == 0) {
+        *auth_mode |= IEEE80211_AUTH_MODE_WPA2PSK | IEEE80211_AUTH_MODE_SAE_24;
+    } else if (strcmp(supported_security_modes,"wpa2-psk-wpa3-8-24") == 0) {
+        *auth_mode |= IEEE80211_AUTH_MODE_WPA2PSK | IEEE80211_AUTH_MODE_SAE | IEEE80211_AUTH_MODE_SAE_24;
     }
 
     if (*auth_mode == 0) {
@@ -713,6 +713,9 @@ static void get_iface_security_mode(const char *supported_security_modes, uint16
         (*auth_mode & IEEE80211_AUTH_MODE_SAE)) {
         *encryption_mode |= IEEE80211_ENCRYPTION_MODE_AES;
     }
+    if (*auth_mode & IEEE80211_AUTH_MODE_SAE_24) {
+        *encryption_mode |= IEEE80211_ENCRYPTION_MODE_GCMP256;
+    }
 }
 
 static char *get_sec_mode_str(uint16_t auth_mode, char *buf)
@@ -720,11 +723,23 @@ static char *get_sec_mode_str(uint16_t auth_mode, char *buf)
     if (auth_mode & IEEE80211_AUTH_MODE_OPEN) {
         strcpy(buf, "none");
     } else if ((auth_mode & IEEE80211_AUTH_MODE_WPA2PSK) &&
+               (auth_mode & IEEE80211_AUTH_MODE_SAE)     &&
+               (auth_mode & IEEE80211_AUTH_MODE_SAE_24)) {
+        strcpy(buf, "wpa2-psk-wpa3-8-24");
+    } else if ((auth_mode & IEEE80211_AUTH_MODE_WPA2PSK) &&
+               (auth_mode & IEEE80211_AUTH_MODE_SAE_24)) {
+        strcpy(buf, "wpa2-psk-wpa3-24");
+    } else if ((auth_mode & IEEE80211_AUTH_MODE_SAE)     &&
+               (auth_mode & IEEE80211_AUTH_MODE_SAE_24)) {
+        strcpy(buf, "wpa3-sae-8-24");
+    } else if ((auth_mode & IEEE80211_AUTH_MODE_WPA2PSK) &&
                (auth_mode & IEEE80211_AUTH_MODE_SAE)) {
         strcpy(buf, "wpa2-psk-wpa3-sae");
-    } else if ((auth_mode & IEEE80211_AUTH_MODE_WPAPSK) &&
+    } else if ((auth_mode & IEEE80211_AUTH_MODE_WPAPSK)  &&
                (auth_mode & IEEE80211_AUTH_MODE_WPA2PSK)) {
         strcpy(buf, "wpa-wpa2-psk");
+    } else if (auth_mode & IEEE80211_AUTH_MODE_SAE_24) {
+        strcpy(buf, "wpa3-sae-24");
     } else if (auth_mode & IEEE80211_AUTH_MODE_SAE) {
         strcpy(buf, "wpa3-sae");
     } else if (auth_mode & IEEE80211_AUTH_MODE_WPA2PSK) {
@@ -734,25 +749,25 @@ static char *get_sec_mode_str(uint16_t auth_mode, char *buf)
     return buf;
 }
 
-static void get_frequency_bands(char* frequency_bands, uint16_t* bss_freq_bands)
+static void get_frequency_bands(char* frequency_bands, uint16_t* freq_bands)
 {
     char *save_ptr;
     char *p;
 
-    *bss_freq_bands = 0;
+    *freq_bands = 0;
 
     p = strtok_r(frequency_bands, ", ", &save_ptr);
     while(p) {
         if        (!strcmp(p, "2") || !strcasecmp(p, "2G")) {
-            *bss_freq_bands |= MAP_M2_BSS_RADIO2G;
+            *freq_bands |= MAP_M2_BSS_RADIO2G;
         } else if (!strcmp(p, "5") || !strcasecmp(p, "5G")) {
-            *bss_freq_bands |= MAP_M2_BSS_RADIO5GL | MAP_M2_BSS_RADIO5GU;
+            *freq_bands |= MAP_M2_BSS_RADIO5GL | MAP_M2_BSS_RADIO5GU;
         } else if (!strcasecmp(p, "5L") || !strcasecmp(p, "5GL")) {
-            *bss_freq_bands |= MAP_M2_BSS_RADIO5GL;
+            *freq_bands |= MAP_M2_BSS_RADIO5GL;
         } else if (!strcasecmp(p, "5H") || !strcasecmp(p, "5GH") || !strcasecmp(p, "5U") || !strcasecmp(p, "5GU")) {
-            *bss_freq_bands |= MAP_M2_BSS_RADIO5GU;
+            *freq_bands |= MAP_M2_BSS_RADIO5GU;
         } else if (!strcmp(p, "6") || !strcasecmp(p, "6G")) {
-            *bss_freq_bands |= MAP_M2_BSS_RADIO6G;
+            *freq_bands |= MAP_M2_BSS_RADIO6G;
         }
         p = strtok_r(NULL, ", ", &save_ptr);
     }
@@ -814,11 +829,8 @@ static int get_mac_addresses(map_controller_cfg_t *cfg)
         return -1;
     }
 
-    mac[0] |= 1 << 1;
     maccpy(cfg->al_mac, mac);
-    ++mac[5];
-    // if (!mac[5]) ++mac[4];
-    // if (!mac[4]) ++mac[3];
+    mac[0] |= (1 << 1);
     maccpy(cfg->local_agent_al_mac, mac);
 
     return 0;
@@ -930,7 +942,7 @@ static int set_wifi_ssid_ssid(unsigned int ssid_idx, char *ssid)
     sprintf(path, "Device.WiFi.SSID.%d.SSID", ssid_idx);
     rc = setparam_val(path, ccsp_string, value);
     if (rc != 0) {
-        log_lib_e("Failed to get SSID");
+        log_lib_e("Failed to set SSID");
         return -1;
     }
 
@@ -1028,7 +1040,7 @@ static int get_wifi_security_mode(unsigned int ap_idx, char *mode)
     } else if (strcmp(value, "WPA-WPA2-Personal") == 0) {
         strcpy(mode, "wpa-wpa2-psk");
     } else {
-        log_lib_e("Unsopperted security mode: %s", value);
+        log_lib_e("Unsupported security mode: %s", value);
         return -1;
     }
 
@@ -1050,7 +1062,7 @@ static int set_wifi_security_mode(unsigned int ap_idx, char *mode)
     } else if (strcmp(mode, "wpa-wpa2-psk") == 0) {
         strcpy(value, "WPA-WPA2-Personal");
     } else {
-        log_lib_e("Unsopperted security mode: %s", value);
+        log_lib_e("Unsupported security mode: %s", value);
         return -1;
     }
     sprintf(path, "Device.WiFi.AccessPoint.%d.Security.ModeEnabled", ap_idx);
@@ -1066,12 +1078,17 @@ static int set_wifi_security_mode(unsigned int ap_idx, char *mode)
 static int set_wifi_apply_settings(unsigned int radio_idx)
 {
     char path[128] = {0};
-    char value[8] = {0};
     int rc;
 
+#if 0
+    char value[8] = {0};
     value[0] = '1';
     sprintf(path, "Device.WiFi.Radio.%u.X_RDK_ApplySettingSSID", radio_idx);
     rc = setparam_val(path, ccsp_int, value);
+#else
+    sprintf(path, "Device.WiFi.Radio.%u.X_RDK_ApplySetting", radio_idx);
+    rc = setparam_val(path, ccsp_boolean, "true");
+#endif
     if (rc != 0) {
         log_lib_e("Failed to set X_RDK_ApplySetting");
         return -1;
@@ -1083,9 +1100,59 @@ static int set_wifi_apply_settings(unsigned int radio_idx)
 /*#######################################################################
 #                       PROFILE SYNC                                    #
 ########################################################################*/
+static profile_ssid_map_t *mapping_get_by_pidx(int profile_idx)
+{
+    unsigned int          mapping_cnt;
+    profile_ssid_map_t   *mapping;
+    unsigned int          i;
+
+    mapping = g_default_mappings;
+    mapping_cnt = ARRAY_SIZE(g_default_mappings);
+
+    for (i = 0; i < mapping_cnt; i++) {
+        if (profile_idx == mapping[i].profile_idx) {
+            return &mapping[i];
+        }
+    }
+
+    return NULL;
+}
+
+static profile_ssid_map_t *mapping_get_by_profile(map_profile_cfg_t *profile)
+{
+    map_controller_cfg_t *cfg = &map_cfg_get()->controller_cfg;
+    profile_ssid_map_t   *mapping;
+    unsigned int          profile_cnt;
+    unsigned int          i, j;
+    bool                  skip;
+
+    profile_cnt = cfg->num_profiles;
+    for (i = 0; i < ARRAY_SIZE(g_default_mappings); i++) {
+        mapping = &g_default_mappings[i];
+        if (mapping->bss_freq_bands != profile->bss_freq_bands) {
+            continue;
+        }
+        skip = false;
+        for (j = 0; j < profile_cnt; j++) {
+            if (mapping->profile_idx == cfg->profiles[j].profile_idx) {
+                skip = true;
+                break;
+            }
+        }
+        if (skip) {
+            continue;
+        }
+
+        return mapping;
+    }
+
+    return NULL;
+}
+
 static int profile_load(map_profile_cfg_t *profile, uint8_t index)
 {
     int rc = -1;
+    int profile_idx;
     bool  fh, bh, enabled;
     char *type = NULL;
     char *freq_bands = NULL;
@@ -1100,6 +1167,12 @@ static int profile_load(map_profile_cfg_t *profile, uint8_t index)
     /* Fill in profiles */
     memset(profile, 0, sizeof(map_profile_cfg_t));
 
+    if (getpsm_ssid("Index", index, &val) == 0) {
+        profile_idx = atoi(val);
+        SFREE(val);
+    } else {
+        profile_idx = -1;
+    }
     if (getpsm_ssid("Type", index, &type) != 0) {
         log_lib_e("Get Type[%d] failed", index);
         goto bail;
@@ -1151,6 +1224,13 @@ static int profile_load(map_profile_cfg_t *profile, uint8_t index)
     }
     profile->vlan_id = atoi(val);
     SFREE(val);
+    if (getpsm_ssid("MLDID", index, &val) != 0) {
+        log_lib_n("Get NLDID[%d] failed", index);
+        profile->mld_id = -1;
+    } else {
+        profile->mld_id = atoi(val);
+    }
+    SFREE(val);
     if (getpsm_ssid("Hide", index, &val) != 0) {
         log_lib_e("Get Hide[%d] failed", index);
         return -1;
@@ -1159,14 +1239,14 @@ static int profile_load(map_profile_cfg_t *profile, uint8_t index)
     SFREE(val);
     rc = 0;
 
-    profile->profile_idx = index + 1;
+    profile->profile_idx = profile_idx > 0 ? profile_idx : index + 1;
     profile->enabled = enabled;
     profile->type = profile_type_from_string(type);
 
     get_frequency_bands(freq_bands, &profile->bss_freq_bands);
 
     get_iface_security_mode(security_mode, &profile->supported_auth_modes,
-        &profile->supported_encryption_types, index);
+        &profile->supported_encryption_types);
 
     profile->bss_state |= fh ? MAP_FRONTHAUL_BSS : 0;
     profile->bss_state |= bh ? MAP_BACKHAUL_BSS  : 0;
@@ -1190,6 +1270,10 @@ static int profile_save(map_profile_cfg_t *profile, uint8_t index)
         return -1;
     }
 
+    snprintf(buf, sizeof(buf), "%d", profile->profile_idx);
+    if (setpsm_ssid("Index", index, buf) != 0) {
+        log_lib_e("Set Index[%d] failed", index);
+    }
     strcpy(buf, profile_type_to_string(profile->type));
     if (setpsm_ssid("Type", index, buf) != 0) {
         log_lib_e("Set Type[%d] failed", index);
@@ -1229,6 +1313,10 @@ static int profile_save(map_profile_cfg_t *profile, uint8_t index)
     if (setpsm_ssid("VLANID", index, buf) != 0) {
         log_lib_e("Set VLANID[%d] failed", index);
     }
+    snprintf(buf, sizeof(buf), "%d", profile->mld_id);
+    if (setpsm_ssid("MLDID", index, buf) != 0) {
+        log_lib_e("Set MLDID[%d] failed", index);
+    }
     snprintf(buf, sizeof(buf), "%d", profile->hide);
     if (setpsm_ssid("Hide", index, buf) != 0) {
         log_lib_e("Set Hide[%d] failed", index);
@@ -1237,107 +1325,294 @@ static int profile_save(map_profile_cfg_t *profile, uint8_t index)
     return 0;
 }
 
-static int profile_remove(uint8_t index)
+static int profile_del(uint8_t index)
 {
-    if (rmpsm_ssid("Type", index) != 0) {
-        log_lib_e("Remove Type[%d] failed", index);
-    }
-    if (rmpsm_ssid("Enabled", index) != 0) {
-        log_lib_e("Remove Enabled[%d] failed", index);
-    }
-    if (rmpsm_ssid("Label", index) != 0) {
-        log_lib_e("Remove Label[%d] failed", index);
-    }
-    if (rmpsm_ssid("SSID", index) != 0) {
-        log_lib_e("Remove SSID[%d] failed", index);
-    }
-    if (rmpsm_ssid("FrequencyBands", index) != 0) {
-        log_lib_e("Remove FrequencyBands[%d] failed", index);
-    }
-    if (rmpsm_ssid("SecurityMode", index) != 0) {
-        log_lib_e("Remove SecurityMode[%d] failed", index);
-    }
-    if (rmpsm_ssid("Keypassphrase", index) != 0) {
-        log_lib_e("Remove Keypassphrase[%d] failed", index);
-    }
-    if (rmpsm_ssid("Fronthaul", index) != 0) {
-        log_lib_e("Remove Fronthaul[%d] failed", index);
-    }
-    if (rmpsm_ssid("Backhaul", index) != 0) {
-        log_lib_e("Remove Backhaul[%d] failed", index);
-    }
-    if (rmpsm_ssid("VLANID", index) != 0) {
-        log_lib_e("Remove VLANID[%d] failed", index);
-    }
-    if (rmpsm_ssid("Hide", index) != 0) {
-        log_lib_e("Remove Hide[%d] failed", index);
+    int  rc;
+    char rname[128];
+
+    snprintf(rname, sizeof(rname), MAP_PSM_SSID_PREFIX, index);
+
+    /* PSM APIs accept partial paths for delete operation, so let's use that.
+       The other option is to delete each record using full paths, which seems
+       to be greatly inefficient */
+    rc = PSM_Del_Record(bus_handle, g_Subsystem, rname);
+    if (rc != CCSP_SUCCESS) {
+        log_lib_e("Delete record failed");
+        return -1;
     }
 
     return 0;
 }
 
-static int mapping_get_by_pidx(int profile_idx, unsigned int *ssid_idx)
+static int profile_add(map_profile_cfg_t *profile, bool sync)
 {
-    unsigned int          mapping_cnt;
-    profile_ssid_map_t   *mapping;
-    unsigned int          i;
+    map_controller_cfg_t *cfg = &map_cfg_get()->controller_cfg;
+    unsigned int          profile_cnt, i;
+    map_profile_cfg_t    *cp;
+    int                   profile_idx;
+    profile_ssid_map_t   *mapping = NULL;
+    unsigned int          ssid_idx;
+    unsigned int          radio_idx;
+    char                  mode[24];
+    bool                  send_apply = false;
 
-    if (g_use_dynamic_mapping) {
-        mapping = g_dynamic_mapping;
-        mapping_cnt = ARRAY_SIZE(g_dynamic_mapping);
-    } else {
-        mapping = g_static_mapping;
-        mapping_cnt = ARRAY_SIZE(g_static_mapping);
+    if (profile->bss_state & MAP_BACKHAUL_BSS) {
+        log_lib_e("Creating backhaul is illegal");
+        return -1;
     }
 
-    *ssid_idx = -1;
-    for (i = 0; i < mapping_cnt; i++) {
-        if (profile_idx == mapping[i].profile_idx) {
-            *ssid_idx = mapping[i].ssid_idx;
-            break;
+    profile_cnt = cfg->num_profiles;
+    for (i = 0; i < profile_cnt; i++) {
+        uint16_t curr_auth_modes;
+        bool curr_enabled;
+        char curr_wpa_key[65];
+
+        cp = &cfg->profiles[i];
+
+        /* Check if the request is for modification */
+        if (profile->bss_freq_bands != cp->bss_freq_bands ||
+            strcmp(profile->bss_ssid, cp->bss_ssid) != 0) {
+            continue;
         }
-    }
 
-    return 0;
-}
+        /* Modification request */
+        if (cp->bss_state & MAP_BACKHAUL_BSS) {
+            log_lib_e("Modifying backhaul is illegal");
+            return -1;
+        }
 
-static int profile_match(map_profile_cfg_t *profile)
-{
-    profile_ssid_map_t *mapping;
-    unsigned int ssid_cnt = 0;
-    unsigned int ssid_idx;
-    bool ssid_enable;
-    char ssid[32];
+        if (profile->supported_auth_modes == 0) {
+            profile->supported_auth_modes = cp->supported_auth_modes;
+            profile->supported_encryption_types = cp->supported_encryption_types;
+            if (profile->wpa_key[0] == '\0') {
+                strcpy(profile->wpa_key, cp->wpa_key);
+            }
+        } else if (profile->supported_auth_modes != IEEE80211_AUTH_MODE_OPEN) {
+            if (profile->wpa_key[0] == '\0') {
+                if (cp->wpa_key[0] == '\0') {
+                    log_lib_e("Invalid password");
+                    return -1;
+                }
+                strcpy(profile->wpa_key, cp->wpa_key);
+            }
+        } else {
+            profile->wpa_key[0] = '\0';
+        }
 
-    if (g_use_dynamic_mapping) {
-        mapping = &g_dynamic_mapping[profile->profile_idx - 1];
-    } else {
-        mapping = &g_static_mapping[profile->profile_idx - 1];
-    }
-    mapping->profile_idx = profile->profile_idx;
-    mapping->ssid_idx = -1;
+        profile->profile_idx = cp->profile_idx;
+        if (profile->type == MAP_PROFILE_TYPE_OTHER) {
+            profile->type = cp->type;
+        }
+        if (profile->label[0] == '\0') {
+            strcpy(profile->label, cp->label);
+        }
+        profile->bss_state = cp->bss_state;
+        if ((int8_t)(profile->extender) == -1) {
+            profile->extender = cp->extender;
+        }
+        if ((int8_t)(profile->gateway) == -1) {
+            profile->gateway = cp->gateway;
+        }
+        if (profile->vlan_id < -1) {
+            profile->vlan_id = cp->vlan_id;
+        }
 
-    if (get_wifi_ssid_count(&ssid_cnt) < 0) {
-        log_lib_e("Invalid SSID count: %d", ssid_cnt);
+        if (sync) {
+            curr_auth_modes = cp->supported_auth_modes;
+            curr_enabled = cp->enabled;
+            strcpy(curr_wpa_key, cp->wpa_key);
+        }
+
+        profile_save(profile, i);
+
+        if (g_map_cfg_cbs.profile_update_cb) {
+            g_map_cfg_cbs.profile_update_cb();
+        }
+
+        if (!sync) {
+            goto update;
+        }
+
+        mapping = mapping_get_by_pidx(cp->profile_idx);
+        if (mapping == NULL) {
+            log_lib_e("Mapping not found");
+            return 0;
+        }
+        ssid_idx = mapping->ssid_idx;
+
+        if (profile->supported_auth_modes != curr_auth_modes) {
+            get_sec_mode_str(profile->supported_auth_modes, mode);
+            set_wifi_security_mode(ssid_idx, mode);
+            send_apply = true;
+        }
+        if (strcmp(profile->wpa_key, curr_wpa_key) != 0) {
+            set_wifi_security_key(ssid_idx, profile->wpa_key);
+            send_apply = true;
+        }
+        if (profile->enabled != curr_enabled) {
+            set_wifi_ssid_enable(ssid_idx, profile->enabled);
+            send_apply = true;
+        }
+
+        if (send_apply) {
+            radio_idx = profile->bss_freq_bands == MAP_FREQ_BAND_2G ? 1 : 2;
+            set_wifi_apply_settings(radio_idx);
+        }
+
         return 0;
     }
 
-    for (ssid_idx = 1; ssid_idx <= ssid_cnt; ssid_idx++) {
-        if (get_wifi_ssid_enable(ssid_idx, &ssid_enable) < 0) {
-            log_lib_e("Get SSID enable failed");
-            continue;
+    if (profile->supported_auth_modes == 0) {
+        if (profile->wpa_key[0] != '\0') {
+            log_lib_e("Invalid authorization mode");
+            return -1;
         }
-        if (!ssid_enable) {
-            continue;
+        profile->supported_auth_modes = IEEE80211_AUTH_MODE_OPEN;
+        profile->supported_encryption_types = IEEE80211_ENCRYPTION_MODE_NONE;
+    } else if (profile->supported_auth_modes != IEEE80211_AUTH_MODE_OPEN) {
+        if (profile->wpa_key[0] == '\0') {
+            log_lib_e("Invalid password");
+            return -1;
         }
-        if (get_wifi_ssid_ssid(ssid_idx, ssid) < 0) {
-            log_lib_e("Get SSID failed");
-            continue;
+    } else {
+        profile->wpa_key[0] = '\0';
+    }
+
+    mapping = NULL;
+    profile_idx = profile_cnt;
+    if (sync) {
+        mapping = mapping_get_by_profile(profile);
+        profile_idx = mapping ? mapping->profile_idx : (int)profile_cnt;
+    }
+    profile->profile_idx = profile_idx;
+
+    if (profile->type == MAP_PROFILE_TYPE_OTHER) {
+        profile->type = mapping ? mapping->type : profile->type;
+    }
+    if (profile->label[0] == '\0') {
+        if (mapping) {
+            strcpy(profile->label, mapping->label);
+        } else {
+            snprintf(profile->label, sizeof(profile->label), "ssid%d", profile_idx);
         }
-        if (strcmp(profile->bss_ssid, ssid) == 0) {
-            mapping->ssid_idx = ssid_idx;
+    }
+    if (profile->bss_state == 0) {
+        profile->bss_state = MAP_FRONTHAUL_BSS;
+    }
+    if ((int8_t)(profile->extender) == -1) {
+        profile->extender = true;
+    }
+    if ((int8_t)(profile->gateway) == -1) {
+        profile->gateway = true;
+    }
+    if (profile->vlan_id < -1) {
+        profile->vlan_id = -1;
+    }
+
+    /* Add new profile and update PSM */
+    profile_save(profile, profile_cnt);
+    profile_cnt = cfg->num_profiles + 1;
+    setpsm_int(MAP_PSM_SSIDNOE, profile_cnt);
+
+update:
+    if (g_map_cfg_cbs.profile_update_cb) {
+        g_map_cfg_cbs.profile_update_cb();
+    }
+
+    if (!sync) {
+        return 0;
+    }
+
+    cp = NULL;
+    for (i = 0; i < profile_cnt; i++) {
+        if (profile->bss_freq_bands == cfg->profiles[i].bss_freq_bands &&
+            strcmp(profile->bss_ssid, cfg->profiles[i].bss_ssid) == 0) {
+            cp = &cfg->profiles[i];
             break;
         }
+    }
+
+    if (cp == NULL) {
+        log_lib_e("Profile not found");
+        return -1;
+    }
+
+    mapping = mapping_get_by_pidx(cp->profile_idx);
+    if (mapping == NULL) {
+        log_lib_e("Mapping not found");
+        return 0;
+    }
+    ssid_idx = mapping->ssid_idx;
+
+    set_wifi_ssid_enable(ssid_idx, true);
+    set_wifi_ssid_ssid(ssid_idx, profile->bss_ssid);
+    get_sec_mode_str(profile->supported_auth_modes, mode);
+    set_wifi_security_mode(ssid_idx, mode);
+    set_wifi_security_key(ssid_idx, profile->wpa_key);
+
+    radio_idx = profile->bss_freq_bands == MAP_FREQ_BAND_2G ? 1 : 2;
+    set_wifi_apply_settings(radio_idx);
+
+    return 0;
+}
+
+static int profile_remove(map_profile_cfg_t *profile, bool sync)
+{
+    map_controller_cfg_t *cfg = &map_cfg_get()->controller_cfg;
+    unsigned int          profile_cnt, i;
+    int                   update = 0;
+    unsigned int          ssid_idx = -1;
+    unsigned int          radio_idx;
+
+    profile_cnt = cfg->num_profiles;
+    for (i = 0; i < profile_cnt; i++) {
+        map_profile_cfg_t *cp = &cfg->profiles[i];
+
+        if (profile->bss_freq_bands != cp->bss_freq_bands ||
+            strcmp(profile->bss_ssid, cp->bss_ssid) != 0) {
+            continue;
+        }
+
+        if (cp->bss_state & MAP_BACKHAUL_BSS) {
+            log_lib_e("Modifying backhaul is illegal");
+            return -1;
+        }
+
+        if (sync) {
+            profile_ssid_map_t *mapping = mapping_get_by_pidx(cp->profile_idx);
+            if (mapping != NULL) {
+                ssid_idx = mapping->ssid_idx;
+            }
+        }
+
+        /* Remove profile */
+        for (; i < profile_cnt - 1; i++) {
+            map_profile_cfg_t tmp_profile = cfg->profiles[i + 1];
+
+            profile_save(&tmp_profile, i);
+        }
+        profile_del(profile_cnt - 1);
+
+        profile_cnt = cfg->num_profiles - 1;
+        setpsm_int(MAP_PSM_SSIDNOE, profile_cnt);
+
+        update = 1;
+        break;
+    }
+
+    if (update && g_map_cfg_cbs.profile_update_cb) {
+        g_map_cfg_cbs.profile_update_cb();
+    }
+
+    if (sync) {
+        return 0;
+    }
+
+    if (update && (int)ssid_idx > 0) {
+        set_wifi_ssid_enable(ssid_idx, false);
+
+        radio_idx = profile->bss_freq_bands == MAP_FREQ_BAND_2G ? 1 : 2;
+        set_wifi_apply_settings(radio_idx);
     }
 
     return 0;
@@ -1348,19 +1623,29 @@ static void profile_create_backhaul(void)
     unsigned int profile_cnt;
     map_controller_cfg_t *cfg;
     map_profile_cfg_t *profile;
+    profile_ssid_map_t *mapping;
+    unsigned int i;
 
     cfg = &g_map_cfg.controller_cfg;
     profile_cnt = cfg->num_profiles;
     map_profile_realloc(++profile_cnt);
     profile = &cfg->profiles[profile_cnt - 1];
     profile->profile_idx = profile_cnt;
+    /* If mapping table has dedicated nackhaul, use its index instead */
+    mapping = g_default_mappings;
+    for (i = 0; i < ARRAY_SIZE(g_default_mappings); i++) {
+        if (mapping[i].bss_state == MAP_BACKHAUL_BSS) {
+            profile->profile_idx = mapping[i].profile_idx;
+            break;
+        }
+    }
     profile->enabled = TRUE;
     profile->type = MAP_PROFILE_TYPE_BACKHAUL;
     strncpy(profile->label, "Backhaul", sizeof(profile->label));
     strncpy(profile->bss_ssid, "Backhaul", sizeof(profile->bss_ssid));
     strncpy(profile->wpa_key, "rdk@1234", sizeof(profile->wpa_key));
     get_iface_security_mode("wpa2-psk", &profile->supported_auth_modes,
-        &profile->supported_encryption_types, profile->profile_idx);
+        &profile->supported_encryption_types);
     profile->bss_freq_bands = MAP_FREQ_BAND_5G;
     profile->bss_state = MAP_BACKHAUL_BSS;
     profile->extender = true;
@@ -1370,115 +1655,6 @@ static void profile_create_backhaul(void)
 
     profile_save(profile, profile_cnt - 1);
     cfg->num_profiles = profile_cnt;
-
-    return;
-}
-
-static void wifi_dynamic_mapper(void)
-{
-    bool ssid_enable = false;
-    bool dedicated_backhaul = true;
-    unsigned int ap_idx = 0;
-    unsigned int ssid_cnt = 0;
-    unsigned int ssid_idx;
-    unsigned int profile_cnt;
-    unsigned int profile_5GHz_cnt = 0;
-    char key[64];
-    char ssid[32];
-    char mode[32];
-    uint16_t freqband;
-    map_controller_cfg_t *cfg;
-    map_profile_cfg_t *profile;
-    profile_ssid_map_t *mapping;
-    unsigned int i;
-
-    if (get_wifi_ssid_count(&ssid_cnt) < 0) {
-        log_lib_e("Invalid SSID count: %d", ssid_cnt);
-        return;
-    }
-
-    cfg = &g_map_cfg.controller_cfg;
-    profile_cnt = cfg->num_profiles;
-    for (ssid_idx = 1; ssid_idx <= ssid_cnt; ssid_idx++) {
-        if (get_wifi_ssid_enable(ssid_idx, &ssid_enable) < 0) {
-            log_lib_e("Get SSID enable failed");
-            continue;
-        }
-        if (!ssid_enable) {
-            continue;
-        }
-        if (get_wifi_radio_freqband(ssid_idx, &freqband) < 0) {
-            log_lib_e("Get radio freqband failed");
-            continue;
-        }
-        if (get_wifi_ssid_ssid(ssid_idx, ssid) < 0) {
-            log_lib_e("Get SSID failed");
-            continue;
-        }
-        if (get_wifi_security_index(ssid_idx, &ap_idx) < 0) {
-            log_lib_e("Get security index failed");
-            continue;
-        }
-        if (get_wifi_security_mode(ap_idx, mode) < 0) {
-            log_lib_e("Get security mode failed");
-            continue;
-        }
-        if (get_wifi_security_key(ap_idx, key) < 0) {
-            log_lib_e("Get security key failed");
-            continue;
-        }
-
-        map_profile_realloc(++profile_cnt);
-        profile = &cfg->profiles[profile_cnt - 1];
-        profile->profile_idx = profile_cnt;
-        profile->enabled = true;
-        profile->type = MAP_PROFILE_TYPE_OTHER;
-        strcpy(profile->bss_ssid, ssid);
-        strcpy(profile->wpa_key, key);
-        get_iface_security_mode(mode, &profile->supported_auth_modes,
-            &profile->supported_encryption_types, profile->profile_idx);
-        profile->bss_freq_bands = freqband;
-        profile->bss_state = MAP_FRONTHAUL_BSS;
-        profile->gateway = true;
-        profile->extender = true;
-        profile->hide = false;
-        profile->vlan_id = -1;
-
-        mapping = &g_dynamic_mapping[profile_cnt - 1];
-        mapping->ssid_idx = ssid_idx;
-        mapping->profile_idx = profile->profile_idx;
-
-        if (freqband == MAP_FREQ_BAND_5G) {
-            profile_5GHz_cnt++;
-        }
-
-        profile_save(profile, profile_cnt - 1);
-        cfg->num_profiles = profile_cnt;
-    }
-
-    if (dedicated_backhaul == true || profile_5GHz_cnt == 0) {
-        profile_create_backhaul();
-        profile = &cfg->profiles[cfg->num_profiles - 1];
-
-        mapping = &g_dynamic_mapping[cfg->num_profiles - 1];
-        mapping->ssid_idx = -1;
-        mapping->profile_idx = profile->profile_idx;
-    } else {
-        if (profile_cnt == 1) {
-            profile = &cfg->profiles[0];
-            profile->bss_state |= MAP_BACKHAUL_BSS;
-            profile_save(profile, 0);
-        } else {
-            for (i = 0; i < profile_cnt; i++) {
-                profile = &cfg->profiles[i];
-                if (profile->bss_freq_bands == MAP_FREQ_BAND_5G) {
-                    profile->bss_state |= MAP_BACKHAUL_BSS;
-                    profile_save(profile, i);
-                    break;
-                }
-            }
-        }
-    }
 
     return;
 }
@@ -1509,9 +1685,9 @@ static void wifi_static_mapper(void)
     profile_cnt = cfg->num_profiles;
     for (ssid_idx = 1; ssid_idx <= ssid_cnt; ssid_idx++) {
         mapping = NULL;
-        for (i = 0; i < ARRAY_SIZE(g_static_mapping); i++) {
-            if (g_static_mapping[i].ssid_idx == ssid_idx) {
-                mapping = &g_static_mapping[i];
+        for (i = 0; i < ARRAY_SIZE(g_default_mappings); i++) {
+            if (g_default_mappings[i].ssid_idx == ssid_idx) {
+                mapping = &g_default_mappings[i];
                 break;
             }
         }
@@ -1556,7 +1732,7 @@ static void wifi_static_mapper(void)
         strcpy(profile->bss_ssid, ssid);
         strcpy(profile->wpa_key, key);
         get_iface_security_mode(mode, &profile->supported_auth_modes,
-            &profile->supported_encryption_types, profile->profile_idx);
+            &profile->supported_encryption_types);
         profile->bss_freq_bands = freqband;
         profile->bss_state = mapping->bss_state;
         profile->gateway = true;
@@ -1685,6 +1861,9 @@ static int chan_sel_cfg_load(map_chan_sel_cfg_t *cfg)
 
     getpsm_val(MAP_PSM_BANDLOCK5G, value, sizeof(value));
     cfg->bandlock_5g = bandlock_type_from_string(value);
+
+    cfg->align_multiap = false;
+    cfg->align_multiap_backoff_time = 60;
 
     return 0;
 }
@@ -1842,14 +2021,13 @@ int map_profile_load(bool *ret_changed, bool dump_profiles)
     if (!profile_cnt) {
         /* Either sync with Device.WiFi.SSID or use defaults */
         if (g_sync_with_wifi) {
-            if (g_use_dynamic_mapping) {
-                wifi_dynamic_mapper();
-            } else {
-                wifi_static_mapper();
-            }
+            wifi_static_mapper();
         }
 
         if (!cfg->num_profiles) {
+            /* No valid Device.WiFi.SSID entries, disable sync */
+            g_sync_with_wifi = 0;
+
             profile_cnt = ARRAY_SIZE(g_default_profiles);
 
             /* Reallocate cfg->profiles */
@@ -1858,6 +2036,10 @@ int map_profile_load(bool *ret_changed, bool dump_profiles)
             for (i = 0; i < profile_cnt; i++) {
                 cfg->profiles[i] = g_default_profiles[i];
                 profile_save(&cfg->profiles[i], i);
+
+                if (cfg->mld_enabled == false && cfg->profiles[i].mld_id >= 0) {
+                    cfg->mld_enabled = true;
+                }
             }
 
             cfg->num_profiles = profile_cnt;
@@ -1884,9 +2066,8 @@ int map_profile_load(bool *ret_changed, bool dump_profiles)
                 }
             }
 
-            if (!ret_changed) {
-                /* Init call, not config change */
-                profile_match(&profile);
+            if(cfg->mld_enabled == false && profile.mld_id >= 0) {
+                cfg->mld_enabled = true;
             }
 
             idx++;
@@ -1938,151 +2119,52 @@ int map_profile_realloc(unsigned int num_alloc_profiles)
 
 int map_profile_add(map_profile_cfg_t *profile)
 {
-    map_controller_cfg_t *cfg = &map_cfg_get()->controller_cfg;
-    unsigned int          profile_cnt, i;
-    unsigned int          ssid_idx;
-    char                  mode[24];
-    bool                  send_apply = false;
+    map_profile_cfg_t bp = {0}; 
+    uint16_t bss_freq_bands;
+    int rc = 0;
 
-    profile_cnt = cfg->num_profiles;
-
-    for (i = 0; i < profile_cnt; i++) {
-        map_profile_cfg_t bp;
-        map_profile_cfg_t *pp = &cfg->profiles[i];
-
-        if (strcmp(profile->bss_ssid, pp->bss_ssid) == 0) {
-            if (pp->bss_state & MAP_BACKHAUL_BSS) {
-                log_lib_e("Modifying backhaul is illegal");
-                return -1;
-            }
-
-            if (profile->supported_auth_modes != IEEE80211_AUTH_MODE_OPEN &&
-                profile->wpa_key[0] == '\0') {
-                log_lib_e("Invalid password");
-                return -1;
-            }
-
-            if (profile->label[0] == '\0') {
-                if (pp->label[0] != '\0') {
-                    strcpy(profile->label, pp->label);
-                } else {
-                    snprintf(profile->label, sizeof(profile->label), "ssid%d", i);
-                }
-            }
-
-            if (profile->type == MAP_PROFILE_TYPE_OTHER) {
-                if (pp->type != MAP_PROFILE_TYPE_OTHER) {
-                    profile->type = pp->type;
-                }
-            }
-
-            map_profile_clone(&bp, pp);
-            profile_save(profile, i);
-
-            if (g_map_cfg_cbs.profile_update_cb) {
-                g_map_cfg_cbs.profile_update_cb();
-            }
-
-            mapping_get_by_pidx(pp->profile_idx, &ssid_idx);
-            if ((int)ssid_idx <= 0) {
-                return 0;
-            }
-
-            if (bp.supported_auth_modes != pp->supported_auth_modes) {
-                get_sec_mode_str(pp->supported_auth_modes, mode);
-                set_wifi_security_mode(ssid_idx, mode);
-                send_apply = true;
-            }
-
-            if (strcmp(bp.wpa_key, pp->wpa_key) != 0) {
-                set_wifi_security_key(ssid_idx, pp->wpa_key);
-                send_apply = true;
-            }
-
-            if (send_apply) {
-                /* Super hack; we need to store radio idx */
-                set_wifi_apply_settings((ssid_idx % 2) + 1);
-            }
-
-            return 0;
-        }
+    if (!g_sync_with_wifi) {
+        return profile_add(profile, false);
     }
 
-    if (profile->label[0] == '\0') {
-        snprintf(profile->label, sizeof(profile->label), "ssid%d", i);
-    }
-    /* Add new profile */
-    profile_save(profile, profile_cnt);
+    bss_freq_bands = profile->bss_freq_bands;
 
-    profile_cnt = cfg->num_profiles + 1;
-    setpsm_int(MAP_PSM_SSIDNOE, profile_cnt);
-
-    if (g_map_cfg_cbs.profile_update_cb) {
-        g_map_cfg_cbs.profile_update_cb();
+    if (bss_freq_bands & MAP_FREQ_BAND_2G) {
+        map_profile_clone(&bp, profile);
+        bp.bss_freq_bands = MAP_FREQ_BAND_2G;
+        rc = profile_add(&bp, true);
     }
 
-    if (0) {
-        /* TODO */
-        ssid_idx = -1;
-        set_wifi_ssid_enable(ssid_idx, true);
-        set_wifi_ssid_ssid(ssid_idx, profile->bss_ssid);
-        get_sec_mode_str(profile->supported_auth_modes, mode);
-        set_wifi_security_mode(ssid_idx, mode);
-        set_wifi_security_key(ssid_idx, profile->wpa_key);
-        set_wifi_apply_settings((ssid_idx % 2) + 1);
+    if (bss_freq_bands & MAP_FREQ_BAND_5G) {
+        profile->bss_freq_bands = MAP_FREQ_BAND_5G;
+        rc |= profile_add(profile, true);
     }
 
-    return 0;
+    return rc;
 }
 
 int map_profile_remove(map_profile_cfg_t *profile)
 {
-    map_controller_cfg_t *cfg = &map_cfg_get()->controller_cfg;
-    unsigned int          profile_cnt, i;
-    int                   update = 0;
-    unsigned int          ssid_idx = -1;
+    uint16_t    bss_freq_bands;
+    int         rc = 0;
 
-    profile_cnt = cfg->num_profiles;
-
-    for (i = 0; i < profile_cnt; i++) {
-        map_profile_cfg_t *pp = &cfg->profiles[i];
-
-        if (strcmp(profile->bss_ssid, pp->bss_ssid) == 0) {
-            if (pp->bss_state & MAP_BACKHAUL_BSS) {
-                log_lib_e("Modifying backhaul is illegal");
-                return -1;
-            }
-
-            mapping_get_by_pidx(pp->profile_idx, &ssid_idx);
-
-            /* Remove profile */
-            for (; i < profile_cnt - 1; i++) {
-                map_profile_cfg_t tmp_profile = cfg->profiles[i + 1];
-
-                profile_save(&tmp_profile, i);
-            }
-            profile_remove(profile_cnt - 1);
-
-            profile_cnt = cfg->num_profiles - 1;;
-            setpsm_int(MAP_PSM_SSIDNOE, profile_cnt);
-
-            update = 1;
-            break;
-        }
+    if (!g_sync_with_wifi) {
+        return profile_remove(profile, false);
     }
 
-    if (update && g_map_cfg_cbs.profile_update_cb) {
-        g_map_cfg_cbs.profile_update_cb();
+    bss_freq_bands = profile->bss_freq_bands;
+
+    if (bss_freq_bands & MAP_FREQ_BAND_2G) {
+        profile->bss_freq_bands = MAP_FREQ_BAND_2G;
+        rc = profile_remove(profile, true);
     }
 
-    if (0 && update && (int)ssid_idx > 0) {
-        /* TODO */
-        set_wifi_ssid_enable(ssid_idx, false);
-        /* Super hack; we need to store radio idx */
-        set_wifi_apply_settings((ssid_idx % 2) + 1);
+    if (bss_freq_bands & MAP_FREQ_BAND_5G) {
+        profile->bss_freq_bands = MAP_FREQ_BAND_5G;
+        rc |= profile_remove(profile, true);
     }
 
-    return 0;
+    return rc;
 }
 
 int map_profile_get_by_sidx(unsigned int ssid_idx, map_profile_cfg_t **profile)
@@ -2094,13 +2176,8 @@ int map_profile_get_by_sidx(unsigned int ssid_idx, map_profile_cfg_t **profile)
     int                   profile_idx;
     unsigned int          i;
 
-    if (g_use_dynamic_mapping) {
-        mapping = g_dynamic_mapping;
-        mapping_cnt = ARRAY_SIZE(g_dynamic_mapping);
-    } else {
-        mapping = g_static_mapping;
-        mapping_cnt = ARRAY_SIZE(g_static_mapping);
-    }
+    mapping = g_default_mappings;
+    mapping_cnt = ARRAY_SIZE(g_default_mappings);
 
     profile_idx = -1;
     for (i = 0; i < mapping_cnt; i++) {

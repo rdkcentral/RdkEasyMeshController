@@ -20,7 +20,9 @@
 #define MAP_MAX_CHANNEL 240
 
 #define MAP_CS_BUF_LEN  (MAP_MAX_CHANNEL * 4)
-#define MAP_CHANS_W_BW_BUF_LEN (MAP_MAX_CHANNEL * 8)
+
+/* Buf length for channels with bandwidth: practical use case = 6G (59 channels and 5 bandwidths) */
+#define MAP_CHANS_W_BW_BUF_LEN (60 * 5 * 8)
 
 #if CHAR_BIT != 8
   #error Unexpected value of CHAR_BIT

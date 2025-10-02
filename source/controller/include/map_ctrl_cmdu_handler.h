@@ -135,4 +135,19 @@ int map_handle_chirp_notification(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 /* MAP_R3 17.1.56 (type 0x802a) */
 int map_handle_direct_encap_dpp(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 
+/* MAP_R3 17.1.53 (type 0x802c) */
+int map_handle_bss_configuration_request(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
+/* MAP_R3 17.1.55 (type 0x802e) */
+int map_handle_bss_configuration_result(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
+/*#######################################################################
+#                       MAP R6 CMDU HANDLERS                            #
+########################################################################*/
+/* MAP_R6 17.1.62 (type 0x8043) */
+int map_handle_early_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
+/* MAP_R6 17.1.67 (type 0x8049) */
+int map_handle_available_spectrum_inquiry(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
 #endif /* MAP_CTRL_CMDU_HANDLER_H_ */

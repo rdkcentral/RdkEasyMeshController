@@ -26,5 +26,6 @@ libfactory_a_SOURCES = $(srcdir)/src_independent/1905_cmdus.c \
                        $(srcdir)/src_independent/media_specific_blobs.c \
                        $(srcdir)/src_independent/extensions/map/map_r1_tlvs.c \
                        $(srcdir)/src_independent/extensions/map/map_r2_tlvs.c \
-                       $(srcdir)/src_independent/extensions/map/map_r3_tlvs.c
-
+                       $(srcdir)/src_independent/extensions/map/map_r3_tlvs.c \
+                       $(srcdir)/src_independent/extensions/map/map_r4_tlvs.c \
+                       $(srcdir)/src_independent/extensions/map/map_r6_tlvs.c

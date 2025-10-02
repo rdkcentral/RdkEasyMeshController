@@ -87,9 +87,13 @@
 #define DM_DEVICE_EXECENV       DM_DEVICE_TBL       "ExecutionEnv"
 #define DM_DEVICE_CCODE         DM_DEVICE_TBL       "CountryCode"
 #define DM_DEVICE_MAPPROFILE    DM_DEVICE_TBL       "MultiAPProfile"
+#define DM_DEVICE_BTMSTDASTALST DM_DEVICE_TBL       "BTMSteeringDisallowedSTAList"
+#define DM_DEVICE_LCLSTDASTALST DM_DEVICE_TBL       "LocalSteeringDisallowedSTAList"
 #define DM_DEVICE_RADIONOE      DM_DEVICE_TBL       "RadioNumberOfEntries"
 #define DM_DEVICE_CACSTATUSNOE  DM_DEVICE_TBL       "CACStatusNumberOfEntries"
-#define DM_DEVICE_UNASSOC_STA_QUERY  DM_DEVICE_TBL  "X_AIRTIES_UnassociatedStaLinkMetricsQuery()"
+#define DM_DEVICE_APMLDNOE      DM_DEVICE_TBL       "APMLDNumberOfEntries"
+#define DM_DEVICE_UNASSOCSTAQRY DM_DEVICE_TBL       "X_AIRTIES_UnassociatedStaLinkMetricsQuery()"
+#define DM_DEVICE_REBOOT        DM_DEVICE_TBL       "X_AIRTIES_Reboot()"
 /* Device.WiFi.DataElements.Network.Device.MultiAPDevice */
 #define DM_MULTIAPDEV_OBJ       DM_DEVICE_TBL       "MultiAPDevice."
 /* Device.WiFi.DataElements.Network.Device.MultiAPDevice.Backhaul */
@@ -98,6 +102,7 @@
 #define DM_BACKHAUL_BHMACADDR   DM_BACKHAUL_OBJ     "BackhaulMACAddress"
 #define DM_BACKHAUL_BHDEVICEID  DM_BACKHAUL_OBJ     "BackhaulDeviceID"
 #define DM_BACKHAUL_MACADDRESS  DM_BACKHAUL_OBJ     "MACAddress"
+#define DM_BACKHAUL_STEERWIFIBH DM_BACKHAUL_OBJ     "SteerWiFiBackhaul()"
 /* Device.WiFi.DataElements.Network.Device.MultiAPDevice.Backhaul.Stats */
 #define DM_BHSTATS_OBJ          DM_BACKHAUL_OBJ     "Stats."
 #define DM_BHSTATS_BYTESRCVD    DM_BHSTATS_OBJ      "BytesReceived"
@@ -144,8 +149,9 @@
 #define DM_RADIO_BSSNOE         DM_RADIO_TBL        "BSSNumberOfEntries"
 #define DM_RADIO_CURROPCLASSNOE DM_RADIO_TBL        "CurrentOperatingClassProfileNumberOfEntries"
 #define DM_RADIO_SCANRESULTNOE  DM_RADIO_TBL        "ScanResultNumberOfEntries"
-#define DM_RADIO_CHSCANREQUEST  DM_RADIO_TBL        "ChannelScanRequest()"
 #define DM_RADIO_UNASSOC_NOE    DM_RADIO_TBL        "UnassociatedSTANumberOfEntries"
+#define DM_RADIO_DISOPCLASSNOE  DM_RADIO_TBL        "DisAllowedOpClassChannelsNumberOfEntries"
+#define DM_RADIO_CHSCANREQUEST  DM_RADIO_TBL        "ChannelScanRequest()"
 /* Device.WiFi.DataElements.Network.Device.Radio.BackhaulSta */
 #define DM_BACKHAULSTA_OBJ      DM_RADIO_TBL        "BackhaulSta."
 #define DM_BACKHAULSTA_MACADDR  DM_BACKHAULSTA_OBJ  "MACAddress"
@@ -155,6 +161,104 @@
 #define DM_CAPS_VHTCAPS         DM_CAPS_OBJ         "VHTCapabilities"
 #define DM_CAPS_HECAPS          DM_CAPS_OBJ         "HECapabilities"
 #define DM_CAPS_CAPOPCLASSNOE   DM_CAPS_OBJ         "CapableOperatingClassProfileNumberOfEntries"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi6APRole */
+#define DM_WIFI6AP_OBJ          DM_CAPS_OBJ         "WiFi6APRole."
+#define DM_WIFI6AP_HE160        DM_WIFI6AP_OBJ      "HE160"
+#define DM_WIFI6AP_HE8080       DM_WIFI6AP_OBJ      "HE8080"
+#define DM_WIFI6AP_MCSNSS       DM_WIFI6AP_OBJ      "MCSNSS"
+#define DM_WIFI6AP_SUBMFRMER    DM_WIFI6AP_OBJ      "SUBeamformer"
+#define DM_WIFI6AP_SUBMFRMEE    DM_WIFI6AP_OBJ      "SUBeamformee"
+#define DM_WIFI6AP_MUBMFRMER    DM_WIFI6AP_OBJ      "MUBeamformer"
+#define DM_WIFI6AP_BMFRMEEL80   DM_WIFI6AP_OBJ      "Beamformee80orLess"
+#define DM_WIFI6AP_BMFRMEEG80   DM_WIFI6AP_OBJ      "BeamformeeAbove80"
+#define DM_WIFI6AP_ULMUMIMO     DM_WIFI6AP_OBJ      "ULMUMIMO"
+#define DM_WIFI6AP_ULOFDMA      DM_WIFI6AP_OBJ      "ULOFDMA"
+#define DM_WIFI6AP_DLOFDMA      DM_WIFI6AP_OBJ      "DLOFDMA"
+#define DM_WIFI6AP_MXDLMUMIMO   DM_WIFI6AP_OBJ      "MaxDLMUMIMO"
+#define DM_WIFI6AP_MXULMUMIMO   DM_WIFI6AP_OBJ      "MaxULMUMIMO"
+#define DM_WIFI6AP_MXDLOFDMA    DM_WIFI6AP_OBJ      "MaxDLOFDMA"
+#define DM_WIFI6AP_MXULOFDMA    DM_WIFI6AP_OBJ      "MaxULOFDMA"
+#define DM_WIFI6AP_RTS          DM_WIFI6AP_OBJ      "RTS"
+#define DM_WIFI6AP_MURTS        DM_WIFI6AP_OBJ      "MURTS"
+#define DM_WIFI6AP_MBSSID       DM_WIFI6AP_OBJ      "MultiBSSID"
+#define DM_WIFI6AP_MUEDCA       DM_WIFI6AP_OBJ      "MUEDCA"
+#define DM_WIFI6AP_TWTREQ       DM_WIFI6AP_OBJ      "TWTRequestor"
+#define DM_WIFI6AP_TWTRES       DM_WIFI6AP_OBJ      "TWTResponder"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi6bSTARole */
+#define DM_WIFI6BSTA_OBJ        DM_CAPS_OBJ         "WiFi6bSTARole."
+#define DM_WIFI6BSTA_HE160      DM_WIFI6BSTA_OBJ    "HE160"
+#define DM_WIFI6BSTA_HE8080     DM_WIFI6BSTA_OBJ    "HE8080"
+#define DM_WIFI6BSTA_MCSNSS     DM_WIFI6BSTA_OBJ    "MCSNSS"
+#define DM_WIFI6BSTA_SUBMFRMER  DM_WIFI6BSTA_OBJ    "SUBeamformer"
+#define DM_WIFI6BSTA_SUBMFRMEE  DM_WIFI6BSTA_OBJ    "SUBeamformee"
+#define DM_WIFI6BSTA_MUBMFRMER  DM_WIFI6BSTA_OBJ    "MUBeamformer"
+#define DM_WIFI6BSTA_BMFRMEEL80 DM_WIFI6BSTA_OBJ    "Beamformee80orLess"
+#define DM_WIFI6BSTA_BMFRMEEG80 DM_WIFI6BSTA_OBJ    "BeamformeeAbove80"
+#define DM_WIFI6BSTA_ULMUMIMO   DM_WIFI6BSTA_OBJ    "ULMUMIMO"
+#define DM_WIFI6BSTA_ULOFDMA    DM_WIFI6BSTA_OBJ    "ULOFDMA"
+#define DM_WIFI6BSTA_DLOFDMA    DM_WIFI6BSTA_OBJ    "DLOFDMA"
+#define DM_WIFI6BSTA_MXDLMUMIMO DM_WIFI6BSTA_OBJ    "MaxDLMUMIMO"
+#define DM_WIFI6BSTA_MXULMUMIMO DM_WIFI6BSTA_OBJ    "MaxULMUMIMO"
+#define DM_WIFI6BSTA_MXDLOFDMA  DM_WIFI6BSTA_OBJ    "MaxDLOFDMA"
+#define DM_WIFI6BSTA_MXULOFDMA  DM_WIFI6BSTA_OBJ    "MaxULOFDMA"
+#define DM_WIFI6BSTA_RTS        DM_WIFI6BSTA_OBJ    "RTS"
+#define DM_WIFI6BSTA_MURTS      DM_WIFI6BSTA_OBJ    "MURTS"
+#define DM_WIFI6BSTA_MBSSID     DM_WIFI6BSTA_OBJ    "MultiBSSID"
+#define DM_WIFI6BSTA_MUEDCA     DM_WIFI6BSTA_OBJ    "MUEDCA"
+#define DM_WIFI6BSTA_TWTREQ     DM_WIFI6BSTA_OBJ    "TWTRequestor"
+#define DM_WIFI6BSTA_TWTRES     DM_WIFI6BSTA_OBJ    "TWTResponder"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7APRole */
+#define DM_WIFI7AP_OBJ          DM_CAPS_OBJ         "WiFi7APRole."
+#define DM_WIFI7AP_EMLMRSUP     DM_WIFI7AP_OBJ      "EMLMRSupport"
+#define DM_WIFI7AP_EMLSRSUP     DM_WIFI7AP_OBJ      "EMLSRSupport"
+#define DM_WIFI7AP_STRSUP       DM_WIFI7AP_OBJ      "STRSupport"
+#define DM_WIFI7AP_NSTRSUP      DM_WIFI7AP_OBJ      "NSTRSupport"
+#define DM_WIFI7AP_EMLMRFSNOE   DM_WIFI7AP_OBJ      "EMLMRFreqSeparationNumberOfEntries"
+#define DM_WIFI7AP_EMLSRFSNOE   DM_WIFI7AP_OBJ      "EMLSRFreqSeparationNumberOfEntries"
+#define DM_WIFI7AP_STRFSNOE     DM_WIFI7AP_OBJ      "STRFreqSeparationNumberOfEntries"
+#define DM_WIFI7AP_NSTRFSNOE    DM_WIFI7AP_OBJ      "NSTRFreqSeparationNumberOfEntries"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7APRole.EMLMRFreqSeparation */
+#define DM_APEMLMRFS_TBL        DM_WIFI7AP_OBJ      "EMLMRFreqSeparation.{i}."
+#define DM_APEMLMRFS_RUID       DM_APEMLMRFS_TBL    "RUID"
+#define DM_APEMLMRFS_FREQSEP    DM_APEMLMRFS_TBL    "FreqSeparation"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7APRole.EMLSRFreqSeparation */
+#define DM_APEMLSRFS_TBL        DM_WIFI7AP_OBJ      "EMLSRFreqSeparation.{i}."
+#define DM_APEMLSRFS_RUID       DM_APEMLSRFS_TBL    "RUID"
+#define DM_APEMLSRFS_FREQSEP    DM_APEMLSRFS_TBL    "FreqSeparation"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7APRole.STRFreqSeparation */
+#define DM_APSTRFS_TBL          DM_WIFI7AP_OBJ      "STRFreqSeparation.{i}."
+#define DM_APSTRFS_RUID         DM_APSTRFS_TBL      "RUID"
+#define DM_APSTRFS_FREQSEP      DM_APSTRFS_TBL      "FreqSeparation"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7APRole.NSTRFreqSeparation */
+#define DM_APNSTRFS_TBL         DM_WIFI7AP_OBJ      "NSTRFreqSeparation.{i}."
+#define DM_APNSTRFS_RUID        DM_APNSTRFS_TBL     "RUID"
+#define DM_APNSTRFS_FREQSEP     DM_APNSTRFS_TBL     "FreqSeparation"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7bSTARole */
+#define DM_WIFI7BSTA_OBJ        DM_CAPS_OBJ         "WiFi7bSTARole."
+#define DM_WIFI7BSTA_EMLMRSUP   DM_WIFI7BSTA_OBJ    "EMLMRSupport"
+#define DM_WIFI7BSTA_EMLSRSUP   DM_WIFI7BSTA_OBJ    "EMLSRSupport"
+#define DM_WIFI7BSTA_STRSUP     DM_WIFI7BSTA_OBJ    "STRSupport"
+#define DM_WIFI7BSTA_NSTRSUP    DM_WIFI7BSTA_OBJ    "NSTRSupport"
+#define DM_WIFI7BSTA_EMLMRFSNOE DM_WIFI7BSTA_OBJ    "EMLMRFreqSeparationNumberOfEntries"
+#define DM_WIFI7BSTA_EMLSRFSNOE DM_WIFI7BSTA_OBJ    "EMLSRFreqSeparationNumberOfEntries"
+#define DM_WIFI7BSTA_STRFSNOE   DM_WIFI7BSTA_OBJ    "STRFreqSeparationNumberOfEntries"
+#define DM_WIFI7BSTA_NSTRFSNOE  DM_WIFI7BSTA_OBJ    "NSTRFreqSeparationNumberOfEntries"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7bSTARole.EMLMRFreqSeparation */
+#define DM_BSTAEMLMRFS_TBL      DM_WIFI7BSTA_OBJ    "EMLMRFreqSeparation.{i}."
+#define DM_BSTAEMLMRFS_RUID     DM_BSTAEMLMRFS_TBL  "RUID"
+#define DM_BSTAEMLMRFS_FREQSEP  DM_BSTAEMLMRFS_TBL  "FreqSeparation"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7bSTARole.EMLSRFreqSeparation */
+#define DM_BSTAEMLSRFS_TBL      DM_WIFI7BSTA_OBJ    "EMLSRFreqSeparation.{i}."
+#define DM_BSTAEMLSRFS_RUID     DM_BSTAEMLSRFS_TBL  "RUID"
+#define DM_BSTAEMLSRFS_FREQSEP  DM_BSTAEMLSRFS_TBL  "FreqSeparation"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7bSTARole.STRFreqSeparation */
+#define DM_BSTASTRFS_TBL        DM_WIFI7BSTA_OBJ    "STRFreqSeparation.{i}."
+#define DM_BSTASTRFS_RUID       DM_BSTASTRFS_TBL    "RUID"
+#define DM_BSTASTRFS_FREQSEP    DM_BSTASTRFS_TBL    "FreqSeparation"
+/* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7bSTARole.NSTRFreqSeparation */
+#define DM_BSTANSTRFS_TBL       DM_WIFI7BSTA_OBJ    "NSTRFreqSeparation.{i}."
+#define DM_BSTANSTRFS_RUID      DM_BSTANSTRFS_TBL   "RUID"
+#define DM_BSTANSTRFS_FREQSEP   DM_BSTANSTRFS_TBL   "FreqSeparation"
 /* Device.WiFi.DataElements.Network.Device.Radio.Capabilities.CapableOperatingClassProfile */
 #define DM_CAPOPCLASS_TBL       DM_CAPS_OBJ         "CapableOperatingClassProfile.{i}."
 #define DM_CAPOPCLASS_CLASS     DM_CAPOPCLASS_TBL   "Class"
@@ -171,6 +275,11 @@
 #define DM_CURROPCLASS_CHANNEL  DM_CURROPCLASS_TBL  "Channel"
 #define DM_CURROPCLASS_TXPOWER  DM_CURROPCLASS_TBL  "TxPower"
 #define DM_CURROPCLASS_TSTAMP   DM_CURROPCLASS_TBL  "TimeStamp"
+/* Device.WiFi.DataElements.Network.Device.Radio.DisAllowedOpClassChannels */
+#define DM_DISOPCLASS_TBL       DM_RADIO_TBL        "DisAllowedOpClassChannels.{i}."
+#define DM_DISOPCLASS_ENABLE    DM_DISOPCLASS_TBL   "Enable"
+#define DM_DISOPCLASS_OPCLASS   DM_DISOPCLASS_TBL   "OpClass"
+#define DM_DISOPCLASS_CHLIST    DM_DISOPCLASS_TBL   "ChannelList"
 /* Device.WiFi.DataElements.Network.Device.Radio.ScanResult */
 #define DM_SCANRES_TBL          DM_RADIO_TBL        "ScanResult.{i}."
 #define DM_SCANRES_TSTAMP       DM_SCANRES_TBL      "TimeStamp"
@@ -266,8 +375,81 @@
 /* Device.WiFi.DataElements.Network.Device.Radio.UnassociatedSTA */
 #define DM_UNASSOC_TBL          DM_RADIO_TBL        "UnassociatedSTA.{i}."
 #define DM_UNASSOC_MAC          DM_UNASSOC_TBL      "MACAddress"
-#define DM_UNASSOC_SIGNALSTRENGTH DM_UNASSOC_TBL    "SignalStrength"
+#define DM_UNASSOC_SIGNALSTR    DM_UNASSOC_TBL      "SignalStrength"
 #define DM_UNASSOC_TIMESTAMP    DM_UNASSOC_TBL      "TimeStamp"
+/* Device.WiFi.DataElements.Network.Device.APMLD */
+#define DM_APMLD_TBL            DM_DEVICE_TBL       "APMLD.{i}."
+#define DM_APMLD_MACADDRESS     DM_APMLD_TBL        "MLDMACAddress"
+#define DM_APMLD_AFFAPNOE       DM_APMLD_TBL        "AffiliatedAPNumberOfEntries"
+#define DM_APMLD_STAMLDNOE      DM_APMLD_TBL        "STAMLDNumberOfEntries"
+/* Device.WiFi.DataElements.Network.Device.APMLD.APMLDConfig */
+#define DM_AMCONFIG_OBJ         DM_APMLD_TBL        "APMLDConfig."
+#define DM_AMCONFIG_EMLMR       DM_AMCONFIG_OBJ     "EMLMREnabled"
+#define DM_AMCONFIG_EMLSR       DM_AMCONFIG_OBJ     "EMLSREnabled"
+#define DM_AMCONFIG_STR         DM_AMCONFIG_OBJ     "STREnabled"
+#define DM_AMCONFIG_NSTR        DM_AMCONFIG_OBJ     "NSTREnabled"
+/* Device.WiFi.DataElements.Network.Device.APMLD.AffiliatedAP */
+#define DM_AFFAP_TBL            DM_APMLD_TBL        "AffiliatedAP.{i}."
+#define DM_AFFAP_BSSID          DM_AFFAP_TBL        "BSSID"
+#define DM_AFFAP_LINKID         DM_AFFAP_TBL        "LinkID"
+#define DM_AFFAP_RUID           DM_AFFAP_TBL        "RUID"
+#define DM_AFFAP_PACKETSRCVD    DM_AFFAP_TBL        "PacketsReceived"
+#define DM_AFFAP_PACKETSSENT    DM_AFFAP_TBL        "PacketsSent"
+#define DM_AFFAP_ERRORSSENT     DM_AFFAP_TBL        "ErrorsSent"
+#define DM_AFFAP_UCBYTESRCVD    DM_AFFAP_TBL        "UnicastBytesReceived"
+#define DM_AFFAP_UCBYTESSENT    DM_AFFAP_TBL        "UnicastBytesSent"
+#define DM_AFFAP_MCBYTESRCVD    DM_AFFAP_TBL        "MulticastBytesReceived"
+#define DM_AFFAP_MCBYTESSENT    DM_AFFAP_TBL        "MulticastBytesSent"
+#define DM_AFFAP_BCBYTESRCVD    DM_AFFAP_TBL        "BroadcastBytesReceived"
+#define DM_AFFAP_BCBYTESSENT    DM_AFFAP_TBL        "BroadcastBytesSent"
+/* Device.WiFi.DataElements.Network.Device.APMLD.STAMLD */
+#define DM_STAMLD_TBL           DM_APMLD_TBL        "STAMLD.{i}."
+#define DM_STAMLD_MLDMACADDR    DM_STAMLD_TBL       "MLDMACAddress"
+#define DM_STAMLD_ISBSTA        DM_STAMLD_TBL       "IsbSTA"
+#define DM_STAMLD_LASTCONTIME   DM_STAMLD_TBL       "LastConnectTime"
+#define DM_STAMLD_BYTESRCVD     DM_STAMLD_TBL       "BytesReceived"
+#define DM_STAMLD_BYTESSENT     DM_STAMLD_TBL       "BytesSent"
+#define DM_STAMLD_PACKETSRCVD   DM_STAMLD_TBL       "PacketsReceived"
+#define DM_STAMLD_PACKETSSENT   DM_STAMLD_TBL       "PacketsSent"
+#define DM_STAMLD_ERRORSRCVD    DM_STAMLD_TBL       "ErrorsReceived"
+#define DM_STAMLD_ERRORSSENT    DM_STAMLD_TBL       "ErrorsSent"
+#define DM_STAMLD_RETRANSCNT    DM_STAMLD_TBL       "RetransCount"
+#define DM_STAMLD_AFFSTANOE     DM_STAMLD_TBL       "AffiliatedSTANumberOfEntries"
+/* Device.WiFi.DataElements.Network.Device.APMLD.STAMLD.WiFi7Capabilities */
+#define DM_SMWF7CAP_OBJ         DM_STAMLD_TBL       "WiFi7Capabilities."
+#define DM_SMWF7CAP_EMLMR       DM_SMWF7CAP_OBJ     "EMLMRSupport"
+#define DM_SMWF7CAP_EMLSR       DM_SMWF7CAP_OBJ     "EMLSRSupport"
+#define DM_SMWF7CAP_STR         DM_SMWF7CAP_OBJ     "STRSupport"
+#define DM_SMWF7CAP_NSTR        DM_SMWF7CAP_OBJ     "NSTRSupport"
+/* Device.WiFi.DataElements.Network.Device.APMLD.STAMLD.STAMLDConfig */
+#define DM_SMCONFIG_OBJ         DM_STAMLD_TBL       "STAMLDConfig."
+#define DM_SMCONFIG_EMLMR       DM_SMCONFIG_OBJ     "EMLMREnabled"
+#define DM_SMCONFIG_EMLSR       DM_SMCONFIG_OBJ     "EMLSREnabled"
+#define DM_SMCONFIG_STR         DM_SMCONFIG_OBJ     "STREnabled"
+#define DM_SMCONFIG_NSTR        DM_SMCONFIG_OBJ     "NSTREnabled"
+/* Device.WiFi.DataElements.Network.Device.APMLD.STAMLD.AffiliatedSTA */
+#define DM_AFFSTA_TBL           DM_STAMLD_TBL       "AffiliatedSTA.{i}."
+#define DM_AFFSTA_MACADDRESS    DM_AFFSTA_TBL       "MACAddress"
+#define DM_AFFSTA_BSSID         DM_AFFSTA_TBL       "BSSID"
+#define DM_AFFSTA_BYTESRCVD     DM_AFFSTA_TBL       "BytesReceived"
+#define DM_AFFSTA_BYTESSENT     DM_AFFSTA_TBL       "BytesSent"
+#define DM_AFFSTA_PACKETSRCVD   DM_AFFSTA_TBL       "PacketsReceived"
+#define DM_AFFSTA_PACKETSSENT   DM_AFFSTA_TBL       "PacketsSent"
+#define DM_AFFSTA_ERRORSSENT    DM_AFFSTA_TBL       "ErrorsSent"
+#define DM_AFFSTA_SIGNALSTR     DM_AFFSTA_TBL       "SignalStrength"
+#define DM_AFFSTA_ESTMACDRDL    DM_AFFSTA_TBL       "EstMACDataRateDownlink"
+#define DM_AFFSTA_ESTMACDRUL    DM_AFFSTA_TBL       "EstMACDataRateUplink"
+/* Device.WiFi.DataElements.Network.Device.bSTAMLD */
+#define DM_BSTAMLD_OBJ          DM_DEVICE_TBL       "bSTAMLD."
+#define DM_BSTAMLD_MACADDRESS   DM_BSTAMLD_OBJ      "MLDMACAddress"
+#define DM_BSTAMLD_BSSID        DM_BSTAMLD_OBJ      "BSSID"
+#define DM_BSTAMLD_AFFBSTALIST  DM_BSTAMLD_OBJ      "AffiliatedbSTAList"
+/* Device.WiFi.DataElements.Network.Device.bSTAMLD.bSTAMLDConfig */
+#define DM_BSTACFG_OBJ          DM_BSTAMLD_OBJ      "bSTAMLDConfig."
+#define DM_BSTACFG_EMLMR        DM_BSTACFG_OBJ      "EMLMREnabled"
+#define DM_BSTACFG_EMLSR        DM_BSTACFG_OBJ      "EMLSREnabled"
+#define DM_BSTACFG_STR          DM_BSTACFG_OBJ      "STREnabled"
+#define DM_BSTACFG_NSTR         DM_BSTACFG_OBJ      "NSTREnabled"
 /* Device.WiFi.DataElements.Network.Device.X_AIRTIES_Ethernet */
 #define DM_ETHERNET_OBJ         DM_DEVICE_TBL       "X_AIRTIES_Ethernet."
 #define DM_ETHERNET_IFACENOE    DM_ETHERNET_OBJ     "InterfaceNumberOfEntries"
@@ -281,6 +463,7 @@
 /* Device.WiFi.DataElements.Network.Device.X_AIRTIES_DeviceInfo */
 #define DM_DEVINFO_OBJ          DM_DEVICE_TBL       "X_AIRTIES_DeviceInfo."
 #define DM_DEVINFO_UPTIME       DM_DEVINFO_OBJ      "Uptime"
+#define DM_DEVINFO_BOOTID       DM_DEVINFO_OBJ      "BootID"
 /* Device.WiFi.DataElements.Network.Device.X_AIRTIES_DeviceInfo.MemoryStatus */
 #define DM_MEMSTATUS_OBJ        DM_DEVINFO_OBJ      "MemoryStatus."
 #define DM_MEMSTATUS_TOTAL      DM_MEMSTATUS_OBJ    "Total"
@@ -331,7 +514,6 @@
 #define DM_DEVICE_SETSTASTSTATE DM_DEVICE_TBL       "SetSTASteeringState()"
 #define DM_DEVICE_SETDFSSTATE   DM_DEVICE_TBL       "SetDFSState()"
 #define DM_DEVICE_SETANTCHPREF  DM_DEVICE_TBL       "SetAnticipatedChannelPreference()"
-#define DM_BACKHAUL_STEERWIFIBH DM_BACKHAUL_OBJ     "SteerWiFiBackhaul()"
 #define DM_RADIO_RADIOENABLE    DM_RADIO_TBL        "RadioEnable()"
 #define DM_RADIO_SETTXPOWERLIM  DM_RADIO_TBL        "SetTxPowerLimit()"
 #define DM_RADIO_SETSPATREUSE   DM_RADIO_TBL        "SetSpatialReuse()"
@@ -399,6 +581,10 @@ typedef struct dm_sta_payload_s {
     rbusMethodAsyncHandle_t rbus_steering_async_hnd;
 } dm_sta_payload_t;
 
+typedef struct dm_aff_sta_table_s {
+    const char              *aff_sta_id;
+} dm_aff_sta_table_t;
+
 typedef struct dm_sta_table_s {
     const char       *sta_id;
     rbusMethodAsyncHandle_t bmquery_reply;
@@ -409,10 +595,35 @@ typedef struct dm_bss_table_s {
     dm_sta_table_t    dm_sta[MAX_STATION_PER_BSS];
 } dm_bss_table_t;
 
+typedef struct dm_sta_mld_table_s {
+    const char              *sta_mld_id;
+    dm_aff_sta_table_t       dm_aff_sta[MAX_STATION_PER_BSS];
+} dm_sta_mld_table_t;
+
+typedef struct dm_aff_ap_table_s {
+    const char              *aff_ap_id;
+} dm_aff_ap_table_t;
+
+typedef struct dm_ap_mld_table_s {
+    const char              *ap_mld_id;
+    dm_sta_mld_table_t       dm_sta_mld[MAX_STATION_PER_BSS];
+    dm_aff_ap_table_t        dm_aff_ap[MAX_BSS_PER_RADIO];
+} dm_ap_mld_table_t;
+
 typedef struct dm_radio_table_s {
     const char       *radio_id;
     unsigned int      capops;
     unsigned int      currops;
+    unsigned int      disops;
+
+    unsigned int      apemlmr;
+    unsigned int      apemlsr;
+    unsigned int      apstr;
+    unsigned int      apnstr;
+    unsigned int      bstaemlmr;
+    unsigned int      bstaemlsr;
+    unsigned int      bstastr;
+    unsigned int      bstanstr;
 
     dm_bss_table_t    dm_bss[MAX_BSS_PER_RADIO];
 
@@ -436,9 +647,13 @@ typedef struct dm_dev_table_s {
     unsigned int      cac_active;
     unsigned int      eth_ifaces;
 
+    dm_ap_mld_table_t dm_ap_mld[MAX_RADIO_PER_AGENT];
     dm_radio_table_t  dm_radio[MAX_RADIO_PER_AGENT];
-
     dm_ethif_table_t  dm_ethif[MAX_IFACE_PER_AGENT];
+
+    rbusMethodAsyncHandle_t steerwifibh_reply;
+    mac_addr          steerwifibh_target;
+
     rbusMethodAsyncHandle_t unassoc_sta_link_metrics_query_handle;
 } dm_dev_table_t;
 
@@ -489,7 +704,7 @@ static void remove_all_ap_device(void)
     memset(&g_dm_dev_table, 0, sizeof(g_dm_dev_table));
 }
 
-static int get_dev_dm_idx(mac_addr_str al_mac_str, unsigned int *didx)
+static int get_dev_dm_idx(map_ale_info_t *ale, unsigned int *didx)
 {
     unsigned int idx = 0;
 
@@ -499,9 +714,9 @@ static int get_dev_dm_idx(mac_addr_str al_mac_str, unsigned int *didx)
         }
     }
 
-    g_dm_dev_table[idx].al_mac = strdup(al_mac_str);
+    g_dm_dev_table[idx].al_mac = strdup(ale->al_mac_str);
 
-    *didx = idx;
+    ale->dm_idx = *didx = idx;
 
     return 0;
 }
@@ -554,6 +769,16 @@ static void get_dev_dm_eth_devs(map_ale_info_t *ale, unsigned int iidx, unsigned
     *eth_devs = dm_ethif->eth_devs;
 }
 
+static void get_dev_dm_steerwifibh_reply(map_ale_info_t *ale, rbusMethodAsyncHandle_t *reply)
+{
+    *reply = g_dm_dev_table[ale->dm_idx].steerwifibh_reply;
+}
+
+static void get_dev_dm_steerwifibh_target(map_ale_info_t *ale, mac_addr target_bssid)
+{
+    maccpy(target_bssid, g_dm_dev_table[ale->dm_idx].steerwifibh_target);
+}
+
 static void set_dev_dm_cac_valid(map_ale_info_t *ale, bool cac_valid)
 {
     dm_dev_table_t *dm_dev;
@@ -604,6 +829,16 @@ static void set_dev_dm_eth_devs(map_ale_info_t *ale, unsigned int iidx, unsigned
 
     dm_ethif = &g_dm_dev_table[ale->dm_idx].dm_ethif[iidx];
     dm_ethif->eth_devs = eth_devs;
+}
+
+static void set_dev_dm_steerwifibh_reply(map_ale_info_t *ale, rbusMethodAsyncHandle_t reply)
+{
+    g_dm_dev_table[ale->dm_idx].steerwifibh_reply = reply;
+}
+
+static void set_dev_dm_steerwifibh_target(map_ale_info_t *ale, mac_addr target_bssid)
+{
+    maccpy(g_dm_dev_table[ale->dm_idx].steerwifibh_target, target_bssid);
 }
 
 static int check_dev_dm_idx(map_ale_info_t *ale)
@@ -659,6 +894,78 @@ static void get_radio_dm_currops(map_radio_info_t *radio, unsigned int *currops)
 
     dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
     *currops = dm_radio->currops;
+}
+
+static void get_radio_dm_disops(map_radio_info_t *radio, unsigned int *disops)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    *disops = dm_radio->disops;
+}
+
+static void get_radio_dm_apemlmr(map_radio_info_t *radio, unsigned int *apemlmr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    *apemlmr = dm_radio->apemlmr;
+}
+
+static void get_radio_dm_apemlsr(map_radio_info_t *radio, unsigned int *apemlsr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    *apemlsr = dm_radio->apemlsr;
+}
+
+static void get_radio_dm_apstr(map_radio_info_t *radio, unsigned int *apstr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    *apstr = dm_radio->apstr;
+}
+
+static void get_radio_dm_apnstr(map_radio_info_t *radio, unsigned int *apnstr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    *apnstr = dm_radio->apnstr;
+}
+
+static void get_radio_dm_bstaemlmr(map_radio_info_t *radio, unsigned int *bstaemlmr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    *bstaemlmr = dm_radio->bstaemlmr;
+}
+
+static void get_radio_dm_bstaemlsr(map_radio_info_t *radio, unsigned int *bstaemlsr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    *bstaemlsr = dm_radio->bstaemlsr;
+}
+
+static void get_radio_dm_bstastr(map_radio_info_t *radio, unsigned int *bstastr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    *bstastr = dm_radio->bstastr;
+}
+
+static void get_radio_dm_bstanstr(map_radio_info_t *radio, unsigned int *bstanstr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    *bstanstr = dm_radio->bstanstr;
 }
 
 static void get_radio_dm_scan_reply(map_radio_info_t *radio, rbusMethodAsyncHandle_t *scan_reply)
@@ -743,6 +1050,78 @@ static void set_radio_dm_currops(map_radio_info_t *radio, unsigned int currops)
 
     dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
     dm_radio->currops = currops;
+}
+
+static void set_radio_dm_disops(map_radio_info_t *radio, unsigned int disops)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    dm_radio->disops = disops;
+}
+
+static void set_radio_dm_apemlmr(map_radio_info_t *radio, unsigned int apemlmr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    dm_radio->apemlmr = apemlmr;
+}
+
+static void set_radio_dm_apemlsr(map_radio_info_t *radio, unsigned int apemlsr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    dm_radio->apemlsr = apemlsr;
+}
+
+static void set_radio_dm_apstr(map_radio_info_t *radio, unsigned int apstr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    dm_radio->apstr = apstr;
+}
+
+static void set_radio_dm_apnstr(map_radio_info_t *radio, unsigned int apnstr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    dm_radio->apnstr = apnstr;
+}
+
+static void set_radio_dm_bstaemlmr(map_radio_info_t *radio, unsigned int bstaemlmr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    dm_radio->bstaemlmr = bstaemlmr;
+}
+
+static void set_radio_dm_bstaemlsr(map_radio_info_t *radio, unsigned int bstaemlsr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    dm_radio->bstaemlsr = bstaemlsr;
+}
+
+static void set_radio_dm_bstastr(map_radio_info_t *radio, unsigned int bstastr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    dm_radio->bstastr = bstastr;
+}
+
+static void set_radio_dm_bstanstr(map_radio_info_t *radio, unsigned int bstanstr)
+{
+    dm_radio_table_t *dm_radio;
+
+    dm_radio = &g_dm_dev_table[radio->ale->dm_idx].dm_radio[radio->dm_idx];
+    dm_radio->bstanstr = bstanstr;
 }
 
 static void set_radio_dm_scan_reply(map_radio_info_t *radio, rbusMethodAsyncHandle_t scan_reply)
@@ -849,60 +1228,6 @@ static inline void free_sta_dm_idx(unsigned int didx, unsigned int ridx,
     g_dm_dev_table[didx].dm_radio[ridx].dm_bss[bidx].dm_sta[sidx].sta_id = NULL;
 }
 
-static void update_ale_idxs(map_ale_info_t *removed_ale)
-{
-    map_ale_info_t *ale;
-    unsigned int    idx;
-
-    map_dm_foreach_agent_ale(ale) {
-        if (!is_local_agent(ale) && ale != removed_ale) {
-            ale->dm_idx = -1;
-            get_dev_dm_idx(ale->al_mac_str, &idx);
-            ale->dm_idx = idx;
-        }
-    }
-}
-
-static void update_radio_idxs(map_ale_info_t *ale, map_radio_info_t *removed_radio)
-{
-    map_radio_info_t *radio;
-    unsigned int      idx;
-
-    map_dm_foreach_radio(ale, radio) {
-        if (radio != removed_radio) {
-            radio->dm_idx = -1;
-            get_radio_dm_idx(ale->dm_idx, radio, &idx);
-        }
-    }
-}
-
-static void update_bss_idxs(map_radio_info_t *radio, map_bss_info_t *removed_bss)
-{
-    map_bss_info_t *bss;
-    unsigned int    idx;
-
-    map_dm_foreach_bss(radio, bss) {
-        if (bss != removed_bss) {
-            bss->dm_idx = -1;
-            get_bss_dm_idx(radio->ale->dm_idx, radio->dm_idx, bss, &idx);
-        }
-    }
-}
-
-static void update_sta_idxs(map_bss_info_t *bss, map_sta_info_t *removed_sta)
-{
-    map_sta_info_t *sta;
-    unsigned int    idx;
-
-    map_dm_foreach_sta(bss, sta) {
-        if (sta != removed_sta) {
-            sta->dm_idx = -1;
-            get_sta_dm_idx(bss->radio->ale->dm_idx,
-                bss->radio->ale->dm_idx, bss->radio->dm_idx, sta, &idx);
-        }
-    }
-}
-
 static dm_sta_table_t *get_dm_sta(map_sta_info_t *sta)
 {
     unsigned int ale_idx;
@@ -926,6 +1251,147 @@ static dm_sta_table_t *get_dm_sta(map_sta_info_t *sta)
     ale_idx   = sta->bss->radio->ale->dm_idx;
 
     return &g_dm_dev_table[ale_idx].dm_radio[radio_idx].dm_bss[bss_idx].dm_sta[sta_idx];
+}
+
+static int get_ap_mld_dm_idx(unsigned int didx,
+                             map_ap_mld_info_t *ap_mld, unsigned int *amidx)
+{
+    dm_dev_table_t *dm_dev;
+    unsigned int    idx = 0;
+
+    dm_dev = &g_dm_dev_table[didx];
+    while (dm_dev->dm_ap_mld[idx].ap_mld_id) {
+        if (++idx >= MAX_RADIO_PER_AGENT) {
+            return -1;
+        }
+    }
+
+    dm_dev->dm_ap_mld[idx].ap_mld_id = ap_mld->mac_str;
+
+    ap_mld->dm_idx = *amidx = idx;
+
+    return 0;
+}
+
+static int check_ap_mld_dm_idx(map_ap_mld_info_t *ap_mld)
+{
+    if (ap_mld->dm_idx < 0) {
+        return -1;
+    }
+
+    return check_dev_dm_idx(ap_mld->ale);
+}
+
+static void free_ap_mld_dm_idx(unsigned int didx, unsigned int amidx)
+{
+    memset(&g_dm_dev_table[didx].dm_ap_mld[amidx], 0, sizeof(dm_ap_mld_table_t));
+}
+
+static int get_aff_ap_dm_idx(unsigned int didx, unsigned int amidx,
+                             map_bss_info_t *aff_ap, unsigned int *aaidx)
+{
+    dm_ap_mld_table_t *dm_ap_mld;
+    unsigned int       idx = 0;
+
+    dm_ap_mld = &g_dm_dev_table[didx].dm_ap_mld[amidx];
+    while (dm_ap_mld->dm_aff_ap[idx].aff_ap_id) {
+        if (++idx >= MAX_BSS_PER_RADIO) {
+            return -1;
+        }
+    }
+
+    dm_ap_mld->dm_aff_ap[idx].aff_ap_id = aff_ap->bssid_str;
+
+    aff_ap->dm_idx = *aaidx = idx;
+
+    return 0;
+}
+
+static int check_aff_ap_dm_idx(map_bss_info_t *aff_ap)
+{
+    if (aff_ap->dm_idx < 0) {
+        return -1;
+    }
+
+    return check_ap_mld_dm_idx(aff_ap->ap_mld);
+}
+
+static inline void free_aff_ap_dm_idx(unsigned int didx, unsigned int amidx,
+                                      unsigned int aaidx)
+{
+    g_dm_dev_table[didx].dm_ap_mld[amidx].dm_aff_ap[aaidx].aff_ap_id = NULL;
+}
+
+static int get_sta_mld_dm_idx(unsigned int didx, unsigned int amidx,
+                              map_sta_mld_info_t *sta_mld, unsigned int *sidx)
+{
+    dm_ap_mld_table_t *dm_ap_mld;
+    unsigned int    idx = 0;
+
+    dm_ap_mld = &g_dm_dev_table[didx].dm_ap_mld[amidx];
+    while (dm_ap_mld->dm_sta_mld[idx].sta_mld_id) {
+        if (++idx >= MAX_STATION_PER_BSS) {
+            return -1;
+        }
+    }
+
+    dm_ap_mld->dm_sta_mld[idx].sta_mld_id = sta_mld->mac_str;
+
+    sta_mld->dm_idx = *sidx = idx;
+
+    return 0;
+}
+
+static int check_sta_mld_dm_idx(map_sta_mld_info_t *sta_mld)
+{
+    if (sta_mld->dm_idx < 0) {
+        return -1;
+    }
+
+    return check_ap_mld_dm_idx(sta_mld->ap_mld);
+}
+
+static inline void free_sta_mld_dm_idx(unsigned int didx, unsigned int amidx,
+                                       unsigned int smidx)
+{
+    memset(&g_dm_dev_table[didx].dm_ap_mld[amidx].dm_sta_mld[smidx], 0,
+        sizeof(dm_sta_mld_table_t));
+}
+
+
+static int get_aff_sta_dm_idx(unsigned int didx, unsigned int amidx, unsigned int smidx,
+                              map_sta_info_t *aff_sta, unsigned int *asidx)
+{
+    dm_sta_mld_table_t *dm_sta_mld;
+    unsigned int        idx = 0;
+
+    dm_sta_mld = &g_dm_dev_table[didx].dm_ap_mld[amidx].dm_sta_mld[smidx];
+    while (dm_sta_mld->dm_aff_sta[idx].aff_sta_id) {
+        if (++idx >= MAX_STATION_PER_BSS) {
+            return -1;
+        }
+    }
+
+    dm_sta_mld->dm_aff_sta[idx].aff_sta_id = aff_sta->mac_str;
+
+    aff_sta->dm_as_idx = *asidx = idx;
+
+    return 0;
+}
+
+static int check_aff_sta_dm_idx(map_sta_info_t *aff_sta)
+{
+    if (aff_sta->dm_as_idx < 0) {
+        return -1;
+    }
+
+    return check_sta_mld_dm_idx(aff_sta->sta_mld);
+}
+
+static inline void free_aff_sta_dm_idx(unsigned int didx, unsigned int amidx,
+                                       unsigned int smidx, unsigned int asidx)
+{
+    g_dm_dev_table[didx].dm_ap_mld[amidx].dm_sta_mld[smidx].dm_aff_sta[asidx].aff_sta_id = NULL;
 }
 
 static void mark_stas_removed(map_bss_info_t *bss)
@@ -954,6 +1420,45 @@ static void mark_radios_removed(map_ale_info_t *ale)
     map_dm_foreach_radio(ale, radio) {
         radio->dm_removed = true;
         mark_bsss_removed(radio);
+    }
+}
+
+static void mark_aff_stas_removed(map_sta_mld_info_t *sta_mld)
+{
+    map_sta_info_t *aff_sta;
+
+    map_dm_foreach_aff_sta(sta_mld, aff_sta) {
+        aff_sta->dm_as_removed = true;
+    }
+}
+
+static void mark_sta_mlds_removed(map_ap_mld_info_t *ap_mld)
+{
+    map_sta_mld_info_t *sta_mld;
+
+    map_dm_foreach_sta_mld(ap_mld, sta_mld) {
+        sta_mld->dm_removed = true;
+        mark_aff_stas_removed(sta_mld);
+    }
+}
+
+static void mark_aff_aps_removed(map_ap_mld_info_t *ap_mld)
+{
+    map_bss_info_t *aff_ap;
+
+    map_dm_foreach_aff_ap(ap_mld, aff_ap) {
+        aff_ap->dm_aa_removed = true;
+    }
+}
+
+static void mark_ap_mlds_removed(map_ale_info_t *ale)
+{
+    map_ap_mld_info_t *ap_mld;
+
+    map_dm_foreach_ap_mld(ale, ap_mld) {
+        ap_mld->dm_removed = true;
+        mark_aff_aps_removed(ap_mld);
+        mark_sta_mlds_removed(ap_mld);
     }
 }
 
@@ -1114,8 +1619,24 @@ static char *get_freq_bands_str(uint16_t freq_bands, char *buf)
 static const char *get_auth_mode_str(uint16_t auth_mode)
 {
     if ((auth_mode & IEEE80211_AUTH_MODE_WPA2PSK) &&
+        (auth_mode & IEEE80211_AUTH_MODE_SAE)     &&
+        (auth_mode & IEEE80211_AUTH_MODE_SAE_24)) {
+        return "psk+sae+sae24";
+    }
+
+    if ((auth_mode & IEEE80211_AUTH_MODE_WPA2PSK) &&
+        (auth_mode & IEEE80211_AUTH_MODE_SAE_24)) {
+        return "psk+sae24";
+    }
+
+    if ((auth_mode & IEEE80211_AUTH_MODE_WPA2PSK) &&
         (auth_mode & IEEE80211_AUTH_MODE_SAE)) {
         return "psk+sae";
+    }
+
+    if ((auth_mode & IEEE80211_AUTH_MODE_SAE)     &&
+        (auth_mode & IEEE80211_AUTH_MODE_SAE_24)) {
+        return "sae+sae24";
     }
 
     if ((auth_mode & IEEE80211_AUTH_MODE_WPAPSK) ||
@@ -1125,6 +1646,10 @@ static const char *get_auth_mode_str(uint16_t auth_mode)
 
     if (auth_mode & IEEE80211_AUTH_MODE_SAE) {
         return "sae";
+    }
+
+    if (auth_mode & IEEE80211_AUTH_MODE_SAE_24) {
+        return "sae24";
     }
 
     return "none";
@@ -1624,6 +2149,58 @@ map_sta_info_t *map_dm_rbus_get_sta(map_bss_info_t *bss, int sta_idx)
     return NULL;
 }
 
+map_ap_mld_info_t *map_dm_rbus_get_ap_mld(map_ale_info_t *ale, int ap_mld_idx)
+{
+    map_ap_mld_info_t *ap_mld;
+
+    map_dm_foreach_ap_mld(ale, ap_mld) {
+        if (ap_mld->dm_idx == ap_mld_idx) {
+            return ap_mld;
+        }
+    }
+
+    return NULL;
+}
+
+map_bss_info_t *map_dm_rbus_get_aff_ap(map_ap_mld_info_t *ap_mld, int aff_ap_idx)
+{
+    map_bss_info_t *aff_ap;
+
+    map_dm_foreach_aff_ap(ap_mld, aff_ap) {
+        if (aff_ap->dm_idx == aff_ap_idx) {
+            return aff_ap;
+        }
+    }
+
+    return NULL;
+}
+
+map_sta_mld_info_t *map_dm_rbus_get_sta_mld(map_ap_mld_info_t *ap_mld, int sta_mld_idx)
+{
+    map_sta_mld_info_t *sta_mld;
+
+    map_dm_foreach_sta_mld(ap_mld, sta_mld) {
+        if (sta_mld->dm_idx == sta_mld_idx) {
+            return sta_mld;
+        }
+    }
+
+    return NULL;
+}
+
+map_sta_info_t *map_dm_rbus_get_aff_sta(map_sta_mld_info_t *sta_mld, int aff_sta_idx)
+{
+    map_sta_info_t *aff_sta;
+
+    map_dm_foreach_aff_sta(sta_mld, aff_sta) {
+        if (aff_sta->dm_idx == aff_sta_idx) {
+            return aff_sta;
+        }
+    }
+
+    return NULL;
+}
+
 map_scan_result_t *map_dm_rbus_get_scanres(map_radio_info_t *radio,
     unsigned int scan_id, unsigned int opclass, unsigned int channel)
 {
@@ -1721,13 +2298,17 @@ static const char *get_table_alias(const char *src, char *alias, size_t max_len,
 #define DM_RADIO_PREFIX     "Radio"
 #define DM_BSS_PREFIX       "BSS"
 #define DM_STA_PREFIX       "STA"
+#define DM_AP_MLD_PREFIX    "APMLD"
+#define DM_AFF_AP_PREFIX    "AffiliatedAP"
+#define DM_STA_MLD_PREFIX   "STAMLD"
+#define DM_AFF_STA_PREFIX   "AffiliatedSTA"
 
 static map_ale_info_t *dm_get_ale(const char *alias, bool is_num)
 {
     map_ale_info_t *ale;
 
     if (is_num) {
-        return map_dm_rbus_get_ale(atoi(alias));
+        return map_dm_rbus_get_ale(atoi(alias) - 1);
     }
 
     map_dm_foreach_agent_ale(ale) {
@@ -1793,6 +2374,90 @@ static map_sta_info_t *dm_get_sta(map_bss_info_t *bss, const char *alias, bool i
     return NULL;
 }
 
+static map_ap_mld_info_t *dm_get_ap_mld(map_ale_info_t *ale, const char *alias, bool is_num)
+{
+    map_ap_mld_info_t *ap_mld;
+
+    if (is_num) {
+        return map_dm_rbus_get_ap_mld(ale, atoi(alias) - 1);
+    }
+
+    if (!alias) {
+        return NULL;
+    }
+
+    map_dm_foreach_ap_mld(ale, ap_mld) {
+        if (strcmp(alias, ap_mld->mac_str) == 0) {
+            return ap_mld;
+        }
+    }
+
+    return NULL;
+}
+
+static map_bss_info_t *dm_get_aff_ap(map_ap_mld_info_t *ap_mld, const char *alias, bool is_num)
+{
+    map_bss_info_t *aff_ap;
+
+    if (is_num) {
+        return map_dm_rbus_get_aff_ap(ap_mld, atoi(alias) - 1);
+    }
+
+    if (!alias) {
+        return NULL;
+    }
+
+    map_dm_foreach_aff_ap(ap_mld, aff_ap) {
+        if (strcmp(alias, aff_ap->bssid_str) == 0) {
+            return aff_ap;
+        }
+    }
+
+    return NULL;
+}
+
+static map_sta_mld_info_t *dm_get_sta_mld(map_ap_mld_info_t *ap_mld, const char *alias, bool is_num)
+{
+    map_sta_mld_info_t *sta_mld;
+
+    if (is_num) {
+        return map_dm_rbus_get_sta_mld(ap_mld, atoi(alias) - 1);
+    }
+
+    if (!alias) {
+        return NULL;
+    }
+
+    map_dm_foreach_sta_mld(ap_mld, sta_mld) {
+        if (strcmp(alias, sta_mld->mac_str) == 0) {
+            return sta_mld;
+        }
+    }
+
+    return NULL;
+}
+
+static map_sta_info_t *dm_get_aff_sta(map_sta_mld_info_t *sta_mld, const char *alias, bool is_num)
+{
+    map_sta_info_t *aff_sta;
+
+    if (is_num) {
+        return map_dm_rbus_get_aff_sta(sta_mld, atoi(alias) - 1);
+    }
+
+    if (!alias) {
+        return NULL;
+    }
+
+    map_dm_foreach_aff_sta(sta_mld, aff_sta) {
+        if (strcmp(alias, aff_sta->mac_str) == 0) {
+            return aff_sta;
+        }
+    }
+
+    return NULL;
+}
+
 static int cmp_unassoc_sta_mac(void *unassoc_sta, void *mac)
 {
     if (unassoc_sta && mac) {
@@ -1827,6 +2492,31 @@ static map_unassociated_sta_info_t *dm_get_unassoc_sta(map_radio_info_t *radio, 
             return NULL;
         }
         return find_object(radio->unassoc_sta_list, mac, cmp_unassoc_sta_mac);
+    }
+
+    return NULL;
+}
+
+
+static map_op_class_t *dm_get_disallowed_op_class(map_radio_info_t *radio, const char *alias,
+                                                       bool is_num)
+{
+    int idx;
+
+    if (is_num) {
+        idx = atoi(alias) - 1;
+        if (idx < 0 || idx >= radio->disallowed_op_class_list.op_classes_nr) {
+            log_lib_e("Invalid disallowed operating class index: %d", idx + 1);
+            return NULL;
+        }
+        return &radio->disallowed_op_class_list.op_classes[idx];
+    } else {
+        uint8_t op_class = atoi(alias);
+        for (idx = 0; idx < radio->disallowed_op_class_list.op_classes_nr; idx++) {
+            if (radio->disallowed_op_class_list.op_classes[idx].op_class == op_class) {
+                return &radio->disallowed_op_class_list.op_classes[idx];
+            }
+        }
     }
 
     return NULL;
@@ -1966,14 +2656,14 @@ static rbusError_t network_setssid_rbus(rbusHandle_t handle, char const* method,
     map_profile_cfg_t profile = { /* default values */
         .enabled                    = true,
         .type                       = MAP_PROFILE_TYPE_OTHER,
-        .supported_auth_modes       = IEEE80211_AUTH_MODE_OPEN,
-        .supported_encryption_types = IEEE80211_ENCRYPTION_MODE_NONE,
+        .supported_auth_modes       = 0,
+        .supported_encryption_types = 0,
         .bss_freq_bands             = MAP_FREQ_BANDS_ALL,
-        .bss_state                  = MAP_FRONTHAUL_BSS,
-        .gateway                    = true,
-        .extender                   = true,
+        .bss_state                  = 0,
+        .gateway                    = -1,
+        .extender                   = -1,
         .hide                       = false,
-        .vlan_id                    = -1
+        .vlan_id                    = -2
     };
     unsigned int profile_count = 0;
     const char *sval;
@@ -2009,12 +2699,6 @@ static rbusError_t network_setssid_rbus(rbusHandle_t handle, char const* method,
         }
         add = (strcmp(sval, "false") != 0);
 
-        /* If remove operation, then other arguments are irrelevant */
-        if (add == false) {
-            ret = map_profile_remove(&profile);
-            goto result;
-        }
-
         /* Optional arguments */
         rc_value = rbusObject_GetPropertyString(in, "Band", &sval, &len);
         if (rc_value == RBUS_VALUE_ERROR_SUCCESS) {
@@ -2023,6 +2707,12 @@ static rbusError_t network_setssid_rbus(rbusHandle_t handle, char const* method,
                 rbus_add_prop_str(out, "Status", "Error_Invalid_Input");
                 return RBUS_ERROR_INVALID_INPUT;
             }
+        }
+
+        /* If remove operation, then other arguments are irrelevant */
+        if (add == false) {
+            ret = map_profile_remove(&profile);
+            goto result;
         }
 
         rc_value = rbusObject_GetPropertyString(in, "PassPhrase", &sval, &len);
@@ -2087,21 +2777,26 @@ result:
     }
 
     if (profile_count < cfg->num_profiles) {
-        rc = rbusTable_registerRow(g_bus_handle,
-            "Device.WiFi.DataElements.Network.SSID.", cfg->num_profiles, NULL);
-        if (rc != RBUS_ERROR_SUCCESS) {
-            log_lib_e("Failed to create row[%d] for ssid", cfg->num_profiles);
+        while (++profile_count <= cfg->num_profiles) {
+            rc = rbusTable_registerRow(g_bus_handle,
+                "Device.WiFi.DataElements.Network.SSID.", profile_count, NULL);
+            if (rc != RBUS_ERROR_SUCCESS) {
+                log_lib_e("Failed to create row[%d] for ssid", profile_count);
+                break;
+            }
         }
     } else if (profile_count > cfg->num_profiles) {
-        char tname[64] = {0};
+        do {
+            char tname[64] = {0};
 
-        snprintf(tname, sizeof(tname),
-            "Device.WiFi.DataElements.Network.SSID.%d", profile_count);
-
-        rc = rbusTable_unregisterRow(g_bus_handle, tname);
-        if (rc != RBUS_ERROR_SUCCESS) {
-            log_lib_e("Failed to delete row[%d] for ssid", profile_count);
-        }
+            snprintf(tname, sizeof(tname),
+                "Device.WiFi.DataElements.Network.SSID.%d", profile_count);
+            rc = rbusTable_unregisterRow(g_bus_handle, tname);
+            if (rc != RBUS_ERROR_SUCCESS) {
+                log_lib_e("Failed to delete row[%d] for ssid", profile_count);
+                break;
+            }
+        } while (--profile_count > cfg->num_profiles);
     }
 
     rbus_add_prop_str(out, "Status", "Success");
@@ -2177,43 +2872,22 @@ static rbusError_t ssid_get_rbus(rbusHandle_t handle, rbusProperty_t property, r
 /*#######################################################################
 #   Device.WiFi.DataElements.Network.Device                             #
 ########################################################################*/
-static void create_ale_mac(mac_addr mac, int *ret_idx)
-{
-    mac_addr_str mac_str;
-    unsigned int idx;
-    rbusError_t  rc;
-
-    mac_to_string(mac, mac_str);
-
-    log_lib_d("create ale: %s", mac_str);
-
-    if (get_dev_dm_idx(mac_str, &idx) < 0) {
-        log_lib_e("could not find free index for ale: %s", mac_str);
-        return;
-    }
-
-    if (ret_idx) {
-        *ret_idx = idx;
-    }
-
-    if (idx > 0) {
-        rc = rbusTable_registerRow(g_bus_handle,
-            "Device.WiFi.DataElements.Network.Device.", idx, mac_str);
-        if (rc != RBUS_ERROR_SUCCESS) {
-            log_lib_e("Failed to create row[%d] for ale: %s", idx, mac_str);
-        }
-    }
-}
-
 static void dm_rbus_create_ale(map_ale_info_t *ale)
 {
-    /* Local agent already added */
-    if (is_local_agent(ale)) {
-        ale->dm_idx = 0;
+    unsigned int ale_idx;
+    rbusError_t  rc;
+
+    if (get_dev_dm_idx(ale, &ale_idx) < 0) {
+        log_lib_e("could not find free index for ale: %s", ale->al_mac_str);
         return;
     }
 
-    create_ale_mac(ale->al_mac, &ale->dm_idx);
+    log_lib_d("Create row Device.WiFi.DataElements.Network.Device.%d", ale_idx + 1);
+    rc = rbusTable_registerRow(g_bus_handle,
+        "Device.WiFi.DataElements.Network.Device.", ale_idx + 1, ale->al_mac_str);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to create row[%d] for ale: %s", ale_idx + 1, ale->al_mac_str);
+    }
 }
 
 static void update_dm_cac_available(map_ale_info_t *ale)
@@ -2236,7 +2910,7 @@ static void update_dm_cac_available(map_ale_info_t *ale)
         /* Add missing CAC available channels */
         snprintf(tname, sizeof(tname),
             "Device.WiFi.DataElements.Network.Device.%d.CACStatus.%d."
-            "CACAvailableChannel.", ale_idx, cac_idx);
+            "CACAvailableChannel.", ale_idx + 1, cac_idx);
 
         curr_count = curr_count ? curr_count : 1;
         for (idx = curr_count; idx <= new_count; idx++) {
@@ -2250,7 +2924,7 @@ static void update_dm_cac_available(map_ale_info_t *ale)
         for (idx = curr_count; idx > new_count; idx--) {
             snprintf(tname, sizeof(tname),
                 "Device.WiFi.DataElements.Network.Device.%d.CACStatus.%d."
-                "CACAvailableChannel.%d", ale_idx, cac_idx, idx);
+                "CACAvailableChannel.%d", ale_idx + 1, cac_idx, idx);
 
             rc = rbusTable_unregisterRow(g_bus_handle, tname);
             if (rc != RBUS_ERROR_SUCCESS) {
@@ -2281,7 +2955,7 @@ static void update_dm_cac_nonoccupancy(map_ale_info_t *ale)
         /* Add missing CAC non occupancy channels */
         snprintf(tname, sizeof(tname),
             "Device.WiFi.DataElements.Network.Device.%d.CACStatus.%d."
-            "CACNonOccupancyChannel.", ale_idx, cac_idx);
+            "CACNonOccupancyChannel.", ale_idx + 1, cac_idx);
 
         curr_count = curr_count ? curr_count : 1;
         for (idx = curr_count; idx <= new_count; idx++) {
@@ -2295,7 +2969,7 @@ static void update_dm_cac_nonoccupancy(map_ale_info_t *ale)
         for (idx = curr_count; idx > new_count; idx--) {
             snprintf(tname, sizeof(tname),
                 "Device.WiFi.DataElements.Network.Device.%d.CACStatus.%d."
-                "CACNonOccupancyChannel.%d", ale_idx, cac_idx, idx);
+                "CACNonOccupancyChannel.%d", ale_idx + 1, cac_idx, idx);
 
             rc = rbusTable_unregisterRow(g_bus_handle, tname);
             if (rc != RBUS_ERROR_SUCCESS) {
@@ -2326,7 +3000,7 @@ static void update_dm_cac_active(map_ale_info_t *ale)
         /* Add missing CAC active channels */
         snprintf(tname, sizeof(tname),
             "Device.WiFi.DataElements.Network.Device.%d.CACStatus.%d."
-            "CACActiveChannel.", ale_idx, cac_idx);
+            "CACActiveChannel.", ale_idx + 1, cac_idx);
 
         curr_count = curr_count ? curr_count : 1;
         for (idx = curr_count; idx <= new_count; idx++) {
@@ -2340,7 +3014,7 @@ static void update_dm_cac_active(map_ale_info_t *ale)
         for (idx = curr_count; idx > new_count; idx--) {
             snprintf(tname, sizeof(tname),
                 "Device.WiFi.DataElements.Network.Device.%d.CACStatus.%d."
-                "CACActiveChannel.%d", ale_idx, cac_idx, idx);
+                "CACActiveChannel.%d", ale_idx + 1, cac_idx, idx);
 
             rc = rbusTable_unregisterRow(g_bus_handle, tname);
             if (rc != RBUS_ERROR_SUCCESS) {
@@ -2361,7 +3035,7 @@ static int radio_add_unassoc_sta(map_radio_info_t *radio, map_nb_unassoc_sta_met
     snprintf(tname, sizeof(tname),
              "Device.WiFi.DataElements.Network.Device.%d.Radio.%d."
              "UnassociatedSTA.",
-             radio->ale->dm_idx, radio->dm_idx + 1);
+             radio->ale->dm_idx + 1, radio->dm_idx + 1);
 
     info = calloc(1, sizeof(*info));
     if (!info) {
@@ -2408,7 +3082,7 @@ static void radio_remove_unassoc_sta(map_radio_info_t *radio, mac_addr mac)
         snprintf(tname, sizeof(tname),
                  "Device.WiFi.DataElements.Network.Device.%d.Radio.%d."
                  "UnassociatedSTA.%d",
-                 radio->ale->dm_idx, radio->dm_idx + 1, old->dm_idx);
+                 radio->ale->dm_idx + 1, radio->dm_idx + 1, old->dm_idx);
 
         rc = rbusTable_unregisterRow(g_bus_handle, tname);
         if (rc != RBUS_ERROR_SUCCESS) {
@@ -2536,7 +3210,7 @@ static void dm_rbus_update_ale(map_ale_info_t *ale)
         if (!cac_valid) {
             snprintf(tname, sizeof(tname),
                 "Device.WiFi.DataElements.Network.Device.%d."
-                "CACStatus.", ale_idx);
+                "CACStatus.", ale_idx + 1);
 
             /* There is only one CACStatus at a time */
             cac_idx = 1;
@@ -2555,7 +3229,7 @@ static void dm_rbus_update_ale(map_ale_info_t *ale)
             cac_idx = 1;
             snprintf(tname, sizeof(tname),
                 "Device.WiFi.DataElements.Network.Device.%d."
-                "CACStatus.%d.", ale_idx, cac_idx);
+                "CACStatus.%d.", ale_idx + 1, cac_idx);
 
             rc = rbusTable_unregisterRow(g_bus_handle, tname);
             if (rc != RBUS_ERROR_SUCCESS) {
@@ -2579,7 +3253,7 @@ static void dm_rbus_update_ale(map_ale_info_t *ale)
             /* Add missing ethernet interfaces */
             snprintf(tname, sizeof(tname),
                 "Device.WiFi.DataElements.Network.Device.%d."
-                "X_AIRTIES_Ethernet.Interface.", ale_idx);
+                "X_AIRTIES_Ethernet.Interface.", ale_idx + 1);
 
             curr_count = curr_count ? curr_count : 1;
             for (idx = curr_count; idx <= iface_count; idx++) {
@@ -2593,7 +3267,7 @@ static void dm_rbus_update_ale(map_ale_info_t *ale)
             for (idx = curr_count; idx > iface_count; idx--) {
                 snprintf(tname, sizeof(tname),
                     "Device.WiFi.DataElements.Network.Device.%d."
-                    "X_AIRTIES_Ethernet.Interface.%d", ale_idx, idx);
+                    "X_AIRTIES_Ethernet.Interface.%d", ale_idx + 1, idx);
 
                 rc = rbusTable_unregisterRow(g_bus_handle, tname);
                 if (rc != RBUS_ERROR_SUCCESS) {
@@ -2612,7 +3286,7 @@ static void dm_rbus_update_ale(map_ale_info_t *ale)
                 /* Add missing ethernet devices */
                 snprintf(tname, sizeof(tname),
                     "Device.WiFi.DataElements.Network.Device.%d.X_AIRTIES_Ethernet."
-                    "Interface.%d.Device.", ale_idx, iface_idx + 1);
+                    "Interface.%d.Device.", ale_idx + 1, iface_idx + 1);
 
                 curr_count = curr_count ? curr_count : 1;
                 for (idx = curr_count; idx <= new_count; idx++) {
@@ -2626,7 +3300,7 @@ static void dm_rbus_update_ale(map_ale_info_t *ale)
                 for (idx = curr_count; idx > new_count; idx--) {
                     snprintf(tname, sizeof(tname),
                         "Device.WiFi.DataElements.Network.Device.%d.X_AIRTIES_Ethernet."
-                        "Interface.%d.Device.%d", ale_idx, iface_idx + 1, idx);
+                        "Interface.%d.Device.%d", ale_idx + 1, iface_idx + 1, idx);
 
                     rc = rbusTable_unregisterRow(g_bus_handle, tname);
                     if (rc != RBUS_ERROR_SUCCESS) {
@@ -2650,12 +3324,6 @@ static void dm_rbus_remove_ale(map_ale_info_t *ale)
     char         tname[256] = {0};
     rbusError_t  rc;
 
-    log_lib_d("remove ale[%d]: %s", ale->dm_idx, ale->al_mac_str);
-
-    if (is_local_agent(ale)) {
-        return;
-    }
-
     if (check_dev_dm_idx(ale) < 0) {
         log_lib_e("Invalid indexing for ale");
         return;
@@ -2664,8 +3332,9 @@ static void dm_rbus_remove_ale(map_ale_info_t *ale)
     ale_idx = ale->dm_idx;
 
     snprintf(tname, sizeof(tname),
-        "Device.WiFi.DataElements.Network.Device.%d", ale_idx);
+        "Device.WiFi.DataElements.Network.Device.%d", ale_idx + 1);
 
+    log_lib_d("Delete row %s", tname);
     rc = rbusTable_unregisterRow(g_bus_handle, tname);
     if (rc != RBUS_ERROR_SUCCESS) {
         log_lib_e("Failed to delete row[%d] for ale: %s",
@@ -2674,17 +3343,77 @@ static void dm_rbus_remove_ale(map_ale_info_t *ale)
 
     free_dev_dm_idx(ale_idx);
 
-    if (0) {
-        /* This may be enabled to shift indexes, if the data model
-           automatically keeps indexing consecutive. rbus does not
-           support it, tr069 forbids it */
-        update_ale_idxs(ale);
-    }
-
     /* Mark child objects are removed */
     mark_radios_removed(ale);
+    mark_ap_mlds_removed(ale);
 
     return;
+}
+
+static int parse_mac_list(char *buf, int blen, mac_addr **mac_list, uint8_t *mac_count)
+{
+    uint8_t count;
+    mac_addr *list;
+    mac_addr mac;
+    char *end;
+
+    *mac_list = NULL;
+    *mac_count = 0;
+
+    count = blen / sizeof(mac_addr_str);
+    if (!count) {
+        return 0;
+    }
+
+    list = calloc(count, sizeof(mac_addr));
+    if (!list) {
+        log_lib_e("Memory allocation failed");
+        return -1;
+    }
+
+    count = 0;
+    while (blen >= (int)sizeof(mac_addr_str)) {
+        end = strchr(buf, ',');
+        if (end) {
+            *end = '\0';
+        }
+
+        if (!acu_mac_from_string(buf, mac)) {
+            /* Regular, add to list */
+            maccpy(list[count], mac);
+            ++count;
+        }
+
+        if (end == NULL) {
+            break;
+        }
+        blen -= (end + 1 - buf);
+        buf = end + 1;
+    }
+
+    *mac_list = list;
+    *mac_count = count;
+
+    return 0;
+}
+
+static void *get_mac_list_str(mac_addr *mac_list, size_t mac_count, char *buf, uint16_t blen)
+{
+    char *start = buf;
+    uint8_t idx = 0;
+
+    while (blen >= sizeof(mac_addr_str) && idx < mac_count) {
+        acu_mac_to_string(mac_list[idx], buf);
+        buf  += (sizeof(mac_addr_str) - 1);
+        blen -= sizeof(mac_addr_str);
+        if (++idx >= mac_count) {
+            break;
+        }
+        *buf = ',';
+        ++buf;
+    }
+
+    return start;
 }
 
 static rbusError_t device_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
@@ -2740,10 +3469,22 @@ static rbusError_t device_get_rbus(rbusHandle_t handle, rbusProperty_t property,
     } else if (strcmp(param, "CountryCode") == 0) {
         get_country_code_str(ale->country_code, country_code);
         rbusValue_SetString(value, country_code);
-    } else if (strcmp(param, "RadioNumberOfEntries") == 0) {
-        rbusValue_SetUInt32(value, ale->radios_nr);
     } else if (strcmp(param, "MultiAPProfile") == 0) {
         rbusValue_SetUInt32(value, ale->map_profile);
+    } else if (strcmp(param, "BTMSteeringDisallowedSTAList") == 0) {
+        uint16_t blen = ale->btm_steering_disallow_macs_nr * sizeof(mac_addr_str);
+        char *buf = calloc(blen, sizeof(char));
+        get_mac_list_str(ale->btm_steering_disallow_macs, ale->btm_steering_disallow_macs_nr, buf, blen);
+        rbusValue_SetString(value, buf);
+        free(buf);
+    } else if (strcmp(param, "LocalSteeringDisallowedSTAList") == 0) {
+        uint16_t blen = ale->local_steering_disallow_macs_nr * sizeof(mac_addr_str);
+        char *buf = calloc(blen, sizeof(char));
+        get_mac_list_str(ale->local_steering_disallow_macs, ale->local_steering_disallow_macs_nr, buf, blen);
+        rbusValue_SetString(value, buf);
+        free(buf);
+    } else if (strcmp(param, "RadioNumberOfEntries") == 0) {
+        rbusValue_SetUInt32(value, ale->radios_nr);
     } else if (strcmp(param, "CACStatusNumberOfEntries") == 0) {
         rbusValue_SetUInt32(value, ale->cac_status_report.valid ? 1 : 0);
     } else {
@@ -2758,6 +3499,146 @@ static rbusError_t device_get_rbus(rbusHandle_t handle, rbusProperty_t property,
     return RBUS_ERROR_SUCCESS;
 }
 
+static rbusError_t device_set_rbus(rbusHandle_t handle, rbusProperty_t property, rbusSetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    char const* name = rbusProperty_GetName(property);
+    rbusValue_t value = rbusProperty_GetValue(property);
+    rbusValueType_t type = rbusValue_GetType(value);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    const char *strval = NULL;
+    mac_addr *mac_list = NULL;
+    uint8_t mac_count = 0;
+    char *buffer;
+    int blen;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "%s", param);
+    if (strcmp(param, "BTMSteeringDisallowedSTAList") == 0) {
+        if (type != RBUS_STRING) {
+            log_lib_e("Invalid value type");
+            return RBUS_ERROR_INVALID_INPUT;
+        }
+
+        strval = rbusValue_GetString(value, &blen);
+        if (blen) {
+            buffer = strdup(strval);
+            parse_mac_list(buffer, blen + 1, &mac_list, &mac_count);
+            free(buffer);
+        }
+
+        SFREE(ale->btm_steering_disallow_macs);
+        ale->btm_steering_disallow_macs = mac_list;
+        ale->btm_steering_disallow_macs_nr = mac_count;
+
+        if (map_dm_get_nbapi()->set_steering_policy != NULL) {
+            map_dm_get_nbapi()->set_steering_policy(ale);
+        } else {
+            log_lib_e("Set steer policy is not available");
+            return RBUS_ERROR_BUS_ERROR;
+        }
+    } else if (strcmp(param, "LocalSteeringDisallowedSTAList") == 0) {
+        if (type != RBUS_STRING) {
+            log_lib_e("Invalid value type");
+            return RBUS_ERROR_INVALID_INPUT;
+        }
+
+        strval = rbusValue_GetString(value, &blen);
+        if (blen) {
+            buffer = strdup(strval);
+            parse_mac_list(buffer, blen + 1, &mac_list, &mac_count);
+            free(buffer);
+        }
+
+        SFREE(ale->local_steering_disallow_macs);
+        ale->local_steering_disallow_macs = mac_list;
+        ale->local_steering_disallow_macs_nr = mac_count;
+
+        if (map_dm_get_nbapi()->set_steering_policy != NULL) {
+            map_dm_get_nbapi()->set_steering_policy(ale);
+        } else {
+            log_lib_e("Set steer policy is not available");
+            return RBUS_ERROR_BUS_ERROR;
+        }
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+static rbusError_t device_reboot_rbus(rbusHandle_t handle, char const* method, rbusObject_t in, rbusObject_t out, rbusMethodAsyncHandle_t async)
+{
+    (void) handle;
+    (void) async;
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_nb_reset_reboot_param_t payload;
+    bool is_reset;
+    bool factory_reset;
+    rbusValueError_t rc;
+
+    rbusObject_SetName(out, "Output");
+
+    method += sizeof(DM_DEVICE_PREFIX);
+    method = get_table_alias(method, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        goto bail;
+    }
+
+    sscanf(method, "%s", param);
+    if (strcmp(param, "X_AIRTIES_Reboot()") != 0) {
+        log_lib_e("Invalid method: %s", param);
+        goto bail;
+    }
+
+    /* Optional arguments */
+    rc = rbusObject_GetPropertyBoolean(in, "Reset", &is_reset);
+    if (rc != RBUS_VALUE_ERROR_SUCCESS) {
+        is_reset = false;
+    }
+    payload.is_reset = is_reset;
+    if (!is_reset) {
+        factory_reset = false;
+    } else {
+        rc = rbusObject_GetPropertyBoolean(in, "FactoryReset", &factory_reset);
+        if (rc != RBUS_VALUE_ERROR_SUCCESS) {
+            factory_reset = false;
+        }
+    }
+    payload.factory_reset = factory_reset;
+
+    /* Perform device reboot */
+    if (map_dm_get_nbapi()->reset_reboot != NULL) {
+        map_dm_get_nbapi()->reset_reboot(ale, &payload);
+        rbus_add_prop_str(out, "Status", "Success");
+    } else {
+        log_lib_e("Reboot is not available");
+        rbus_add_prop_str(out, "Status", "Error_Not_Ready");
+        return RBUS_ERROR_INVALID_METHOD;
+    }
+
+    return RBUS_ERROR_SUCCESS;
+
+bail:
+    rbus_add_prop_str(out, "Status", "Error_Invalid_Input");
+    return RBUS_ERROR_INVALID_INPUT;
+}
+
 /*#######################################################################
 #   Device.WiFi.DataElements.Network.Device.MultiAPDevice.Backhaul      #
 ########################################################################*/
@@ -2770,6 +3651,7 @@ static rbusError_t backhaul_get_rbus(rbusHandle_t handle, rbusProperty_t propert
     char param[MAX_PROP_PARAM_LEN] = {0};
     bool is_num;
     map_ale_info_t *ale;
+    map_ale_info_t *us_ale = NULL;
 
     name += sizeof(DM_DEVICE_PREFIX);
     name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
@@ -2779,18 +3661,45 @@ static rbusError_t backhaul_get_rbus(rbusHandle_t handle, rbusProperty_t propert
         return RBUS_ERROR_INVALID_INPUT;
     }
 
+    if (!ale->is_local) {
+        us_ale = map_dm_get_ale(ale->upstream_al_mac);
+        if (us_ale == get_root_ale_node()) {
+            us_ale = map_dm_get_ale(map_cfg_get()->controller_cfg.local_agent_al_mac);
+            if (us_ale && !us_ale->is_local_colocated) {
+                log_lib_e("local agent for controller is not colocated");
+                us_ale = NULL;
+            }
+        }
+    }
+
     sscanf(name, "MultiAPDevice.Backhaul.%s", param);
 
     rbusValue_Init(&value);
 
     if (strcmp(param, "LinkType") == 0) {
-        rbusValue_SetString(value, get_backhaul_link_type_str(ale));
+        if (ale->is_local || !us_ale) {
+            rbusValue_SetString(value, "None");
+        } else {
+            rbusValue_SetString(value, get_backhaul_link_type_str(ale));
+        }
     } else if (strcmp(param, "BackhaulMACAddress") == 0) {
-        rbusValue_SetString(value, mac_string(ale->upstream_remote_iface_mac));
+        if (ale->is_local || !us_ale) {
+            rbusValue_SetString(value, "");
+        } else {
+            rbusValue_SetString(value, mac_string(ale->upstream_remote_iface_mac));
+        }
     } else if (strcmp(param, "BackhaulDeviceID") == 0) {
-        rbusValue_SetString(value, mac_string(ale->upstream_al_mac));
+        if (ale->is_local || !us_ale) {
+            rbusValue_SetString(value, "");
+        } else {
+            rbusValue_SetString(value, us_ale->al_mac_str);
+        }
     } else if (strcmp(param, "MACAddress") == 0) {
-        rbusValue_SetString(value, mac_string(ale->upstream_local_iface_mac));
+        if (ale->is_local || !us_ale) {
+            rbusValue_SetString(value, "");
+        } else {
+            rbusValue_SetString(value, mac_string(ale->upstream_local_iface_mac));
+        }
     } else {
         log_lib_e("Invalid param: %s", param);
         rbusValue_Release(value);
@@ -2801,6 +3710,236 @@ static rbusError_t backhaul_get_rbus(rbusHandle_t handle, rbusProperty_t propert
     rbusValue_Release(value);
 
     return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..Network.Device.MultiAPDevice.Backhaul.SteerWiFiBackhaul()         #
+########################################################################*/
+static int steerwifibh_set_channel(map_bss_info_t *bss, int32_t channel, map_nb_steer_wifi_bh_param_t *payload)
+{
+    map_radio_info_t *radio;
+
+    radio = bss->radio;
+    payload->op_class = radio->current_op_class;
+    if (channel < 0) {
+        payload->channel = radio->current_op_channel;
+    }
+
+    return 0;
+}
+
+static void steerwifibh_send_result(map_sta_info_t *sta)
+{
+    map_ale_info_t *ale;
+    rbusMethodAsyncHandle_t async;
+    mac_addr target_bssid;
+    timer_id_t timer_id;
+    rbusObject_t out;
+    rbusError_t rc;
+    int found = 0;
+
+    /* Check if this STA is an AP */
+    map_dm_foreach_agent_ale(ale) {
+        if (!maccmp(sta->mac, ale->upstream_local_iface_mac)) {
+            found = 1;
+            break;
+        }
+    }
+    if (!found) {
+        log_lib_i("sta is not an AP");
+        return;
+    }
+
+    /* Check for pending steer wifi backhaul reply */
+    get_dev_dm_steerwifibh_reply(ale, &async);
+    if (!async) {
+        log_lib_i("no pending backhaul steer");
+        return;
+    }
+    get_dev_dm_steerwifibh_target(ale, target_bssid);
+
+    /* Unregister timeout timer */
+    map_dm_get_ale_timer_id(timer_id, ale, STEER_WIFIBH_TIMER_ID);
+    if (map_is_timer_registered(timer_id)) {
+        map_timer_unregister_callback(timer_id);
+    }
+
+    /* Prepare and send response */
+    rbusObject_Init(&out, "Output");
+
+    if (!maccmp(sta->bss->bssid, target_bssid)) {
+        rbus_add_prop_str(out, "Status", "Success");
+        rc = RBUS_ERROR_SUCCESS;
+    } else {
+        rbus_add_prop_str(out, "Status", "Error_Other");
+        rc = RBUS_ERROR_BUS_ERROR;
+    }
+
+    rc = rbusMethod_SendAsyncResponse(async, rc, out);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Steer WiFi backhaul response failed: %d", rc);
+    }
+
+    rbusObject_Release(out);
+
+    /* Reset steer wifi backhaul status */
+    set_dev_dm_steerwifibh_target(ale, g_zero_mac);
+    set_dev_dm_steerwifibh_reply(ale, NULL);
+}
+
+static uint8_t steerwifibh_async_cb(char *timer_id, void *arg)
+{
+    (void) arg;
+    mac_addr_str ale_mac_str = {0};
+    mac_addr ale_mac;
+    map_ale_info_t *ale;
+    rbusMethodAsyncHandle_t async;
+    rbusObject_t out;
+    rbusError_t rc;
+
+    /* Try fo find ALE via timer_id */
+    memcpy(ale_mac_str, &timer_id[4], sizeof(mac_addr_str) - 1);
+    if (acu_mac_from_string(ale_mac_str, ale_mac)) {
+        log_lib_e("Invalid mac address");
+        return 1;
+    }
+    ale = map_dm_get_ale(ale_mac);
+    if (!ale) {
+        log_lib_e("Ale not found");
+        return 1;
+    }
+
+    /* Check for pending steer wifi backhaul reply */
+    get_dev_dm_steerwifibh_reply(ale, &async);
+    if (!async) {
+        log_lib_i("no pending backhaul steer");
+        return 1;
+    }
+
+    /* Prepare and send response */
+    rbusObject_Init(&out, "Output");
+
+    rbus_add_prop_str(out, "Status", "Timeout");
+
+    rc = rbusMethod_SendAsyncResponse(async, RBUS_ERROR_TIMEOUT, out);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Steer WiFi backhaul response failed: %d", rc);
+    }
+
+    rbusObject_Release(out);
+
+    /* Reset steer wifi backhaul status */
+    set_dev_dm_steerwifibh_target(ale, g_zero_mac);
+    set_dev_dm_steerwifibh_reply(ale, NULL);
+
+    return 1;
+}
+
+static rbusError_t backhaul_steerwifibh_rbus(rbusHandle_t handle, char const* method, rbusObject_t in, rbusObject_t out, rbusMethodAsyncHandle_t async)
+{
+    (void) handle;
+    (void) async;
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_bss_info_t *cbss;
+    map_bss_info_t *tbss;
+    rbusMethodAsyncHandle_t prev;
+    map_nb_steer_wifi_bh_param_t payload = {0};
+    uint32_t timeout;
+    uint32_t channel;
+    timer_id_t timer_id;
+    rbusValueError_t rc;
+    const char *sval;
+    int len;
+
+    rbusObject_SetName(out, "Output");
+
+    method += sizeof(DM_DEVICE_PREFIX);
+    method = get_table_alias(method, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        goto bail;
+    }
+    if (INTERFACE_TYPE_GROUP_GET(ale->upstream_iface_type) != INTERFACE_TYPE_GROUP_WLAN) {
+        log_lib_e("Invalid backhaul type");
+        goto bail;
+    }
+
+    sscanf(method, "MultiAPDevice.Backhaul.%s", param);
+    if (strcmp(param, "SteerWiFiBackhaul()") != 0) {
+        log_lib_e("Invalid method: %s", param);
+        goto bail;
+    }
+
+    get_dev_dm_steerwifibh_reply(ale, &prev);
+    if (prev) {
+        log_lib_e("SteerWiFiBackhaul is not finished yet");
+        rbus_add_prop_str(out, "Status", "Error_Not_Ready");
+        return RBUS_ERROR_INVALID_METHOD;
+    }
+
+    /* Mandatory arguments */
+    rc = rbusObject_GetPropertyString(in, "TargetBSS", &sval, &len);
+    if (rc != RBUS_VALUE_ERROR_SUCCESS) {
+        log_lib_e("TargetBSS is mandatory");
+        goto bail;
+    }
+    if (acu_mac_from_string(sval, payload.target_bssid)) {
+        log_lib_e("Invalid TargetBSS");
+        goto bail;
+    }
+    tbss = map_dm_get_bss_gbl(payload.target_bssid);
+    if (tbss == NULL || !(tbss->type & MAP_BACKHAUL_BSS)) {
+        log_lib_e("TargetBSS is invalid or not a backhaul");
+        goto bail;
+    }
+    cbss = map_dm_get_bss_gbl(ale->upstream_remote_iface_mac);
+    if (tbss == cbss) {
+        log_lib_n("TargetBSS is same with current");
+        rbus_add_prop_str(out, "Status", "Success");
+        return RBUS_ERROR_SUCCESS;
+    }
+
+    rc = rbusObject_GetPropertyUInt32(in, "TimeOut", &timeout);
+    if (rc != RBUS_VALUE_ERROR_SUCCESS) {
+        log_lib_e("TimeOut is mandatory");
+        goto bail;
+    }
+    payload.timeout = timeout;
+
+    /* Optional arguments */
+    rc = rbusObject_GetPropertyUInt32(in, "Channel", &channel);
+    if (rc != RBUS_VALUE_ERROR_SUCCESS) {
+        channel = -1;
+    }
+    if (steerwifibh_set_channel(tbss, channel, &payload) < 0) {
+        goto bail;
+    }
+
+    acu_maccpy(payload.bsta_mac, ale->upstream_local_iface_mac);
+
+    /* Perform steer wifi backhaul request */
+    if (map_dm_get_nbapi()->steer_wifi_backhaul != NULL) {
+        map_dm_get_nbapi()->steer_wifi_backhaul(ale, &payload);
+        set_dev_dm_steerwifibh_reply(ale, async);
+        set_dev_dm_steerwifibh_target(ale, payload.target_bssid);
+    } else {
+        log_lib_e("Steer WiFi backhaul is not available");
+        rbus_add_prop_str(out, "Status", "Error_Not_Ready");
+        return RBUS_ERROR_INVALID_METHOD;
+    }
+
+    /* Create timer for timeout */
+    map_dm_get_ale_timer_id(timer_id, ale, STEER_WIFIBH_TIMER_ID);
+    map_timer_register_callback_ms(timeout, timer_id, NULL, steerwifibh_async_cb);
+
+    return RBUS_ERROR_ASYNC_RESPONSE;
+
+bail:
+    rbus_add_prop_str(out, "Status", "Error_Invalid_Input");
+    return RBUS_ERROR_INVALID_INPUT;
 }
 
 /*#######################################################################
@@ -2816,11 +3955,12 @@ static rbusError_t bhstats_get_rbus(rbusHandle_t handle, rbusProperty_t property
     bool is_num;
     map_ale_info_t *ale;
     map_ale_info_t *us_ale;
-    int8_t iface_group;
+    int16_t iface_group;
     map_sta_info_t *sta;
     map_sta_traffic_stats_t *ts;
     map_sta_link_metrics_t *lm;
     map_sta_ext_bss_metrics_t *ebm;
+    map_neighbor_link_metric_t *ulm;
     char timestamp[MAX_TS_STR_LEN] = {0};
 
     name += sizeof(DM_DEVICE_PREFIX);
@@ -2836,70 +3976,100 @@ static rbusError_t bhstats_get_rbus(rbusHandle_t handle, rbusProperty_t property
     sta = NULL;
     ts = NULL;
     lm = NULL;
-    iface_group = INTERFACE_TYPE_GROUP_GET(ale->upstream_iface_type);
-    if (iface_group == INTERFACE_TYPE_GROUP_WLAN) {
+    ulm = NULL;
+    us_ale = NULL;
+    if (ale->is_local) {
+        /* no stats for local agent */
+        iface_group = INTERFACE_TYPE_UNKNOWN;
+    } else {
+        iface_group = INTERFACE_TYPE_GROUP_GET(ale->upstream_iface_type);
+
         us_ale = map_dm_get_ale(ale->upstream_al_mac);
+        if (us_ale == get_root_ale_node()) {
+            /* replace controller with (colocated) local agent */
+            us_ale = map_dm_get_ale(map_cfg_get()->controller_cfg.local_agent_al_mac);
+            if (us_ale && !us_ale->is_local_colocated) {
+                /* no stats for not colocated local agent */
+                us_ale = NULL;
+            }
+        }
+    }
+    if (iface_group == INTERFACE_TYPE_GROUP_WLAN) {
         if (us_ale) {
             sta = map_dm_get_sta_from_ale(us_ale, ale->upstream_local_iface_mac);
-            ts = sta ? sta->traffic_stats : NULL;
+            ts = sta ? &sta->traffic_stats : NULL;
             lm = (sta && sta->metrics) ? first_object(sta->metrics) : NULL;
         } else {
             log_lib_w("Upstream ale not found");
         }
-    } else {
-        log_lib_w("Stats not supported for %s", get_backhaul_link_type_str(ale));
+    } else if (iface_group == INTERFACE_TYPE_GROUP_ETHERNET) {
+        if (us_ale) {
+            ulm = &ale->upstream_link_metrics;
+        }
     }
 
     rbusValue_Init(&value);
 
     if (strcmp(param, "BytesReceived") == 0) {
         if (iface_group == INTERFACE_TYPE_GROUP_WLAN) {
-            rbusValue_SetUInt64(value, ts ? ts->rxbytes : 0);
+            rbusValue_SetUInt64(value, ts ? ts->rx_bytes : 0);
         } else {
             rbusValue_SetUInt64(value, 0);
         }
     } else if (strcmp(param, "BytesSent") == 0) {
         if (iface_group == INTERFACE_TYPE_GROUP_WLAN) {
-            rbusValue_SetUInt64(value, ts ? ts->txbytes : 0);
+            rbusValue_SetUInt64(value, ts ? ts->tx_bytes : 0);
         } else {
             rbusValue_SetUInt64(value, 0);
         }
     } else if (strcmp(param, "PacketsReceived") == 0) {
         if (iface_group == INTERFACE_TYPE_GROUP_WLAN) {
-            rbusValue_SetUInt64(value, ts ? ts->rxpkts : 0);
+            rbusValue_SetUInt64(value, ts ? ts->rx_packets : 0);
+        } else if (iface_group == INTERFACE_TYPE_GROUP_ETHERNET) {
+            rbusValue_SetUInt64(value, ulm ? ulm->rx_metric.packets_received : 0);
         } else {
             rbusValue_SetUInt64(value, 0);
         }
     } else if (strcmp(param, "PacketsSent") == 0) {
         if (iface_group == INTERFACE_TYPE_GROUP_WLAN) {
-            rbusValue_SetUInt64(value, ts ? ts->txpkts : 0);
+            rbusValue_SetUInt64(value, ts ? ts->tx_packets : 0);
+        } else if (iface_group == INTERFACE_TYPE_GROUP_ETHERNET) {
+            rbusValue_SetUInt64(value, ulm ? ulm->tx_metric.transmitted_packets : 0);
         } else {
             rbusValue_SetUInt64(value, 0);
         }
     } else if (strcmp(param, "ErrorsReceived") == 0) {
         if (iface_group == INTERFACE_TYPE_GROUP_WLAN) {
-            rbusValue_SetUInt64(value, ts ? ts->rxpkterrors : 0);
+            rbusValue_SetUInt64(value, ts ? ts->rx_packet_errors : 0);
+        } else if (iface_group == INTERFACE_TYPE_GROUP_ETHERNET) {
+            rbusValue_SetUInt64(value, ulm ? ulm->rx_metric.packet_errors : 0);
         } else {
             rbusValue_SetUInt64(value, 0);
         }
     } else if (strcmp(param, "ErrorsSent") == 0) {
         if (iface_group == INTERFACE_TYPE_GROUP_WLAN) {
-            rbusValue_SetUInt64(value, ts ? ts->txpkterrors : 0);
+            rbusValue_SetUInt64(value, ts ? ts->tx_packet_errors : 0);
+        } else if (iface_group == INTERFACE_TYPE_GROUP_ETHERNET) {
+            rbusValue_SetUInt64(value, ulm ? ulm->tx_metric.packet_errors : 0);
         } else {
             rbusValue_SetUInt64(value, 0);
         }
     } else if (strcmp(param, "SignalStrength") == 0) {
         /* Indeterminate other than Wi-Fi */
-        rbusValue_SetUInt32(value, lm ? lm->rssi : 0);
+        rbusValue_SetUInt32(value, lm ? RSSI_TO_RCPI(lm->rssi) : 0);
     } else if (strcmp(param, "LastDataDownlinkRate") == 0) {
         if (get_last_sta_metrics(sta, &ebm) == 0 && ebm != NULL) {
             rbusValue_SetUInt32(value, ebm->last_data_dl_rate);
+        } else if (ulm != NULL) {
+            rbusValue_SetUInt32(value, ulm->tx_metric.mac_throughput_capacity);
         } else {
             rbusValue_SetUInt32(value, 0);
         }
     } else if (strcmp(param, "LastDataUplinkRate") == 0) {
         if (get_last_sta_metrics(sta, &ebm) == 0 && ebm != NULL) {
             rbusValue_SetUInt32(value, ebm->last_data_ul_rate);
+        } else if (ulm != NULL) {
+            rbusValue_SetUInt32(value, ulm->tx_metric.mac_throughput_capacity);
         } else {
             rbusValue_SetUInt32(value, 0);
         }
@@ -3162,15 +4332,10 @@ static rbusError_t cacactive_get_rbus(rbusHandle_t handle, rbusProperty_t proper
 ########################################################################*/
 static void dm_rbus_create_radio(map_radio_info_t *radio)
 {
-#define MAX_RUID_STR_LEN    10
     unsigned int ale_idx;
     unsigned int radio_idx;
-    unsigned int idx;
-    char         radio_id[MAX_RUID_STR_LEN] = {0};
     char         tname[256] = {0};
     rbusError_t  rc;
-
-    log_lib_d("create radio: %s", radio->radio_id_str);
 
     if (check_dev_dm_idx(radio->ale) < 0) {
         log_lib_e("invalid indexing for radio");
@@ -3183,45 +4348,16 @@ static void dm_rbus_create_radio(map_radio_info_t *radio)
         return;
     }
 
-    if (b64_encode(radio->radio_id, sizeof(mac_addr), radio_id, sizeof(radio_id)) < 0) {
-        log_lib_e("b64_encode failed");
-    }
-
     /* Register new radio to data model */
     snprintf(tname, sizeof(tname),
-        "Device.WiFi.DataElements.Network.Device.%d.Radio.", ale_idx);
+        "Device.WiFi.DataElements.Network.Device.%d.Radio.", ale_idx + 1);
 
-    rc = rbusTable_registerRow(g_bus_handle, tname, radio_idx + 1, radio_id);
+    log_lib_d("Create row %s%d", tname, radio_idx + 1);
+    rc = rbusTable_registerRow(g_bus_handle, tname, radio_idx + 1, radio->radio_id_base64);
     if (rc != RBUS_ERROR_SUCCESS) {
         log_lib_e("Failed to create row[%d] for radio: %s",
             radio_idx + 1, radio->radio_id_str);
     }
-
-    /* Register current operating class profiles to data model */
-    snprintf(tname, sizeof(tname),
-        "Device.WiFi.DataElements.Network.Device.%d.Radio.%d."
-        "CurrentOperatingClassProfile.", ale_idx, radio_idx + 1);
-
-    for (idx = 1; idx <= radio->curr_op_class_list.op_classes_nr; idx++) {
-        rc = rbusTable_registerRow(g_bus_handle, tname, idx, NULL);
-        if (rc != RBUS_ERROR_SUCCESS) {
-            log_lib_e("Failed to create row[%d] for curr_op_class", idx);
-        }
-    }
-    set_radio_dm_currops(radio, radio->curr_op_class_list.op_classes_nr);
-
-    /* Register capable operating class profiles to data model */
-    snprintf(tname, sizeof(tname),
-        "Device.WiFi.DataElements.Network.Device.%d.Radio.%d."
-        "Capabilities.CapableOperatingClassProfile.", ale_idx, radio_idx + 1);
-
-    for (idx = 1; idx <= radio->cap_op_class_list.op_classes_nr; idx++) {
-        rc = rbusTable_registerRow(g_bus_handle, tname, idx, NULL);
-        if (rc != RBUS_ERROR_SUCCESS) {
-            log_lib_e("Failed to create row[%d] for cap_op_classes", idx);
-        }
-    }
-    set_radio_dm_capops(radio, radio->cap_op_class_list.op_classes_nr);
 }
 
 static void scan_send_results(map_radio_info_t *radio)
@@ -3360,7 +4496,7 @@ static dm_nbss_table_t *dm_rbus_create_nbss(
     snprintf(tname, sizeof(tname), "Device.WiFi.DataElements.Network."
         "Device.%d.Radio.%d.ScanResult.%d.OpClassScan.%d."
         "ChannelScan.%d.NeighborBSS.",
-        didx, ridx + 1, sidx, oidx, cidx);
+        didx + 1, ridx + 1, sidx, oidx, cidx);
 
     rc = rbusTable_registerRow(g_bus_handle, tname, nbss_idx, NULL);
     if (rc != RBUS_ERROR_SUCCESS) {
@@ -3392,7 +4528,7 @@ static int dm_rbus_remove_nbss(dm_nbss_table_t *dm_nbss, bool rm_row, unsigned i
         snprintf(tname, sizeof(tname), "Device.WiFi.DataElements.Network."
             "Device.%d.Radio.%d.ScanResult.%d.OpClassScan.%d."
             "ChannelScan.%d.NeighborBSS.%d",
-            didx, ridx + 1, sidx, oidx, cidx, nidx);
+            didx + 1, ridx + 1, sidx, oidx, cidx, nidx);
 
         rc = rbusTable_unregisterRow(g_bus_handle, tname);
         if (rc != RBUS_ERROR_SUCCESS) {
@@ -3449,7 +4585,7 @@ static dm_chan_table_t *dm_rbus_create_chan(
 
     snprintf(tname, sizeof(tname), "Device.WiFi.DataElements.Network."
         "Device.%d.Radio.%d.ScanResult.%d.OpClassScan.%d.ChannelScan.",
-        didx, ridx + 1, sidx, oidx);
+        didx + 1, ridx + 1, sidx, oidx);
 
     rc = rbusTable_registerRow(g_bus_handle, tname, chan_idx, NULL);
     if (rc != RBUS_ERROR_SUCCESS) {
@@ -3482,7 +4618,7 @@ static int dm_rbus_remove_chan(dm_chan_table_t *dm_chan, bool rm_row, unsigned i
         /* Delete channelscan row with index */
         snprintf(tname, sizeof(tname), "Device.WiFi.DataElements.Network."
             "Device.%d.Radio.%d.ScanResult.%d.OpClassScan.%d.ChannelScan.%d",
-            didx, ridx + 1, sidx, oidx, cidx);
+            didx + 1, ridx + 1, sidx, oidx, cidx);
 
         rc = rbusTable_unregisterRow(g_bus_handle, tname);
         if (rc != RBUS_ERROR_SUCCESS) {
@@ -3539,7 +4675,7 @@ static dm_opcl_table_t *dm_rbus_create_opcl(
     dm_opcl->id = opclass;
 
     snprintf(tname, sizeof(tname), "Device.WiFi.DataElements.Network."
-        "Device.%d.Radio.%d.ScanResult.%d.OpClassScan.", didx, ridx + 1, sidx);
+        "Device.%d.Radio.%d.ScanResult.%d.OpClassScan.", didx + 1, ridx + 1, sidx);
 
     rc = rbusTable_registerRow(g_bus_handle, tname, opcl_idx, NULL);
     if (rc != RBUS_ERROR_SUCCESS) {
@@ -3571,7 +4707,7 @@ static int dm_rbus_remove_opcl(dm_opcl_table_t *dm_opcl, bool rm_row, unsigned i
         /* Delete opclassscan row with index */
         snprintf(tname, sizeof(tname), "Device.WiFi.DataElements.Network."
             "Device.%d.Radio.%d.ScanResult.%d.OpClassScan.%d",
-            didx, ridx + 1, sidx, oidx);
+            didx + 1, ridx + 1, sidx, oidx);
 
         rc = rbusTable_unregisterRow(g_bus_handle, tname);
         if (rc != RBUS_ERROR_SUCCESS) {
@@ -3622,7 +4758,7 @@ static dm_scan_table_t *dm_rbus_create_scan(
     dm_scan->id = scan->last_scan_cnt;
 
     snprintf(tname, sizeof(tname), "Device.WiFi.DataElements.Network."
-        "Device.%d.Radio.%d.ScanResult.", didx, ridx + 1);
+        "Device.%d.Radio.%d.ScanResult.", didx + 1, ridx + 1);
 
     rc = rbusTable_registerRow(g_bus_handle, tname, scan_idx, NULL);
     if (rc != RBUS_ERROR_SUCCESS) {
@@ -3652,7 +4788,7 @@ static int dm_rbus_remove_scan(dm_scan_table_t *dm_scan, bool rm_row, unsigned i
 
         /* Delete scanres row with index */
         snprintf(tname, sizeof(tname), "Device.WiFi.DataElements.Network."
-            "Device.%d.Radio.%d.ScanResult.%d", didx, ridx + 1, sidx);
+            "Device.%d.Radio.%d.ScanResult.%d", didx + 1, ridx + 1, sidx);
 
         rc = rbusTable_unregisterRow(g_bus_handle, tname);
         if (rc != RBUS_ERROR_SUCCESS) {
@@ -3860,16 +4996,76 @@ static void scan_remove_results(map_radio_info_t *radio)
     free_list_iterator(it);
 }
 
-static void dm_rbus_update_radio(map_radio_info_t *radio)
+typedef void (radio_count_getter_cb)(map_radio_info_t *, unsigned int *);
+typedef void (radio_count_setter_cb)(map_radio_info_t *, unsigned int);
+typedef void (radio_alias_cb)(map_radio_info_t *, char *, size_t, unsigned int);
+
+static int radio_row_ops(map_radio_info_t *radio, radio_count_getter_cb getter_cb,
+    radio_count_setter_cb setter_cb, radio_alias_cb alias_cb, unsigned int new_count,
+    const char *rname, const char *lname)
 {
     unsigned int ale_idx;
     unsigned int radio_idx;
-    unsigned int idx;
     unsigned int curr_count;
-    unsigned int new_count;
+    unsigned int idx;
     char         tname[256] = {0};
     rbusError_t  rc;
+    int          ret = 0;
 
+    radio_idx = radio->dm_idx;
+    ale_idx   = radio->ale->dm_idx;
+
+    getter_cb(radio, &curr_count);
+    if (curr_count < new_count) {
+        /* Add missing rows */
+        snprintf(tname, sizeof(tname),
+            "Device.WiFi.DataElements.Network.Device.%d.Radio.%d.%s.",
+            ale_idx + 1, radio_idx + 1, rname);
+
+        curr_count = curr_count ? curr_count : 1;
+        for (idx = curr_count; idx <= new_count; idx++) {
+            if (alias_cb) {
+                char alias[8] = {0};
+
+                alias_cb(radio, alias, sizeof(alias), idx);
+                rc = rbusTable_registerRow(g_bus_handle, tname, idx, alias);
+            } else {
+                rc = rbusTable_registerRow(g_bus_handle, tname, idx, NULL);
+            }
+            if (rc != RBUS_ERROR_SUCCESS) {
+                log_lib_e("Failed to create row[%d] for %s", idx, lname);
+                ret = -1;
+            }
+        }
+    } else {
+        /* Remove excess rows */
+        for (idx = curr_count; idx > new_count; idx--) {
+            snprintf(tname, sizeof(tname),
+                "Device.WiFi.DataElements.Network.Device.%d.Radio.%d.%s.%d",
+                ale_idx + 1, radio_idx + 1, rname, idx);
+
+            rc = rbusTable_unregisterRow(g_bus_handle, tname);
+            if (rc != RBUS_ERROR_SUCCESS) {
+                log_lib_e("Failed to delete row[%d] for %s", idx, lname);
+                ret = -1;
+            }
+        }
+    }
+    setter_cb(radio, new_count);
+
+    return ret;
+}
+
+static void get_disop_alias(map_radio_info_t *radio, char *buf, size_t buf_size, unsigned int idx)
+{
+    map_op_class_t *op_class;
+
+    op_class = &radio->disallowed_op_class_list.op_classes[idx - 1];
+    snprintf(buf, buf_size, "%u", op_class->op_class);
+}
+
+static void dm_rbus_update_radio(map_radio_info_t *radio)
+{
     log_lib_d("update radio[%d]: %s", radio->dm_idx, radio->radio_id_str);
 
     if (check_radio_dm_idx(radio) < 0) {
@@ -3877,69 +5073,47 @@ static void dm_rbus_update_radio(map_radio_info_t *radio)
         return;
     }
 
-    radio_idx = radio->dm_idx;
-    ale_idx   = radio->ale->dm_idx;
+    /* Add or remove capable operating class profiles */
+    radio_row_ops(radio, get_radio_dm_capops, set_radio_dm_capops, NULL,
+        radio->cap_op_class_list.op_classes_nr,
+        "Capabilities.CapableOperatingClassProfile", "cap_op_class");
 
-    get_radio_dm_currops(radio, &curr_count);
-    new_count = radio->curr_op_class_list.op_classes_nr;
-    if (curr_count < new_count) {
-        /* Add missing current operating class profiles */
-        snprintf(tname, sizeof(tname),
-            "Device.WiFi.DataElements.Network.Device.%d.Radio.%d."
-            "CurrentOperatingClassProfile.", ale_idx, radio_idx + 1);
-
-        curr_count = curr_count ? curr_count : 1;
-        for (idx = curr_count; idx <= new_count; idx++) {
-            rc = rbusTable_registerRow(g_bus_handle, tname, idx, NULL);
-            if (rc != RBUS_ERROR_SUCCESS) {
-                log_lib_e("Failed to create row[%d] for curr_op_class", idx);
-            }
-        }
-    } else {
-        /* Remove excess current operating class profiles */
-        for (idx = curr_count; idx > new_count; idx--) {
-            snprintf(tname, sizeof(tname),
-                "Device.WiFi.DataElements.Network.Device.%d.Radio.%d."
-                "CurrentOperatingClassProfile.%d", ale_idx, radio_idx + 1, idx);
-
-            rc = rbusTable_unregisterRow(g_bus_handle, tname);
-            if (rc != RBUS_ERROR_SUCCESS) {
-                log_lib_e("Failed to delete row[%d] for curr_op_class", idx);
-            }
-        }
+    if (radio->wifi7_caps) {
+        radio_row_ops(radio, get_radio_dm_apemlmr, set_radio_dm_apemlmr, NULL,
+            radio->wifi7_caps->ap_emlmr_records_nr,
+            "Capabilities.WiFi7APRole.EMLMRFreqSeparation", "ap_emlmr_fs");
+        radio_row_ops(radio, get_radio_dm_apemlsr, set_radio_dm_apemlsr, NULL,
+            radio->wifi7_caps->ap_emlsr_records_nr,
+            "Capabilities.WiFi7APRole.EMLSRFreqSeparation", "ap_emlsr_fs");
+        radio_row_ops(radio, get_radio_dm_apstr, set_radio_dm_apstr, NULL,
+            radio->wifi7_caps->ap_str_records_nr,
+            "Capabilities.WiFi7APRole.STRFreqSeparation", "ap_str_fs");
+        radio_row_ops(radio, get_radio_dm_apnstr, set_radio_dm_apnstr, NULL,
+            radio->wifi7_caps->ap_nstr_records_nr,
+            "Capabilities.WiFi7APRole.NSTRFreqSeparation", "ap_nstr_fs");
+        radio_row_ops(radio, get_radio_dm_bstaemlmr, set_radio_dm_bstaemlmr, NULL,
+            radio->wifi7_caps->bsta_emlmr_records_nr,
+            "Capabilities.WiFi7bSTARole.EMLMRFreqSeparation", "bsta_emlmr_fs");
+        radio_row_ops(radio, get_radio_dm_bstaemlsr, set_radio_dm_bstaemlsr, NULL,
+            radio->wifi7_caps->bsta_emlsr_records_nr,
+            "Capabilities.WiFi7bSTARole.EMLSRFreqSeparation", "bsta_emlsr_fs");
+        radio_row_ops(radio, get_radio_dm_bstastr, set_radio_dm_bstastr, NULL,
+            radio->wifi7_caps->bsta_str_records_nr,
+            "Capabilities.WiFi7bSTARole.STRFreqSeparation", "bsta_str_fs");
+        radio_row_ops(radio, get_radio_dm_bstanstr, set_radio_dm_bstanstr, NULL,
+            radio->wifi7_caps->bsta_nstr_records_nr,
+            "Capabilities.WiFi7bSTARole.NSTRFreqSeparation", "bsta_nstr_fs");
     }
-    set_radio_dm_currops(radio, new_count);
 
-    get_radio_dm_capops(radio, &curr_count);
-    new_count = radio->cap_op_class_list.op_classes_nr;
-    if (curr_count < new_count) {
-        /* Add missing capable operating class profiles */
-        snprintf(tname, sizeof(tname),
-            "Device.WiFi.DataElements.Network.Device.%d.Radio.%d."
-            "Capabilities.CapableOperatingClassProfile.", ale_idx, radio_idx + 1);
+    /* Add or remove current operating class profiles */
+    radio_row_ops(radio, get_radio_dm_currops, set_radio_dm_currops, NULL,
+        radio->curr_op_class_list.op_classes_nr,
+        "CurrentOperatingClassProfile", "curr_op_class");
 
-        curr_count = curr_count ? curr_count : 1;
-        for (idx = curr_count; idx <= new_count; idx++) {
-            rc = rbusTable_registerRow(g_bus_handle, tname, idx, NULL);
-            if (rc != RBUS_ERROR_SUCCESS) {
-                log_lib_e("Failed to create row[%d] for cap_op_class", idx);
-            }
-        }
-    } else {
-        /* Remove excess capable operating class profiles */
-        for (idx = curr_count; idx > new_count; idx--) {
-            snprintf(tname, sizeof(tname),
-                "Device.WiFi.DataElements.Network.Device.%d.Radio.%d."
-                "Capabilities.CapableOperatingClassProfile.%d",
-                ale_idx, radio_idx + 1, idx);
-
-            rc = rbusTable_unregisterRow(g_bus_handle, tname);
-            if (rc != RBUS_ERROR_SUCCESS) {
-                log_lib_e("Failed to delete row[%d] for cap_op_class", idx);
-            }
-        }
-    }
-    set_radio_dm_capops(radio, new_count);
+    /* Add missing disallowed operating class profiles */
+    radio_row_ops(radio, get_radio_dm_disops, set_radio_dm_disops, get_disop_alias,
+        radio->disallowed_op_class_list.op_classes_nr,
+        "DisAllowedOpClassChannels", "disallowed_op_class");
 
     if (radio->update_scan_results) {
         scan_send_results(radio);
@@ -3956,8 +5130,6 @@ static void dm_rbus_remove_radio(map_radio_info_t *radio)
     char         tname[256] = {0};
     rbusError_t  rc;
 
-    log_lib_d("remove radio[%d]: %s", radio->dm_idx, radio->radio_id_str);
-
     if (radio->dm_removed) {
         return;
     }
@@ -3973,8 +5145,9 @@ static void dm_rbus_remove_radio(map_radio_info_t *radio)
     /* Delete radio row with index */
     snprintf(tname, sizeof(tname),
         "Device.WiFi.DataElements.Network.Device.%d.Radio.%d",
-        ale_idx, radio_idx + 1);
+        ale_idx + 1, radio_idx + 1);
 
+    log_lib_d("Delete row %s", tname);
     rc = rbusTable_unregisterRow(g_bus_handle, tname);
     if (rc != RBUS_ERROR_SUCCESS) {
         log_lib_e("Failed to delete row[%d] for radio: %s",
@@ -3985,13 +5158,6 @@ static void dm_rbus_remove_radio(map_radio_info_t *radio)
              I doubt it */
 
     free_radio_dm_idx(ale_idx, radio_idx);
-
-    if (0) {
-        /* This may be enabled to shift indexes, if the data model
-           automatically keeps indexing consecutive. rbus does not support
-           it, tr069 forbids it */
-        update_radio_idxs(radio->ale, radio);
-    }
 
     /* Mark child objects are removed */
     mark_bsss_removed(radio);
@@ -4100,6 +5266,8 @@ static rbusError_t radio_get_rbus(rbusHandle_t handle, rbusProperty_t property, 
         rbusValue_SetUInt32(value, radio->last_scan_info.last_scan_cnt);
     } else if (strcmp(param, "UnassociatedSTANumberOfEntries") == 0) {
         rbusValue_SetUInt32(value, list_get_size(radio->unassoc_sta_list));
+    } else if (strcmp(param, "DisAllowedOpClassChannelsNumberOfEntries") == 0) {
+        rbusValue_SetUInt32(value, list_get_size(radio->unassoc_sta_list));
     } else {
         log_lib_e("Invalid param: %s", param);
         rbusValue_Release(value);
@@ -4198,6 +5366,10 @@ static void parse_channel_list(const char *buffer, unsigned int blen, map_channe
     uint8_t pos;
     char chbuf[4] = {0};
     uint32_t channel;
+
+    if (!buffer) {
+        return;
+    }
 
     pos = 0;
     while (blen) {
@@ -4371,20 +5543,6 @@ static rbusError_t radio_chscan_rbus(rbusHandle_t handle, char const* method, rb
         return RBUS_ERROR_INVALID_METHOD;
     }
 
-#if 0 //Do we still need to set a timer for timeout?
-    /* Prepare response timer */
-    reply = calloc(1, sizeof(method_chscan_async_t));
-    if (!reply) {
-        rbus_add_prop_str(out, "Status", "Error_Other");
-        return RBUS_ERROR_OUT_OF_RESOURCES;
-    }
-    reply->ale_idx = ale->dm_idx;
-    reply->radio_idx = radio->dm_idx;
-    reply->async = async;
-    map_timer_register_callback(CHSAN_RESPONSE_TIMEOUT,
-        CHSAN_RESPONSE_TIMER_ID, reply, chscan_async_cb);
-#endif
-
     return RBUS_ERROR_ASYNC_RESPONSE;
 
 bail:
@@ -4513,6 +5671,1132 @@ static rbusError_t caps_get_rbus(rbusHandle_t handle, rbusProperty_t property, r
         }
     } else if (strcmp(param, "CapableOperatingClassProfileNumberOfEntries") == 0) {
         rbusValue_SetUInt32(value, radio->cap_op_class_list.op_classes_nr);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi6APRole   #
+########################################################################*/
+static rbusError_t wifi6ap_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_MCSNSS_STR_LEN  17
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi6_cap_data_t *wifi6_cap = NULL;
+    char buf[MAX_MCSNSS_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    if (radio->wifi6_caps) {
+        wifi6_cap = &radio->wifi6_caps->cap_data[MAP_AP_ROLE_AP];
+    }
+
+    sscanf(name, "Capabilities.WiFi6APRole.%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "HE160") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->he160);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "HE8080") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->he8080);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MCSNSS") == 0) {
+        if (wifi6_cap && wifi6_cap->mcs_nss_nr) {
+            if (b64_encode(wifi6_cap->mcs_nss, wifi6_cap->mcs_nss_nr, buf, sizeof(buf)) < 0) {
+                log_lib_e("b64_encode failed");
+            }
+            rbusValue_SetString(value, buf);
+        } else {
+            rbusValue_SetString(value, "");
+        }
+    } else if (strcmp(param, "SUBeamformer") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->su_beamformer);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "SUBeamformee") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->su_beamformee);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MUBeamformer") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->mu_beamformer);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "Beamformee80orLess") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->beamformee_sts_l80);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "BeamformeeAbove80") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->beamformee_sts_g80);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "ULMUMIMO") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->ul_mu_mimo);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "ULOFDMA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->ul_ofdma);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "DLOFDMA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->dl_ofdma);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MaxDLMUMIMO") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetUInt32(value, wifi6_cap->max_dl_mu_mimo_tx);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "MaxULMUMIMO") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetUInt32(value, wifi6_cap->max_ul_mu_mimo_rx);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "MaxDLOFDMA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetUInt32(value, wifi6_cap->max_dl_ofdma_tx);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "MaxULOFDMA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetUInt32(value, wifi6_cap->max_ul_ofdma_rx);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "RTS") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->rts);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MURTS") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->mu_rts);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MultiBSSID") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->multi_bssid);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MUEDCA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->mu_edca);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "TWTRequestor") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->twt_requester);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "TWTResponder") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->twt_responder);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi6bSTARole #
+########################################################################*/
+static rbusError_t wifi6bsta_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_MCSNSS_STR_LEN  17
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi6_cap_data_t *wifi6_cap = NULL;
+    char buf[MAX_MCSNSS_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    if (radio->wifi6_caps) {
+        wifi6_cap = &radio->wifi6_caps->cap_data[MAP_AP_ROLE_STA];
+    }
+
+    sscanf(name, "Capabilities.WiFi6bSTARole.%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "HE160") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->he160);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "HE8080") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->he8080);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MCSNSS") == 0) {
+        if (wifi6_cap && wifi6_cap->mcs_nss_nr) {
+            if (b64_encode(wifi6_cap->mcs_nss, wifi6_cap->mcs_nss_nr, buf, sizeof(buf)) < 0) {
+                log_lib_e("b64_encode failed");
+            }
+            rbusValue_SetString(value, buf);
+        } else {
+            rbusValue_SetString(value, "");
+        }
+    } else if (strcmp(param, "SUBeamformer") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->su_beamformer);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "SUBeamformee") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->su_beamformee);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MUBeamformer") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->mu_beamformer);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "Beamformee80orLess") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->beamformee_sts_l80);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "BeamformeeAbove80") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->beamformee_sts_g80);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "ULMUMIMO") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->ul_mu_mimo);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "ULOFDMA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->ul_ofdma);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "DLOFDMA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->dl_ofdma);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MaxDLMUMIMO") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetUInt32(value, wifi6_cap->max_dl_mu_mimo_tx);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "MaxULMUMIMO") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetUInt32(value, wifi6_cap->max_ul_mu_mimo_rx);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "MaxDLOFDMA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetUInt32(value, wifi6_cap->max_dl_ofdma_tx);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "MaxULOFDMA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetUInt32(value, wifi6_cap->max_ul_ofdma_rx);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "RTS") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->rts);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MURTS") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->mu_rts);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MultiBSSID") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->multi_bssid);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "MUEDCA") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->mu_edca);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "TWTRequestor") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->twt_requester);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "TWTResponder") == 0) {
+        if (wifi6_cap) {
+            rbusValue_SetBoolean(value, wifi6_cap->twt_responder);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7APRole   #
+########################################################################*/
+static rbusError_t wifi7ap_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    wifi7_caps = radio->wifi7_caps;
+
+    sscanf(name, "Capabilities.WiFi7APRole.%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "EMLMRSupport") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetBoolean(value, wifi7_caps->ap_mld_modes.emlmr);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "EMLSRSupport") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetBoolean(value, wifi7_caps->ap_mld_modes.emlsr);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "STRSupport") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetBoolean(value, wifi7_caps->ap_mld_modes.str);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "NSTRSupport") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetBoolean(value, wifi7_caps->ap_mld_modes.nstr);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "EMLMRFreqSeparationNumberOfEntries") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetUInt32(value, wifi7_caps->ap_emlmr_records_nr);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "EMLSRFreqSeparationNumberOfEntries") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetUInt32(value, wifi7_caps->ap_emlsr_records_nr);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "STRFreqSeparationNumberOfEntries") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetUInt32(value, wifi7_caps->ap_str_records_nr);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "NSTRFreqSeparationNumberOfEntries") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetUInt32(value, wifi7_caps->ap_nstr_records_nr);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..Device.Radio.Capabilities.WiFi7APRole.EMLMRFreqSeparation         #
+########################################################################*/
+static rbusError_t apemlmr_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_RUID_STR_LEN    10
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    unsigned int emlmrfs_idx;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+    map_radio_wifi7_records_t *records;
+    char buf[MAX_RUID_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "Capabilities.WiFi7APRole.EMLMRFreqSeparation.%d.%s",
+        &emlmrfs_idx, param);
+
+    wifi7_caps = radio->wifi7_caps;
+    if (!wifi7_caps || emlmrfs_idx > wifi7_caps->ap_emlmr_records_nr) {
+        log_lib_e("Invalid wifi7ap emlmrfs index: %d", emlmrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    records = &wifi7_caps->ap_emlmr_records[emlmrfs_idx];
+    if (!records) {
+        log_lib_e("Invalid wifi7ap emlmrfs index: %d", emlmrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "RUID") == 0) {
+        if (b64_encode(records->ruid, sizeof(mac_addr), buf, sizeof(buf)) < 0) {
+            log_lib_e("b64_encode failed");
+        }
+        rbusValue_SetString(value, buf);
+    } else if (strcmp(param, "FreqSeparation") == 0) {
+        rbusValue_SetUInt32(value, records->freq_separation);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..Device.Radio.Capabilities.WiFi7APRole.EMLSRFreqSeparation         #
+########################################################################*/
+static rbusError_t apemlsr_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_RUID_STR_LEN    10
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    unsigned int emlsrfs_idx;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+    map_radio_wifi7_records_t *records;
+    char buf[MAX_RUID_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "Capabilities.WiFi7APRole.EMLSRFreqSeparation.%d.%s",
+        &emlsrfs_idx, param);
+
+    wifi7_caps = radio->wifi7_caps;
+    if (!wifi7_caps || emlsrfs_idx > wifi7_caps->ap_emlsr_records_nr) {
+        log_lib_e("Invalid wifi7ap emlsrfs index: %d", emlsrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    records = &wifi7_caps->ap_emlsr_records[emlsrfs_idx];
+    if (!records) {
+        log_lib_e("Invalid wifi7ap emlsrfs index: %d", emlsrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "RUID") == 0) {
+        if (b64_encode(records->ruid, sizeof(mac_addr), buf, sizeof(buf)) < 0) {
+            log_lib_e("b64_encode failed");
+        }
+        rbusValue_SetString(value, buf);
+    } else if (strcmp(param, "FreqSeparation") == 0) {
+        rbusValue_SetUInt32(value, records->freq_separation);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..Device.Radio.Capabilities.WiFi7APRole.STRFreqSeparation           #
+########################################################################*/
+static rbusError_t apstr_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_RUID_STR_LEN    10
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    unsigned int strfs_idx;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+    map_radio_wifi7_records_t *records;
+    char buf[MAX_RUID_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "Capabilities.WiFi7APRole.STRFreqSeparation.%d.%s",
+        &strfs_idx, param);
+
+    wifi7_caps = radio->wifi7_caps;
+    if (!wifi7_caps || strfs_idx > wifi7_caps->ap_str_records_nr) {
+        log_lib_e("Invalid wifi7ap strfs index: %d", strfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    records = &wifi7_caps->ap_str_records[strfs_idx];
+    if (!records) {
+        log_lib_e("Invalid wifi7ap strfs index: %d", strfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "RUID") == 0) {
+        if (b64_encode(records->ruid, sizeof(mac_addr), buf, sizeof(buf)) < 0) {
+            log_lib_e("b64_encode failed");
+        }
+        rbusValue_SetString(value, buf);
+    } else if (strcmp(param, "FreqSeparation") == 0) {
+        rbusValue_SetUInt32(value, records->freq_separation);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..Device.Radio.Capabilities.WiFi7APRole.NSTRFreqSeparation          #
+########################################################################*/
+static rbusError_t apnstr_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_RUID_STR_LEN    10
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    unsigned int nstrfs_idx;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+    map_radio_wifi7_records_t *records;
+    char buf[MAX_RUID_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "Capabilities.WiFi7APRole.NSTRFreqSeparation.%d.%s",
+        &nstrfs_idx, param);
+
+    wifi7_caps = radio->wifi7_caps;
+    if (!wifi7_caps || nstrfs_idx > wifi7_caps->ap_nstr_records_nr) {
+        log_lib_e("Invalid wifi7ap nstrfs index: %d", nstrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    records = &wifi7_caps->ap_nstr_records[nstrfs_idx];
+    if (!records) {
+        log_lib_e("Invalid wifi7ap nstrfs index: %d", nstrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "RUID") == 0) {
+        if (b64_encode(records->ruid, sizeof(mac_addr), buf, sizeof(buf)) < 0) {
+            log_lib_e("b64_encode failed");
+        }
+        rbusValue_SetString(value, buf);
+    } else if (strcmp(param, "FreqSeparation") == 0) {
+        rbusValue_SetUInt32(value, records->freq_separation);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..WiFi.DataElements.Network.Device.Radio.Capabilities.WiFi7bSTARole #
+########################################################################*/
+static rbusError_t wifi7bsta_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    wifi7_caps = radio->wifi7_caps;
+
+    sscanf(name, "Capabilities.WiFi7bSTARole.%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "EMLMRSupport") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetBoolean(value, wifi7_caps->bsta_mld_modes.emlmr);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "EMLSRSupport") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetBoolean(value, wifi7_caps->bsta_mld_modes.emlsr);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "STRSupport") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetBoolean(value, wifi7_caps->bsta_mld_modes.str);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "NSTRSupport") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetBoolean(value, wifi7_caps->bsta_mld_modes.nstr);
+        } else {
+            rbusValue_SetBoolean(value, false);
+        }
+    } else if (strcmp(param, "EMLMRFreqSeparationNumberOfEntries") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetUInt32(value, wifi7_caps->bsta_emlmr_records_nr);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "EMLSRFreqSeparationNumberOfEntries") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetUInt32(value, wifi7_caps->bsta_emlsr_records_nr);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "STRFreqSeparationNumberOfEntries") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetUInt32(value, wifi7_caps->bsta_str_records_nr);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else if (strcmp(param, "NSTRFreqSeparationNumberOfEntries") == 0) {
+        if (wifi7_caps) {
+            rbusValue_SetUInt32(value, wifi7_caps->bsta_nstr_records_nr);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..Device.Radio.Capabilities.WiFi7bSTARole.EMLMRFreqSeparation       #
+########################################################################*/
+static rbusError_t bstaemlmr_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_RUID_STR_LEN    10
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    unsigned int emlmrfs_idx;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+    map_radio_wifi7_records_t *records;
+    char buf[MAX_RUID_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "Capabilities.WiFi7bSTARole.EMLMRFreqSeparation.%d.%s",
+        &emlmrfs_idx, param);
+
+    wifi7_caps = radio->wifi7_caps;
+    if (!wifi7_caps || emlmrfs_idx > wifi7_caps->bsta_emlmr_records_nr) {
+        log_lib_e("Invalid wifi7bsta emlmrfs index: %d", emlmrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    records = &wifi7_caps->bsta_emlmr_records[emlmrfs_idx];
+    if (!records) {
+        log_lib_e("Invalid wifi7bsta emlmrfs index: %d", emlmrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "RUID") == 0) {
+        if (b64_encode(records->ruid, sizeof(mac_addr), buf, sizeof(buf)) < 0) {
+            log_lib_e("b64_encode failed");
+        }
+        rbusValue_SetString(value, buf);
+    } else if (strcmp(param, "FreqSeparation") == 0) {
+        rbusValue_SetUInt32(value, records->freq_separation);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..Device.Radio.Capabilities.WiFi7bSTARole.EMLSRFreqSeparation       #
+########################################################################*/
+static rbusError_t bstaemlsr_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_RUID_STR_LEN    10
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    unsigned int emlsrfs_idx;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+    map_radio_wifi7_records_t *records;
+    char buf[MAX_RUID_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "Capabilities.WiFi7bSTARole.EMLSRFreqSeparation.%d.%s",
+        &emlsrfs_idx, param);
+
+    wifi7_caps = radio->wifi7_caps;
+    if (!wifi7_caps || emlsrfs_idx > wifi7_caps->bsta_emlsr_records_nr) {
+        log_lib_e("Invalid wifi7bsta emlsrfs index: %d", emlsrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    records = &wifi7_caps->bsta_emlsr_records[emlsrfs_idx];
+    if (!records) {
+        log_lib_e("Invalid wifi7bsta emlsrfs index: %d", emlsrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "RUID") == 0) {
+        if (b64_encode(records->ruid, sizeof(mac_addr), buf, sizeof(buf)) < 0) {
+            log_lib_e("b64_encode failed");
+        }
+        rbusValue_SetString(value, buf);
+    } else if (strcmp(param, "FreqSeparation") == 0) {
+        rbusValue_SetUInt32(value, records->freq_separation);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..Device.Radio.Capabilities.WiFi7bSTARole.STRFreqSeparation         #
+########################################################################*/
+static rbusError_t bstastr_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_RUID_STR_LEN    10
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    unsigned int strfs_idx;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+    map_radio_wifi7_records_t *records;
+    char buf[MAX_RUID_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "Capabilities.WiFi7bSTARole.STRFreqSeparation.%d.%s",
+        &strfs_idx, param);
+
+    wifi7_caps = radio->wifi7_caps;
+    if (!wifi7_caps || strfs_idx > wifi7_caps->bsta_str_records_nr) {
+        log_lib_e("Invalid wifi7bsta strfs index: %d", strfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    records = &wifi7_caps->bsta_str_records[strfs_idx];
+    if (!records) {
+        log_lib_e("Invalid wifi7bsta strfs index: %d", strfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "RUID") == 0) {
+        if (b64_encode(records->ruid, sizeof(mac_addr), buf, sizeof(buf)) < 0) {
+            log_lib_e("b64_encode failed");
+        }
+        rbusValue_SetString(value, buf);
+    } else if (strcmp(param, "FreqSeparation") == 0) {
+        rbusValue_SetUInt32(value, records->freq_separation);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..Device.Radio.Capabilities.WiFi7bSTARole.NSTRFreqSeparation        #
+########################################################################*/
+static rbusError_t bstanstr_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_RUID_STR_LEN    10
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    unsigned int nstrfs_idx;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+    map_radio_wifi7_records_t *records;
+    char buf[MAX_RUID_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "Capabilities.WiFi7bSTARole.NSTRFreqSeparation.%d.%s",
+        &nstrfs_idx, param);
+
+    wifi7_caps = radio->wifi7_caps;
+    if (!wifi7_caps || nstrfs_idx > wifi7_caps->bsta_nstr_records_nr) {
+        log_lib_e("Invalid wifi7bsta nstrfs index: %d", nstrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    records = &wifi7_caps->bsta_nstr_records[nstrfs_idx];
+    if (!records) {
+        log_lib_e("Invalid wifi7bsta nstrfs index: %d", nstrfs_idx);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "RUID") == 0) {
+        if (b64_encode(records->ruid, sizeof(mac_addr), buf, sizeof(buf)) < 0) {
+            log_lib_e("b64_encode failed");
+        }
+        rbusValue_SetString(value, buf);
+    } else if (strcmp(param, "FreqSeparation") == 0) {
+        rbusValue_SetUInt32(value, records->freq_separation);
     } else {
         log_lib_e("Invalid param: %s", param);
         rbusValue_Release(value);
@@ -4658,6 +6942,162 @@ static rbusError_t currop_get_rbus(rbusHandle_t handle, rbusProperty_t property,
 
     rbusProperty_SetValue(property, value);
     rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..WiFi.DataElements.Network.Device.Radio.DisAllowedOpClassChannels  #
+########################################################################*/
+static rbusError_t disop_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_op_class_t *op_class;
+    char disallowed_str[MAP_CS_BUF_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof("DisAllowedOpClassChannels");
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    op_class = dm_get_disallowed_op_class(radio, param, is_num);
+    if (op_class == NULL) {
+        log_lib_e("Can't find opclass %s: %s", is_num ? "index" : "alias", param);
+	return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "Enable") == 0) {
+        rbusValue_SetBoolean(value, op_class->enable);
+    } else if (strcmp(param, "OpClass") == 0) {
+        rbusValue_SetUInt32(value, op_class->op_class);
+    } else if (strcmp(param, "ChannelList") == 0) {
+        map_cs_to_string(&op_class->channels, ',', disallowed_str, sizeof(disallowed_str));
+        rbusValue_SetString(value, disallowed_str);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+static rbusError_t disop_set_rbus(rbusHandle_t handle, rbusProperty_t property, rbusSetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    char const* name = rbusProperty_GetName(property);
+    rbusValue_t value = rbusProperty_GetValue(property);
+    rbusValueType_t type = rbusValue_GetType(value);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_radio_info_t *radio;
+    map_op_class_t *op_class;
+    map_channel_set_t channels = {0};
+    uint8_t channel;
+    const char *buffer;
+    int blen;
+    bool bval;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_RADIO_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    radio = dm_get_radio(ale, param, is_num);
+    if (radio == NULL) {
+        log_lib_e("Invalid radio %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof("DisAllowedOpClassChannels");
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    op_class = dm_get_disallowed_op_class(radio, param, is_num);
+    if (op_class == NULL) {
+        log_lib_e("Can't find opclass %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "%s", param);
+
+    if (strcmp(param, "Enable") == 0) {
+        if (type != RBUS_BOOLEAN) {
+            log_lib_e("Invalid value type");
+            return RBUS_ERROR_INVALID_INPUT;
+        }
+
+        bval = rbusValue_GetBoolean(value);
+        if (bval == op_class->enable) {
+            return RBUS_ERROR_SUCCESS;
+        }
+
+        op_class->enable = bval;
+    } else if (strcmp(param, "ChannelList") == 0) {
+        if (type != RBUS_STRING) {
+            log_lib_e("Invalid value type");
+            return RBUS_ERROR_INVALID_INPUT;
+        }
+        buffer = rbusValue_GetString(value, &blen);
+
+        parse_channel_list(buffer, blen, &channels);
+        /* Remove channels not valid for op_class */
+        map_cs_foreach_safe(&channels, channel) {
+            if (!map_is_channel_in_op_class(op_class->op_class, channel)) {
+                map_cs_unset(&channels, channel);
+            }
+        }
+        if (map_cs_compare(&channels, &op_class->channels) == 0) {
+            return RBUS_ERROR_SUCCESS;
+        }
+        map_cs_copy(&op_class->channels, &channels);
+
+        if (op_class->enable == false) {
+            return RBUS_ERROR_SUCCESS;
+        }
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    if (map_dm_get_nbapi()->channel_selection) {
+        map_nb_ch_selection_param_t payload;
+
+        maccpy(payload.radio_id, radio->radio_id);
+        map_dm_get_nbapi()->channel_selection(ale, &payload);
+    }
 
     return RBUS_ERROR_SUCCESS;
 }
@@ -4997,8 +7437,6 @@ static void dm_rbus_create_bss(map_bss_info_t *bss)
     char         tname[256] = {0};
     rbusError_t  rc;
 
-    log_lib_d("create bss: %s", bss->bssid_str);
-
     if (check_radio_dm_idx(bss->radio) < 0) {
         log_lib_e("Invalid indexing for bss");
         return;
@@ -5013,23 +7451,80 @@ static void dm_rbus_create_bss(map_bss_info_t *bss)
 
     snprintf(tname, sizeof(tname) - 1,
         "Device.WiFi.DataElements.Network.Device.%d.Radio.%d.BSS.",
-        ale_idx, radio_idx + 1);
+        ale_idx + 1, radio_idx + 1);
 
+    log_lib_d("Create row %s%d", tname, bss_idx + 1);
     rc = rbusTable_registerRow(g_bus_handle, tname, bss_idx + 1, bss->bssid_str);
     if (rc != RBUS_ERROR_SUCCESS) {
         log_lib_e("Failed to create row[%d] for bss: %s",
             bss_idx + 1, bss->bssid_str);
     }
-
-    return;
 }
 
 static void dm_rbus_update_bss(map_bss_info_t *bss)
 {
+    unsigned int ale_idx;
+    unsigned int ap_mld_idx;
+    unsigned int aff_ap_idx;
+    char         tname[256] = {0};
+    rbusError_t  rc;
+
     log_lib_d("update bss[%d]: %s", bss->dm_idx, bss->bssid_str);
 
-    if (check_bss_dm_idx(bss) < 0) {
-        log_lib_e("Invalid indexing for bss");
+    if (bss->prev_ap_mld == NULL) {
+        goto add_row;
+    }
+
+#if 0
+    if (check_aff_ap_dm_idx(bss) < 0) {
+        log_lib_e("Invalid indexing for aff_ap");
+        return;
+    }
+#endif
+
+    aff_ap_idx = bss->dm_aa_idx;
+    ap_mld_idx = bss->prev_ap_mld->dm_idx;
+    ale_idx    = bss->prev_ap_mld->ale->dm_idx;
+
+    snprintf(tname, sizeof(tname) - 1,
+        "Device.WiFi.DataElements.Network.Device.%d.APMLD.%d.AffiliatedAP.%d",
+        ale_idx + 1, ap_mld_idx + 1, aff_ap_idx + 1);
+
+    log_lib_d("Delete row %s", tname);
+    rc = rbusTable_unregisterRow(g_bus_handle, tname);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to delete row[%d] for aff_app: %s",
+            aff_ap_idx + 1, bss->bssid_str);
+    }
+
+    free_aff_ap_dm_idx(ale_idx, ap_mld_idx, aff_ap_idx);
+
+add_row:
+    if (bss->ap_mld == NULL) {
+        return;
+    }
+
+    if (check_aff_ap_dm_idx(bss) < 0) {
+        log_lib_e("Invalid indexing for aff_ap");
+        return;
+    }
+
+    ap_mld_idx = bss->ap_mld->dm_idx;
+    ale_idx    = bss->ap_mld->ale->dm_idx;
+    if (get_aff_ap_dm_idx(ale_idx, ap_mld_idx, bss, &aff_ap_idx) < 0) {
+        log_lib_e("No free index for aff_ap: %s", bss->bssid_str);
+        return;
+    }
+
+    snprintf(tname, sizeof(tname) - 1,
+        "Device.WiFi.DataElements.Network.Device.%d.APMLD.%d.AffiliatedAP.",
+        ale_idx + 1, ap_mld_idx + 1);
+
+    log_lib_d("Create row %s%d", tname, aff_ap_idx + 1);
+    rc = rbusTable_registerRow(g_bus_handle, tname, aff_ap_idx + 1, bss->bssid_str);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to create row[%d] for aff_app: %s",
+            aff_ap_idx + 1, bss->bssid_str);
     }
 }
 
@@ -5038,18 +7533,18 @@ static void dm_rbus_remove_bss(map_bss_info_t *bss)
     unsigned int ale_idx;
     unsigned int radio_idx;
     unsigned int bss_idx;
+    unsigned int ap_mld_idx;
+    unsigned int aff_ap_idx;
     char         tname[256] = {0};
     rbusError_t  rc;
 
-    log_lib_d("remove bss[%d]: %s", bss->dm_idx, bss->bssid_str);
-
     if (bss->dm_removed) {
-        return;
+        goto aff_ap;
     }
 
     if (check_bss_dm_idx(bss) < 0) {
         log_lib_e("Invalid indexing for bss");
-        return;
+        goto aff_ap;
     }
 
     bss_idx   = bss->dm_idx;
@@ -5058,8 +7553,9 @@ static void dm_rbus_remove_bss(map_bss_info_t *bss)
 
     snprintf(tname, sizeof(tname) - 1,
         "Device.WiFi.DataElements.Network.Device.%d.Radio.%d.BSS.%d",
-        ale_idx, radio_idx + 1, bss_idx + 1);
+        ale_idx + 1, radio_idx + 1, bss_idx + 1);
 
+    log_lib_d("Delete row %s", tname);
     rc = rbusTable_unregisterRow(g_bus_handle, tname);
     if (rc != RBUS_ERROR_SUCCESS) {
         log_lib_e("Failed to delete row[%d] for bss: %s",
@@ -5068,15 +7564,39 @@ static void dm_rbus_remove_bss(map_bss_info_t *bss)
 
     free_bss_dm_idx(ale_idx, radio_idx, bss_idx);
 
-    if (0) {
-        /* This may be enabled to shift indexes, if the data model
-           automatically keeps indexing consecutive. rbus does not
-           support it, tr069 forbids it */
-        update_bss_idxs(bss->radio, bss);
-    }
-
     /* Mark child objects are removed */
     mark_stas_removed(bss);
+
+aff_ap:
+    if (bss->ap_mld == NULL) {
+        return;
+    }
+
+    if (bss->dm_aa_removed) {
+        return;
+    }
+
+    if (check_aff_ap_dm_idx(bss) < 0) {
+        log_lib_e("Invalid indexing for aff_ap");
+        return;
+    }
+
+    aff_ap_idx = bss->dm_aa_idx;
+    ap_mld_idx = bss->ap_mld->dm_idx;
+    ale_idx    = bss->ap_mld->ale->dm_idx;
+
+    snprintf(tname, sizeof(tname) - 1,
+        "Device.WiFi.DataElements.Network.Device.%d.APMLD.%d.AffiliatedAP.%d",
+        ale_idx + 1, ap_mld_idx + 1, aff_ap_idx + 1);
+
+    log_lib_d("Delete row %s", tname);
+    rc = rbusTable_unregisterRow(g_bus_handle, tname);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to delete row[%d] for aff_app: %s",
+            aff_ap_idx + 1, bss->bssid_str);
+    }
+
+    free_aff_ap_dm_idx(ale_idx, ap_mld_idx, aff_ap_idx);
 }
 
 static rbusError_t bss_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
@@ -5137,17 +7657,17 @@ static rbusError_t bss_get_rbus(rbusHandle_t handle, rbusProperty_t property, rb
         get_timestamp_str(0, timestamp, sizeof(timestamp));
         rbusValue_SetString(value, timestamp);
     } else if (strcmp(param, "UnicastBytesReceived") == 0) {
-        rbusValue_SetUInt64(value, bss->extended_metrics.ucast_bytes_rx);
+        rbusValue_SetUInt64(value, bss->extended_metrics.rx_ucast_bytes);
     } else if (strcmp(param, "UnicastBytesSent") == 0) {
-        rbusValue_SetUInt64(value, bss->extended_metrics.ucast_bytes_tx);
+        rbusValue_SetUInt64(value, bss->extended_metrics.tx_ucast_bytes);
     } else if (strcmp(param, "MulticastBytesReceived") == 0) {
-        rbusValue_SetUInt64(value, bss->extended_metrics.mcast_bytes_rx);
+        rbusValue_SetUInt64(value, bss->extended_metrics.rx_mcast_bytes);
     } else if (strcmp(param, "MulticastBytesSent") == 0) {
-        rbusValue_SetUInt64(value, bss->extended_metrics.mcast_bytes_tx);
+        rbusValue_SetUInt64(value, bss->extended_metrics.tx_mcast_bytes);
     } else if (strcmp(param, "BroadcastBytesReceived") == 0) {
-        rbusValue_SetUInt64(value, bss->extended_metrics.bcast_bytes_rx);
+        rbusValue_SetUInt64(value, bss->extended_metrics.rx_bcast_bytes);
     } else if (strcmp(param, "BroadcastBytesSent") == 0) {
-        rbusValue_SetUInt64(value, bss->extended_metrics.bcast_bytes_tx);
+        rbusValue_SetUInt64(value, bss->extended_metrics.tx_bcast_bytes);
     } else if (strcmp(param, "BackhaulUse") == 0) {
         rbusValue_SetBoolean(value, (bss->type & MAP_BACKHAUL_BSS) ? true : false);
     } else if (strcmp(param, "FronthaulUse") == 0) {
@@ -5357,8 +7877,6 @@ static void map_dm_rbus_steering_history_add(map_sta_info_t *sta, uint32_t row_i
     char         tname[256] = {0};
     rbusError_t  rc;
 
-    log_lib_d("Add SteeringHistory row for: %s", sta->mac_str);
-
     if (check_bss_dm_idx(sta->bss) < 0) {
         log_lib_e("Invalid indexing for sta");
         return;
@@ -5370,15 +7888,14 @@ static void map_dm_rbus_steering_history_add(map_sta_info_t *sta, uint32_t row_i
 
     snprintf(tname, sizeof(tname) - 1,
         "Device.WiFi.DataElements.Network.Device.%d.Radio.%d.BSS.%d.STA.%d.MultiAPSTA.SteeringHistory.",
-        ale_idx, radio_idx + 1, bss_idx + 1, sta->dm_idx + 1);
+        ale_idx + 1, radio_idx + 1, bss_idx + 1, sta->dm_idx + 1);
 
+    log_lib_d("Create row %s%d", tname, row_index);
     rc = rbusTable_registerRow(g_bus_handle, tname, row_index, NULL);
     if (rc != RBUS_ERROR_SUCCESS) {
         log_lib_e("Failed to create row %s %d rowindex: %d", tname, rc, row_index);
         return;
     }
-
-    log_lib_d("Added a row %s%d", tname, row_index);
 }
 
 static void map_dm_rbus_steering_history_update(map_sta_info_t *sta)
@@ -5454,11 +7971,12 @@ static void dm_rbus_create_sta(map_sta_info_t *sta)
     unsigned int radio_idx;
     unsigned int bss_idx;
     unsigned int sta_idx;
+    unsigned int ap_mld_idx;
+    unsigned int sta_mld_idx;
+    unsigned int aff_sta_idx;
     char         tname[256] = {0};
     rbusError_t  rc;
     map_radio_info_t *radio = sta->bss->radio;
-
-    log_lib_d("create sta: %s", sta->mac_str);
 
     if (check_bss_dm_idx(sta->bss) < 0) {
         log_lib_e("Invalid indexing for sta");
@@ -5475,16 +7993,43 @@ static void dm_rbus_create_sta(map_sta_info_t *sta)
 
     snprintf(tname, sizeof(tname) - 1,
         "Device.WiFi.DataElements.Network.Device.%d.Radio.%d.BSS.%d.STA.",
-        ale_idx, radio_idx + 1, bss_idx + 1);
+        ale_idx + 1, radio_idx + 1, bss_idx + 1);
 
-    log_lib_d("Create row[%d] at %s", sta_idx + 1, tname);
-
+    log_lib_d("Create row %s%d", tname, sta_idx + 1);
     rc = rbusTable_registerRow(g_bus_handle, tname, sta_idx + 1, sta->mac_str);
     if (rc != RBUS_ERROR_SUCCESS) {
         log_lib_e("Failed to create row[%d] for sta: %s",
             sta_idx + 1, sta->mac_str);
     }
 
+    if (sta->sta_mld == NULL) {
+        goto skip_aff;
+    }
+
+    if (check_sta_mld_dm_idx(sta->sta_mld) < 0) {
+        log_lib_e("Invalid indexing for aff_sta");
+        goto skip_aff;
+    }
+
+    sta_mld_idx = sta->sta_mld->dm_idx;
+    ap_mld_idx  = sta->sta_mld->ap_mld->dm_idx;
+    if (get_aff_sta_dm_idx(ale_idx, ap_mld_idx, sta_mld_idx, sta, &aff_sta_idx) < 0) {
+        log_lib_e("No free index for aff_sta: %s", sta->mac_str);
+        goto skip_aff;
+    }
+
+    snprintf(tname, sizeof(tname) - 1,
+        "Device.WiFi.DataElements.Network.Device.%d.APMLD.%d.STAMLD.%d.AffiliatedSTA.",
+        ale_idx + 1, ap_mld_idx + 1, sta_mld_idx + 1);
+
+    log_lib_d("Create row %s%d", tname, aff_sta_idx + 1);
+    rc = rbusTable_registerRow(g_bus_handle, tname, aff_sta_idx + 1, sta->mac_str);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to create row[%d] for aff_sta: %s",
+            aff_sta_idx + 1, sta->mac_str);
+    }
+
+skip_aff:
     map_dm_rbus_steering_history_reinit(sta);
 
     if (!sta->dm_payload) {
@@ -5492,6 +8037,7 @@ static void dm_rbus_create_sta(map_sta_info_t *sta)
     }
 
     map_dm_rbus_client_steer_send_result(sta);
+    steerwifibh_send_result(sta);
 
     radio_remove_unassoc_sta(radio, sta->mac);
 }
@@ -5565,18 +8111,19 @@ static void dm_rbus_remove_sta(map_sta_info_t *sta)
     unsigned int radio_idx;
     unsigned int bss_idx;
     unsigned int sta_idx;
+    unsigned int ap_mld_idx;
+    unsigned int sta_mld_idx;
+    unsigned int aff_sta_idx;
     char         tname[256] = {0};
     rbusError_t  rc;
 
-    log_lib_d("remove sta[%d]: %s", sta->dm_idx, sta->mac_str);
-
     if (sta->dm_removed) {
-        return;
+        goto aff_sta;
     }
 
     if (check_sta_dm_idx(sta) < 0) {
         log_lib_e("Invalid indexing for sta");
-        return;
+        goto aff_sta;
     }
 
     sta_idx   = sta->dm_idx;
@@ -5586,10 +8133,9 @@ static void dm_rbus_remove_sta(map_sta_info_t *sta)
 
     snprintf(tname, sizeof(tname) - 1,
         "Device.WiFi.DataElements.Network.Device.%d.Radio.%d.BSS.%d.STA.%d",
-        ale_idx, radio_idx + 1, bss_idx + 1, sta_idx + 1);
+        ale_idx + 1, radio_idx + 1, bss_idx + 1, sta_idx + 1);
 
     log_lib_d("Delete row %s", tname);
-
     rc = rbusTable_unregisterRow(g_bus_handle, tname);
     if (rc != RBUS_ERROR_SUCCESS) {
         log_lib_e("Failed to delete row[%d], path %s for sta: %s",
@@ -5601,12 +8147,37 @@ static void dm_rbus_remove_sta(map_sta_info_t *sta)
 
     free_sta_dm_idx(ale_idx, radio_idx, bss_idx, sta_idx);
 
-    if (0) {
-        /* This may be enabled to shift indexes, if the data model
-           automatically keeps indexing consecutive. rbus does not
-           support it, tr069 forbids it */
-        update_sta_idxs(sta->bss, sta);
+aff_sta:
+    if (sta->sta_mld == NULL) {
+        return;
     }
+
+    if (sta->dm_as_removed) {
+        return;
+    }
+
+    if (check_aff_sta_dm_idx(sta) < 0) {
+        log_lib_e("Invalid indexing for aff_sta");
+        return;
+    }
+
+    aff_sta_idx = sta->dm_as_idx;
+    sta_mld_idx = sta->sta_mld->dm_idx;
+    ap_mld_idx  = sta->sta_mld->ap_mld->dm_idx;
+    ale_idx     = sta->sta_mld->ap_mld->ale->dm_idx;
+
+    snprintf(tname, sizeof(tname) - 1,
+        "Device.WiFi.DataElements.Network.Device.%d.APMLD.%d.STAMLD.%d.AffiliatedSTA.%d",
+        ale_idx + 1, ap_mld_idx + 1, sta_mld_idx + 1, aff_sta_idx + 1);
+
+    log_lib_d("Delete row %s", tname);
+    rc = rbusTable_unregisterRow(g_bus_handle, tname);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to delete row[%d], path %s for sta: %s",
+            aff_sta_idx, tname, sta->mac_str);
+    }
+
+    free_aff_sta_dm_idx(ale_idx, ap_mld_idx, sta_mld_idx, aff_sta_idx);
 }
 
 static rbusError_t sta_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
@@ -5660,7 +8231,7 @@ static rbusError_t sta_get_rbus(rbusHandle_t handle, rbusProperty_t property, rb
         log_lib_e("Invalid sta %s: %s", is_num ? "index" : "alias", param);
         return RBUS_ERROR_INVALID_INPUT;
     }
-    ts = sta->traffic_stats;
+    ts = &sta->traffic_stats;
     lm = sta->metrics ? first_object(sta->metrics) : NULL;
 
     sscanf(name, "%s", param);
@@ -5730,24 +8301,24 @@ static rbusError_t sta_get_rbus(rbusHandle_t handle, rbusProperty_t property, rb
     } else if (strcmp(param, "EstMACDataRateUplink") == 0) {
         rbusValue_SetUInt32(value, lm ? lm->ul_mac_datarate : 0);
     } else if (strcmp(param, "SignalStrength") == 0) {
-        rbusValue_SetUInt32(value, lm ? lm->rssi : 0);
+        rbusValue_SetUInt32(value, lm ? RSSI_TO_RCPI(lm->rssi) : 0);
     } else if (strcmp(param, "LastConnectTime") == 0) {
         last_connect = map_dm_get_sta_assoc_ts_delta(sta->assoc_ts);
         rbusValue_SetUInt32(value, last_connect);
     } else if (strcmp(param, "BytesReceived") == 0) {
-        rbusValue_SetUInt64(value, ts ? ts->rxbytes : 0);
+        rbusValue_SetUInt64(value, ts->rx_bytes);
     } else if (strcmp(param, "BytesSent") == 0) {
-        rbusValue_SetUInt64(value, ts ? ts->txbytes : 0);
+        rbusValue_SetUInt64(value, ts->tx_bytes);
     } else if (strcmp(param, "PacketsReceived") == 0) {
-        rbusValue_SetUInt64(value, ts ? ts->rxpkts : 0);
+        rbusValue_SetUInt64(value, ts->rx_packets);
     } else if (strcmp(param, "PacketsSent") == 0) {
-        rbusValue_SetUInt64(value, ts ? ts->txpkts : 0);
+        rbusValue_SetUInt64(value, ts->tx_packets);
     } else if (strcmp(param, "ErrorsReceived") == 0) {
-        rbusValue_SetUInt64(value, ts ? ts->rxpkterrors : 0);
+        rbusValue_SetUInt64(value, ts->rx_packet_errors);
     } else if (strcmp(param, "ErrorsSent") == 0) {
-        rbusValue_SetUInt64(value, ts ? ts->txpkterrors : 0);
+        rbusValue_SetUInt64(value, ts->tx_packet_errors);
     } else if (strcmp(param, "RetransCount") == 0) {
-        rbusValue_SetUInt64(value, ts ? ts->retransmission_cnt : 0);
+        rbusValue_SetUInt64(value, ts->retransmissions);
     } else if (strcmp(param, "MeasurementReport") == 0) {
         if (list_get_size(sta->beacon_metrics)) {
             beacon_str = get_beacon_metrics_str(sta->beacon_metrics);
@@ -6379,8 +8950,6 @@ static rbusError_t steering_sum_stats_get_rbus(rbusHandle_t handle, rbusProperty
         return RBUS_ERROR_INVALID_INPUT;
     }
 
-    log_lib_e("Address sta %p", (void *)sta);
-
     sscanf(name, "MultiAPSTA.SteeringSummaryStats.%s", param);
 
     rbusValue_Init(&value);
@@ -6619,6 +9188,737 @@ invalid_input:
 }
 
 /*#######################################################################
+#   Device.WiFi.DataElements.Network.Device.APMLD                       #
+########################################################################*/
+static void dm_rbus_create_ap_mld(map_ap_mld_info_t *ap_mld)
+{
+    unsigned int ale_idx;
+    unsigned int ap_mld_idx;
+    char         tname[256] = {0};
+    rbusError_t  rc;
+
+    if (check_dev_dm_idx(ap_mld->ale) < 0) {
+        log_lib_e("invalid indexing for ap_mld");
+        return;
+    }
+
+    ale_idx = ap_mld->ale->dm_idx;
+    if (get_ap_mld_dm_idx(ale_idx, ap_mld, &ap_mld_idx) < 0) {
+        log_lib_e("could not find free index for ap_mld: %s", ap_mld->mac_str);
+        return;
+    }
+
+    /* Register new ap_mld to data model */
+    snprintf(tname, sizeof(tname),
+        "Device.WiFi.DataElements.Network.Device.%d.APMLD.", ale_idx + 1);
+
+    log_lib_d("Create row %s%d", tname, ap_mld_idx + 1);
+    rc = rbusTable_registerRow(g_bus_handle, tname, ap_mld_idx + 1, ap_mld->mac_str);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to create row[%d] for ap_mld: %s",
+            ap_mld_idx + 1, ap_mld->mac_str);
+    }
+}
+
+static void dm_rbus_remove_ap_mld(map_ap_mld_info_t *ap_mld)
+{
+    unsigned int ale_idx;
+    unsigned int ap_mld_idx;
+    char         tname[256] = {0};
+    rbusError_t  rc;
+
+    if (ap_mld->dm_removed) {
+        return;
+    }
+
+    if (check_ap_mld_dm_idx(ap_mld) < 0) {
+        log_lib_e("Invalid indexing for ap_mld");
+        return;
+    }
+
+    ap_mld_idx = ap_mld->dm_idx;
+    ale_idx    = ap_mld->ale->dm_idx;
+
+    /* Delete ap_mld row with index */
+    snprintf(tname, sizeof(tname),
+        "Device.WiFi.DataElements.Network.Device.%d.APMLD.%d",
+        ale_idx + 1, ap_mld_idx + 1);
+
+    log_lib_d("Delete row %s", tname);
+    rc = rbusTable_unregisterRow(g_bus_handle, tname);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to delete row[%d] for ap_mld: %s",
+            ap_mld_idx + 1, ap_mld->mac_str);
+    }
+
+    free_ap_mld_dm_idx(ale_idx, ap_mld_idx);
+
+    /* Mark child objects are removed */
+    mark_aff_aps_removed(ap_mld);
+    mark_sta_mlds_removed(ap_mld);
+}
+
+static rbusError_t apmld_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_ap_mld_info_t *ap_mld;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_AP_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ap_mld = dm_get_ap_mld(ale, param, is_num);
+    if (ap_mld == NULL) {
+        log_lib_e("Invalid ap_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "MLDMACAddress") == 0) {
+        rbusValue_SetString(value, ap_mld->mac_str);
+    } else if (strcmp(param, "AffiliatedAPNumberOfEntries") == 0) {
+        rbusValue_SetUInt32(value, ap_mld->aff_ap_nr);
+    } else if (strcmp(param, "STAMLDNumberOfEntries") == 0) {
+        rbusValue_SetUInt32(value, ap_mld->sta_mld_nr);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   Device.WiFi.DataElements.Network.Device.APMLD.APMLDConfig           #
+########################################################################*/
+static rbusError_t amconfig_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_ap_mld_info_t *ap_mld;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_AP_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ap_mld = dm_get_ap_mld(ale, param, is_num);
+    if (ap_mld == NULL) {
+        log_lib_e("Invalid ap_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "APMLDConfig.%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "EMLMREnabled") == 0) {
+        rbusValue_SetBoolean(value, ap_mld->enabled_mld_modes.emlmr);
+    } else if (strcmp(param, "EMLSREnabled") == 0) {
+        rbusValue_SetBoolean(value, ap_mld->enabled_mld_modes.emlsr);
+    } else if (strcmp(param, "STREnabled") == 0) {
+        rbusValue_SetBoolean(value, ap_mld->enabled_mld_modes.str);
+    } else if (strcmp(param, "NSTREnabled") == 0) {
+        rbusValue_SetBoolean(value, ap_mld->enabled_mld_modes.nstr);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   Device.WiFi.DataElements.Network.Device.APMLD.AffiliatedAP          #
+########################################################################*/
+static rbusError_t affap_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_ap_mld_info_t *ap_mld;
+    map_bss_info_t *aff_ap;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_AP_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ap_mld = dm_get_ap_mld(ale, param, is_num);
+    if (ap_mld == NULL) {
+        log_lib_e("Invalid ap_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_AFF_AP_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    aff_ap = dm_get_aff_ap(ap_mld, param, is_num);
+    if (aff_ap == NULL) {
+        log_lib_e("Invalid aff_ap %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "BSSID") == 0) {
+        rbusValue_SetString(value, aff_ap->bssid_str);
+    } else if (strcmp(param, "LinkID") == 0) {
+        rbusValue_SetUInt32(value, aff_ap->link_id);
+    } else if (strcmp(param, "RUID") == 0) {
+        rbusValue_SetString(value, aff_ap->radio->radio_id_base64);
+    } else if (strcmp(param, "PacketsReceived") == 0) {
+        rbusValue_SetUInt32(value, 0); /* TODO */
+    } else if (strcmp(param, "PacketsSent") == 0) {
+        rbusValue_SetUInt32(value, 0); /* TODO */
+    } else if (strcmp(param, "ErrorsSent") == 0) {
+        rbusValue_SetUInt32(value, 0); /* TODO */
+    } else if (strcmp(param, "UnicastBytesReceived") == 0) {
+        rbusValue_SetUInt32(value, 0); /* TODO */
+    } else if (strcmp(param, "UnicastBytesSent") == 0) {
+        rbusValue_SetUInt32(value, 0); /* TODO */
+    } else if (strcmp(param, "MulticastBytesReceived") == 0) {
+        rbusValue_SetUInt32(value, 0); /* TODO */
+    } else if (strcmp(param, "MulticastBytesSent") == 0) {
+        rbusValue_SetUInt32(value, 0); /* TODO */
+    } else if (strcmp(param, "BroadcastBytesReceived") == 0) {
+        rbusValue_SetUInt32(value, 0); /* TODO */
+    } else if (strcmp(param, "BroadcastBytesSent") == 0) {
+        rbusValue_SetUInt32(value, 0); /* TODO */
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   Device.WiFi.DataElements.Network.Device.APMLD.STAMLD                #
+########################################################################*/
+static void dm_rbus_create_sta_mld(map_sta_mld_info_t *sta_mld)
+{
+    unsigned int ale_idx;
+    unsigned int ap_mld_idx;
+    unsigned int sta_mld_idx;
+    char         tname[256] = {0};
+    rbusError_t  rc;
+
+    if (check_ap_mld_dm_idx(sta_mld->ap_mld) < 0) {
+        log_lib_e("invalid indexing for sta_mld");
+        return;
+    }
+
+    ap_mld_idx = sta_mld->ap_mld->dm_idx;
+    ale_idx    = sta_mld->ap_mld->ale->dm_idx;
+
+    if (get_sta_mld_dm_idx(ale_idx, ap_mld_idx, sta_mld, &sta_mld_idx) < 0) {
+        log_lib_e("could not find free index for sta_mld: %s", sta_mld->mac_str);
+        return;
+    }
+
+    /* Register new ap_mld to data model */
+    snprintf(tname, sizeof(tname),
+        "Device.WiFi.DataElements.Network.Device.%d.APMLD.%d.STAMLD.",
+        ale_idx + 1, ap_mld_idx + 1);
+
+    log_lib_d("Create row %s%d", tname, sta_mld_idx + 1);
+    rc = rbusTable_registerRow(g_bus_handle, tname, sta_mld_idx + 1, sta_mld->mac_str);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to create row[%d] for sta_mld: %s",
+            sta_mld_idx + 1, sta_mld->mac_str);
+    }
+}
+
+static void dm_rbus_remove_sta_mld(map_sta_mld_info_t *sta_mld)
+{
+    unsigned int ale_idx;
+    unsigned int ap_mld_idx;
+    unsigned int sta_mld_idx;
+    char         tname[256] = {0};
+    rbusError_t  rc;
+
+    if (sta_mld->dm_removed) {
+        return;
+    }
+
+    if (check_sta_mld_dm_idx(sta_mld) < 0) {
+        log_lib_e("Invalid indexing for sta_mld");
+        return;
+    }
+
+    sta_mld_idx = sta_mld->dm_idx;
+    ap_mld_idx  = sta_mld->ap_mld->dm_idx;
+    ale_idx     = sta_mld->ap_mld->ale->dm_idx;
+
+    /* Delete sta_mld row with index */
+    snprintf(tname, sizeof(tname),
+        "Device.WiFi.DataElements.Network.Device.%d.APMLD.%d.STAMLD.%d",
+        ale_idx + 1, ap_mld_idx + 1, sta_mld_idx + 1);
+
+    log_lib_d("Delete row %s", tname);
+    rc = rbusTable_unregisterRow(g_bus_handle, tname);
+    if (rc != RBUS_ERROR_SUCCESS) {
+        log_lib_e("Failed to delete row[%d] for sta_mld: %s",
+            sta_mld_idx + 1, sta_mld->mac_str);
+    }
+
+    free_sta_mld_dm_idx(ale_idx, ap_mld_idx, sta_mld_idx);
+
+    /* Mark child objects are removed */
+    mark_aff_stas_removed(sta_mld);
+}
+
+static rbusError_t stamld_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_ap_mld_info_t *ap_mld;
+    map_sta_mld_info_t *sta_mld;
+    map_sta_traffic_stats_t *ts;
+    map_bss_info_t *bss;
+    bool is_bsta = false;
+    uint32_t last_connect;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_AP_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ap_mld = dm_get_ap_mld(ale, param, is_num);
+    if (ap_mld == NULL) {
+        log_lib_e("Invalid ap_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_STA_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    sta_mld = dm_get_sta_mld(ap_mld, param, is_num);
+    if (sta_mld == NULL) {
+        log_lib_e("Invalid sta_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+    ts = &sta_mld->traffic_stats;
+
+    sscanf(name, "%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "MLDMACAddress") == 0) {
+        rbusValue_SetString(value, sta_mld->mac_str);
+    } else if (strcmp(param, "IsbSTA") == 0) {
+        /* Get first BSS to know if this is a backhaul */
+        /* TODO: This does not work for mixed BH */
+        if (!list_empty(&ap_mld->aff_ap_list)) {
+            bss = list_first_entry(&ap_mld->aff_ap_list, map_bss_info_t, aff_ap_list);
+            if (bss->type & MAP_BACKHAUL_BSS) {
+                is_bsta = true;
+            }
+        }
+        rbusValue_SetBoolean(value, is_bsta);
+    } else if (strcmp(param, "LastConnectTime") == 0) {
+        last_connect = map_dm_get_sta_assoc_ts_delta(sta_mld->assoc_ts);
+        rbusValue_SetUInt32(value, last_connect);
+    } else if (strcmp(param, "BytesReceived") == 0) {
+        rbusValue_SetUInt64(value, ts->rx_bytes);
+    } else if (strcmp(param, "BytesSent") == 0) {
+        rbusValue_SetUInt64(value, ts->tx_bytes);
+    } else if (strcmp(param, "PacketsReceived") == 0) {
+        rbusValue_SetUInt64(value, ts->rx_packets);
+    } else if (strcmp(param, "PacketsSent") == 0) {
+        rbusValue_SetUInt64(value, ts->tx_packets);
+    } else if (strcmp(param, "ErrorsReceived") == 0) {
+        rbusValue_SetUInt64(value, ts->rx_packet_errors);
+    } else if (strcmp(param, "ErrorsSent") == 0) {
+        rbusValue_SetUInt64(value, ts->tx_packet_errors);
+    } else if (strcmp(param, "RetransCount") == 0) {
+        rbusValue_SetUInt64(value, ts->retransmissions);
+    } else if (strcmp(param, "AffiliatedSTANumberOfEntries") == 0) {
+        rbusValue_SetUInt32(value, sta_mld->aff_sta_nr);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   ..WiFi.DataElements.Network.Device.APMLD.STAMLD.WiFi7Capabilities   #
+########################################################################*/
+static rbusError_t smwf7cap_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_ap_mld_info_t *ap_mld;
+    map_sta_mld_info_t *sta_mld;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_AP_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ap_mld = dm_get_ap_mld(ale, param, is_num);
+    if (ap_mld == NULL) {
+        log_lib_e("Invalid ap_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_STA_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    sta_mld = dm_get_sta_mld(ap_mld, param, is_num);
+    if (sta_mld == NULL) {
+        log_lib_e("Invalid sta_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "WiFi7Capabilities.%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "EMLMRSupport") == 0) {
+        rbusValue_SetBoolean(value, sta_mld->supported_mld_modes.emlmr);
+    } else if (strcmp(param, "EMLSRSupport") == 0) {
+        rbusValue_SetBoolean(value, sta_mld->supported_mld_modes.emlsr);
+    } else if (strcmp(param, "STRSupport") == 0) {
+        rbusValue_SetBoolean(value, sta_mld->supported_mld_modes.str);
+    } else if (strcmp(param, "NSTRSupport") == 0) {
+        rbusValue_SetBoolean(value, sta_mld->supported_mld_modes.nstr);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   Device.WiFi.DataElements.Network.Device.APMLD.STAMLD.STAMLDConfig   #
+########################################################################*/
+static rbusError_t smconfig_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_ap_mld_info_t *ap_mld;
+    map_sta_mld_info_t *sta_mld;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_AP_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ap_mld = dm_get_ap_mld(ale, param, is_num);
+    if (ap_mld == NULL) {
+        log_lib_e("Invalid ap_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_STA_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    sta_mld = dm_get_sta_mld(ap_mld, param, is_num);
+    if (sta_mld == NULL) {
+        log_lib_e("Invalid sta_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    sscanf(name, "STAMLDConfig.%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "EMLMREnabled") == 0) {
+        rbusValue_SetBoolean(value, sta_mld->enabled_mld_modes.emlmr);
+    } else if (strcmp(param, "EMLSREnabled") == 0) {
+        rbusValue_SetBoolean(value, sta_mld->enabled_mld_modes.emlsr);
+    } else if (strcmp(param, "STREnabled") == 0) {
+        rbusValue_SetBoolean(value, sta_mld->enabled_mld_modes.str);
+    } else if (strcmp(param, "NSTREnabled") == 0) {
+        rbusValue_SetBoolean(value, sta_mld->enabled_mld_modes.nstr);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   Device.WiFi.DataElements.Network.Device.APMLD.STAMLD.AffiliatedSTA  #
+########################################################################*/
+static rbusError_t affsta_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_ap_mld_info_t *ap_mld;
+    map_sta_mld_info_t *sta_mld;
+    map_sta_info_t *aff_sta;
+    map_sta_link_metrics_t *lm;
+    map_sta_traffic_stats_t *ts;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_AP_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ap_mld = dm_get_ap_mld(ale, param, is_num);
+    if (ap_mld == NULL) {
+        log_lib_e("Invalid ap_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_STA_MLD_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    sta_mld = dm_get_sta_mld(ap_mld, param, is_num);
+    if (sta_mld == NULL) {
+        log_lib_e("Invalid sta_mld %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    name += sizeof(DM_AFF_STA_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    aff_sta = dm_get_aff_sta(sta_mld, param, is_num);
+    if (aff_sta == NULL) {
+        log_lib_e("Invalid aff_sta %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+    ts = &aff_sta->traffic_stats;
+    lm = aff_sta->metrics ? first_object(aff_sta->metrics) : NULL;
+
+    sscanf(name, "%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "MACAddress") == 0) {
+        rbusValue_SetString(value, aff_sta->mac_str);
+    } else if (strcmp(param, "BSSID") == 0) {
+        rbusValue_SetString(value, aff_sta->bss->bssid_str);
+    } else if (strcmp(param, "BytesReceived") == 0) {
+        rbusValue_SetUInt32(value, ts->rx_bytes);
+    } else if (strcmp(param, "BytesSent") == 0) {
+        rbusValue_SetUInt32(value, ts->tx_bytes);
+    } else if (strcmp(param, "PacketsReceived") == 0) {
+        rbusValue_SetUInt32(value, ts->rx_packets);
+    } else if (strcmp(param, "PacketsSent") == 0) {
+        rbusValue_SetUInt32(value, ts->tx_packets);
+    } else if (strcmp(param, "ErrorsSent") == 0) {
+        rbusValue_SetUInt32(value, ts->tx_packet_errors);
+    } else if (strcmp(param, "SignalStrength") == 0) {
+        rbusValue_SetUInt32(value, lm ? RSSI_TO_RCPI(lm->rssi) : 0);
+    } else if (strcmp(param, "EstMACDataRateDownlink") == 0) {
+        rbusValue_SetUInt32(value, lm ? lm->dl_mac_datarate : 0);
+    } else if (strcmp(param, "EstMACDataRateUplink") == 0) {
+        rbusValue_SetUInt32(value, lm ? lm->ul_mac_datarate : 0);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   Device.WiFi.DataElements.Network.Device.bSTAMLD                     #
+########################################################################*/
+static rbusError_t bstamld_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+#define MAX_MAC_LIST_STR_LEN    (MAX_MLD_AFF_APSTA * sizeof(mac_addr_str))
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_bsta_mld_info_t *bsta_mld;
+    char mac_list[MAX_MAC_LIST_STR_LEN] = {0};
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+    bsta_mld = &ale->bsta_mld;
+
+    sscanf(name, "bSTAMLD.%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "MLDMACAddress") == 0) {
+        rbusValue_SetString(value, bsta_mld->mac_str);
+    } else if (strcmp(param, "BSSID") == 0) {
+        rbusValue_SetString(value, mac_string(bsta_mld->ap_mld_mac));
+    } else if (strcmp(param, "AffiliatedbSTAList") == 0) {
+        if (bsta_mld->aff_bsta_mac_nr) {
+            get_mac_list_str(bsta_mld->aff_bsta_macs, bsta_mld->aff_bsta_mac_nr,
+                mac_list, sizeof(mac_list));
+            rbusValue_SetString(value, mac_list);
+        } else {
+            rbusValue_SetString(value, "");
+        }
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
+#   Device.WiFi.DataElements.Network.Device.bSTAMLD.bSTAMLDConfig       #
+########################################################################*/
+static rbusError_t bstacfg_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
+{
+    (void) handle;
+    (void) opts;
+    rbusValue_t value;
+    char const* name = rbusProperty_GetName(property);
+    char param[MAX_PROP_PARAM_LEN] = {0};
+    bool is_num;
+    map_ale_info_t *ale;
+    map_bsta_mld_info_t *bsta_mld;
+
+    name += sizeof(DM_DEVICE_PREFIX);
+    name = get_table_alias(name, param, MAX_PROP_PARAM_LEN, &is_num);
+    ale = dm_get_ale(param, is_num);
+    if (ale == NULL) {
+        log_lib_e("Invalid device %s: %s", is_num ? "index" : "alias", param);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+    bsta_mld = &ale->bsta_mld;
+
+    sscanf(name, "bSTAMLD.bSTAMLDConfig.%s", param);
+
+    rbusValue_Init(&value);
+
+    if (strcmp(param, "EMLMREnabled") == 0) {
+        rbusValue_SetBoolean(value, bsta_mld->enabled_mld_modes.emlmr);
+    } else if (strcmp(param, "EMLSREnabled") == 0) {
+        rbusValue_SetBoolean(value, bsta_mld->enabled_mld_modes.emlsr);
+    } else if (strcmp(param, "STREnabled") == 0) {
+        rbusValue_SetBoolean(value, bsta_mld->enabled_mld_modes.str);
+    } else if (strcmp(param, "NSTREnabled") == 0) {
+        rbusValue_SetBoolean(value, bsta_mld->enabled_mld_modes.nstr);
+    } else {
+        log_lib_e("Invalid param: %s", param);
+        rbusValue_Release(value);
+        return RBUS_ERROR_INVALID_INPUT;
+    }
+
+    rbusProperty_SetValue(property, value);
+    rbusValue_Release(value);
+
+    return RBUS_ERROR_SUCCESS;
+}
+
+/*#######################################################################
 #   Device.WiFi.DataElements.Network.Device.X_AIRTIES_Ethernet          #
 ########################################################################*/
 static rbusError_t ethernet_get_rbus(rbusHandle_t handle, rbusProperty_t property, rbusGetHandlerOptions_t* opts)
@@ -6827,6 +10127,12 @@ static rbusError_t devinfo_get_rbus(rbusHandle_t handle, rbusProperty_t property
         } else {
             rbusValue_SetUInt32(value, 0);
         }
+    } else if (strcmp(param, "BootID") == 0) {
+        if (emex->enabled) {
+            rbusValue_SetUInt32(value, emex->device_info.boot_id);
+        } else {
+            rbusValue_SetUInt32(value, 0);
+        }
     } else {
         log_lib_e("Invalid param: %s", param);
         rbusValue_Release(value);
@@ -7027,7 +10333,7 @@ static int event_pub_assoc(map_assoc_data_t *assoc)
 }
 
 /*#######################################################################
-#   ..DataElements.AssociationEvent.AssociationEventData.               #
+#   ..DataElements.AssociationEvent.AssociationEventData                #
 ########################################################################*/
 static map_assoc_data_t *dm_get_assoc(uint16_t dm_idx)
 {
@@ -7700,19 +11006,58 @@ out:
 #define ssid_get_int            ssid_get_rbus
 #define device_get_string       device_get_rbus
 #define device_get_ulong        device_get_rbus
+#define device_set_string       device_set_rbus
+#define backhaul_get_string     backhaul_get_rbus
+#define bhstats_get_string      bhstats_get_rbus
+#define bhstats_get_ulong       bhstats_get_rbus
+#define cacstatus_get_string    cacstatus_get_rbus
+#define cacstatus_get_ulong     cacstatus_get_rbus
+#define cacavail_get_ulong      cacavail_get_rbus
+#define cacnonocc_get_ulong     cacnonocc_get_rbus
+#define cacactive_get_ulong     cacactive_get_rbus
 #define radio_get_boolean       radio_get_rbus
 #define radio_get_string        radio_get_rbus
 #define radio_get_ulong         radio_get_rbus
+#define bhsta_get_string        bhsta_get_rbus
 #define caps_get_string         caps_get_rbus
 #define caps_get_ulong          caps_get_rbus
+#define wifi6ap_get_boolean     wifi6ap_get_rbus
+#define wifi6ap_get_string      wifi6ap_get_rbus
+#define wifi6ap_get_ulong       wifi6ap_get_rbus
+#define wifi6bsta_get_boolean   wifi6bsta_get_rbus
+#define wifi6bsta_get_string    wifi6bsta_get_rbus
+#define wifi6bsta_get_ulong     wifi6bsta_get_rbus
+#define wifi7ap_get_boolean     wifi7ap_get_rbus
+#define wifi7ap_get_ulong       wifi7ap_get_rbus
+#define apemlmr_get_string      apemlmr_get_rbus
+#define apemlmr_get_ulong       apemlmr_get_rbus
+#define apemlsr_get_string      apemlsr_get_rbus
+#define apemlsr_get_ulong       apemlsr_get_rbus
+#define apstr_get_string        apstr_get_rbus
+#define apstr_get_ulong         apstr_get_rbus
+#define apnstr_get_string       apnstr_get_rbus
+#define apnstr_get_ulong        apnstr_get_rbus
+#define wifi7bsta_get_boolean   wifi7bsta_get_rbus
+#define wifi7bsta_get_ulong     wifi7bsta_get_rbus
+#define bstaemlmr_get_string    bstaemlmr_get_rbus
+#define bstaemlmr_get_ulong     bstaemlmr_get_rbus
+#define bstaemlsr_get_string    bstaemlsr_get_rbus
+#define bstaemlsr_get_ulong     bstaemlsr_get_rbus
+#define bstastr_get_string      bstastr_get_rbus
+#define bstastr_get_ulong       bstastr_get_rbus
+#define bstanstr_get_string     bstanstr_get_rbus
+#define bstanstr_get_ulong      bstanstr_get_rbus
 #define capop_get_ulong         capop_get_rbus
 #define capop_get_int           capop_get_rbus
 #define capop_get_string        capop_get_rbus
-#define bss_get_boolean         bss_get_rbus
-#define bss_get_string          bss_get_rbus
-#define bss_get_ulong           bss_get_rbus
-#define sta_get_string          sta_get_rbus
-#define sta_get_ulong           sta_get_rbus
+#define currop_get_ulong        currop_get_rbus
+#define currop_get_int          currop_get_rbus
+#define currop_get_string       currop_get_rbus
+#define disop_get_boolean       disop_get_rbus
+#define disop_get_string        disop_get_rbus
+#define disop_get_ulong         disop_get_rbus
+#define disop_set_boolean       disop_set_rbus
+#define disop_set_string        disop_set_rbus
 #define scanres_get_string      scanres_get_rbus
 #define scanres_get_ulong       scanres_get_rbus
 #define opclscan_get_ulong      opclscan_get_rbus
@@ -7722,18 +11067,25 @@ out:
 #define nbss_get_int            nbss_get_rbus
 #define nbss_get_string         nbss_get_rbus
 #define nbss_get_ulong          nbss_get_rbus
-#define currop_get_ulong        currop_get_rbus
-#define currop_get_int          currop_get_rbus
-#define currop_get_string       currop_get_rbus
-#define bhsta_get_string        bhsta_get_rbus
-#define backhaul_get_string     backhaul_get_rbus
-#define bhstats_get_string      bhstats_get_rbus
-#define bhstats_get_ulong       bhstats_get_rbus
-#define cacstatus_get_string    cacstatus_get_rbus
-#define cacstatus_get_ulong     cacstatus_get_rbus
-#define cacavail_get_ulong      cacavail_get_rbus
-#define cacnonocc_get_ulong     cacnonocc_get_rbus
-#define cacactive_get_ulong     cacactive_get_rbus
+#define bss_get_boolean         bss_get_rbus
+#define bss_get_string          bss_get_rbus
+#define bss_get_ulong           bss_get_rbus
+#define sta_get_string          sta_get_rbus
+#define sta_get_ulong           sta_get_rbus
+#define apmld_get_string        apmld_get_rbus
+#define apmld_get_ulong         apmld_get_rbus
+#define amconfig_get_boolean    amconfig_get_rbus
+#define affap_get_string        affap_get_rbus
+#define affap_get_ulong         affap_get_rbus
+#define stamld_get_boolean      stamld_get_rbus
+#define stamld_get_string       stamld_get_rbus
+#define stamld_get_ulong        stamld_get_rbus
+#define smwf7cap_get_boolean    smwf7cap_get_rbus
+#define smconfig_get_boolean    smconfig_get_rbus
+#define affsta_get_string       affsta_get_rbus
+#define affsta_get_ulong        affsta_get_rbus
+#define bstamld_get_string      bstamld_get_rbus
+#define bstacfg_get_boolean     bstacfg_get_rbus
 #define ethernet_get_ulong      ethernet_get_rbus
 #define ethiface_get_string     ethiface_get_rbus
 #define ethiface_get_ulong      ethiface_get_rbus
@@ -7780,13 +11132,17 @@ static rbusError_t register_data_elements(rbusHandle_t handle)
         {DM_DEVICE_EXECENV,         RBUS_ELEMENT_TYPE_PROPERTY, {device_get_string, NULL, NULL, NULL, NULL, NULL}},
         {DM_DEVICE_CCODE,           RBUS_ELEMENT_TYPE_PROPERTY, {device_get_string, NULL, NULL, NULL, NULL, NULL}},
         {DM_DEVICE_MAPPROFILE,      RBUS_ELEMENT_TYPE_PROPERTY, {device_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_DEVICE_BTMSTDASTALST,   RBUS_ELEMENT_TYPE_PROPERTY, {device_get_string, device_set_string, NULL, NULL, NULL, NULL}},
+        {DM_DEVICE_LCLSTDASTALST,   RBUS_ELEMENT_TYPE_PROPERTY, {device_get_string, device_set_string, NULL, NULL, NULL, NULL}},
         {DM_DEVICE_RADIONOE,        RBUS_ELEMENT_TYPE_PROPERTY, {device_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_DEVICE_CACSTATUSNOE,    RBUS_ELEMENT_TYPE_PROPERTY, {device_get_ulong, NULL, NULL, NULL, NULL, NULL}},
-        {DM_DEVICE_UNASSOC_STA_QUERY,RBUS_ELEMENT_TYPE_METHOD,  {NULL, NULL, NULL, NULL, NULL, unassoc_sta_link_metrics_query}},
+        {DM_DEVICE_UNASSOCSTAQRY,   RBUS_ELEMENT_TYPE_METHOD,   {NULL, NULL, NULL, NULL, NULL, unassoc_sta_link_metrics_query}},
+        {DM_DEVICE_REBOOT,          RBUS_ELEMENT_TYPE_METHOD,   {NULL, NULL, NULL, NULL, NULL, device_reboot_rbus}},
         {DM_BACKHAUL_LINKTYPE,      RBUS_ELEMENT_TYPE_PROPERTY, {backhaul_get_string, NULL, NULL, NULL, NULL, NULL}},
         {DM_BACKHAUL_BHMACADDR,     RBUS_ELEMENT_TYPE_PROPERTY, {backhaul_get_string, NULL, NULL, NULL, NULL, NULL}},
         {DM_BACKHAUL_BHDEVICEID,    RBUS_ELEMENT_TYPE_PROPERTY, {backhaul_get_string, NULL, NULL, NULL, NULL, NULL}},
         {DM_BACKHAUL_MACADDRESS,    RBUS_ELEMENT_TYPE_PROPERTY, {backhaul_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BACKHAUL_STEERWIFIBH,   RBUS_ELEMENT_TYPE_METHOD,   {NULL, NULL, NULL, NULL, NULL, backhaul_steerwifibh_rbus}},
         {DM_BHSTATS_BYTESRCVD,      RBUS_ELEMENT_TYPE_PROPERTY, {bhstats_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_BHSTATS_BYTESSENT,      RBUS_ELEMENT_TYPE_PROPERTY, {bhstats_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_BHSTATS_PACKETSRCVD,    RBUS_ELEMENT_TYPE_PROPERTY, {bhstats_get_ulong, NULL, NULL, NULL, NULL, NULL}},
@@ -7835,6 +11191,88 @@ static rbusError_t register_data_elements(rbusHandle_t handle)
         {DM_CAPS_VHTCAPS,           RBUS_ELEMENT_TYPE_PROPERTY, {caps_get_string, NULL, NULL, NULL, NULL, NULL}},
         {DM_CAPS_HECAPS,            RBUS_ELEMENT_TYPE_PROPERTY, {caps_get_string, NULL, NULL, NULL, NULL, NULL}},
         {DM_CAPS_CAPOPCLASSNOE,     RBUS_ELEMENT_TYPE_PROPERTY, {caps_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_HE160,          RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_HE8080,         RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_MCSNSS,         RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_SUBMFRMER,      RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_SUBMFRMEE,      RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_MUBMFRMER,      RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_BMFRMEEL80,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_BMFRMEEG80,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_ULMUMIMO,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_ULOFDMA,        RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_DLOFDMA,        RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_MXDLMUMIMO,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_MXULMUMIMO,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_MXDLOFDMA,      RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_MXULOFDMA,      RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_RTS,            RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_MURTS,          RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_MBSSID,         RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_MUEDCA,         RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_TWTREQ,         RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6AP_TWTRES,         RBUS_ELEMENT_TYPE_PROPERTY, {wifi6ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_HE160,        RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_HE8080,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_MCSNSS,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_SUBMFRMER,    RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_SUBMFRMEE,    RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_MUBMFRMER,    RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_BMFRMEEL80,   RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_BMFRMEEG80,   RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_ULMUMIMO,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_ULOFDMA,      RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_DLOFDMA,      RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_MXDLMUMIMO,   RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_MXULMUMIMO,   RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_MXDLOFDMA,    RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_MXULOFDMA,    RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_RTS,          RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_MURTS,        RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_MBSSID,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_MUEDCA,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_TWTREQ,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI6BSTA_TWTRES,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi6bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7AP_EMLMRSUP,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi7ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7AP_EMLSRSUP,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi7ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7AP_STRSUP,         RBUS_ELEMENT_TYPE_PROPERTY, {wifi7ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7AP_NSTRSUP,        RBUS_ELEMENT_TYPE_PROPERTY, {wifi7ap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7AP_EMLMRFSNOE,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi7ap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7AP_EMLSRFSNOE,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi7ap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7AP_STRFSNOE,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi7ap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7AP_NSTRFSNOE,      RBUS_ELEMENT_TYPE_PROPERTY, {wifi7ap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APEMLMRFS_TBL,          RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APEMLMRFS_RUID,         RBUS_ELEMENT_TYPE_PROPERTY, {apemlmr_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APEMLMRFS_FREQSEP,      RBUS_ELEMENT_TYPE_PROPERTY, {apemlmr_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APEMLSRFS_TBL,          RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APEMLSRFS_RUID,         RBUS_ELEMENT_TYPE_PROPERTY, {apemlsr_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APEMLSRFS_FREQSEP,      RBUS_ELEMENT_TYPE_PROPERTY, {apemlsr_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APSTRFS_TBL,            RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APSTRFS_RUID,           RBUS_ELEMENT_TYPE_PROPERTY, {apstr_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APSTRFS_FREQSEP,        RBUS_ELEMENT_TYPE_PROPERTY, {apstr_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APNSTRFS_TBL,           RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APNSTRFS_RUID,          RBUS_ELEMENT_TYPE_PROPERTY, {apnstr_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APNSTRFS_FREQSEP,       RBUS_ELEMENT_TYPE_PROPERTY, {apnstr_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7BSTA_EMLMRSUP,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi7bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7BSTA_EMLSRSUP,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi7bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7BSTA_STRSUP,       RBUS_ELEMENT_TYPE_PROPERTY, {wifi7bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7BSTA_NSTRSUP,      RBUS_ELEMENT_TYPE_PROPERTY, {wifi7bsta_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7BSTA_EMLMRFSNOE,   RBUS_ELEMENT_TYPE_PROPERTY, {wifi7bsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7BSTA_EMLSRFSNOE,   RBUS_ELEMENT_TYPE_PROPERTY, {wifi7bsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7BSTA_STRFSNOE,     RBUS_ELEMENT_TYPE_PROPERTY, {wifi7bsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_WIFI7BSTA_NSTRFSNOE,    RBUS_ELEMENT_TYPE_PROPERTY, {wifi7bsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTAEMLMRFS_TBL,        RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTAEMLMRFS_RUID,       RBUS_ELEMENT_TYPE_PROPERTY, {bstaemlmr_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTAEMLMRFS_FREQSEP,    RBUS_ELEMENT_TYPE_PROPERTY, {bstaemlmr_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTAEMLSRFS_TBL,        RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTAEMLSRFS_RUID,       RBUS_ELEMENT_TYPE_PROPERTY, {bstaemlsr_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTAEMLSRFS_FREQSEP,    RBUS_ELEMENT_TYPE_PROPERTY, {bstaemlsr_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTASTRFS_TBL,          RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTASTRFS_RUID,         RBUS_ELEMENT_TYPE_PROPERTY, {bstastr_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTASTRFS_FREQSEP,      RBUS_ELEMENT_TYPE_PROPERTY, {bstastr_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTANSTRFS_TBL,         RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTANSTRFS_RUID,        RBUS_ELEMENT_TYPE_PROPERTY, {bstanstr_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTANSTRFS_FREQSEP,     RBUS_ELEMENT_TYPE_PROPERTY, {bstanstr_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_CAPOPCLASS_TBL,         RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
         {DM_CAPOPCLASS_CLASS,       RBUS_ELEMENT_TYPE_PROPERTY, {capop_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_CAPOPCLASS_MAXTSPOW,    RBUS_ELEMENT_TYPE_PROPERTY, {capop_get_int, NULL, NULL, NULL, NULL, NULL}},
@@ -7845,6 +11283,10 @@ static rbusError_t register_data_elements(rbusHandle_t handle)
         {DM_CURROPCLASS_CHANNEL,    RBUS_ELEMENT_TYPE_PROPERTY, {currop_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_CURROPCLASS_TXPOWER,    RBUS_ELEMENT_TYPE_PROPERTY, {currop_get_int, NULL, NULL, NULL, NULL, NULL}},
         {DM_CURROPCLASS_TSTAMP,     RBUS_ELEMENT_TYPE_PROPERTY, {currop_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_DISOPCLASS_TBL,         RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_DISOPCLASS_ENABLE,      RBUS_ELEMENT_TYPE_PROPERTY, {disop_get_boolean, disop_set_boolean, NULL, NULL, NULL, NULL}},
+        {DM_DISOPCLASS_OPCLASS,     RBUS_ELEMENT_TYPE_PROPERTY, {disop_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_DISOPCLASS_CHLIST,      RBUS_ELEMENT_TYPE_PROPERTY, {disop_get_string, disop_set_string, NULL, NULL, NULL, NULL}},
         {DM_SCANRES_TBL,            RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
         {DM_SCANRES_TSTAMP,         RBUS_ELEMENT_TYPE_PROPERTY, {scanres_get_string, NULL, NULL, NULL, NULL, NULL}},
         {DM_SCANRES_OPCLASSNOE,     RBUS_ELEMENT_TYPE_PROPERTY, {scanres_get_ulong, NULL, NULL, NULL, NULL, NULL}},
@@ -7928,8 +11370,67 @@ static rbusError_t register_data_elements(rbusHandle_t handle)
         {DM_STEERSUM_LASTSTEERTM,   RBUS_ELEMENT_TYPE_PROPERTY, {steering_sum_stats_get_rbus, NULL, NULL, NULL, NULL, NULL}},
         {DM_UNASSOC_TBL,            RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
         {DM_UNASSOC_MAC,            RBUS_ELEMENT_TYPE_PROPERTY, {unassoc_sta_get_rbus, NULL, NULL, NULL, NULL, NULL}},
-        {DM_UNASSOC_SIGNALSTRENGTH, RBUS_ELEMENT_TYPE_PROPERTY, {unassoc_sta_get_rbus, NULL, NULL, NULL, NULL, NULL}},
+        {DM_UNASSOC_SIGNALSTR,      RBUS_ELEMENT_TYPE_PROPERTY, {unassoc_sta_get_rbus, NULL, NULL, NULL, NULL, NULL}},
         {DM_UNASSOC_TIMESTAMP,      RBUS_ELEMENT_TYPE_PROPERTY, {unassoc_sta_get_rbus, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APMLD_TBL,              RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APMLD_MACADDRESS,       RBUS_ELEMENT_TYPE_PROPERTY, {apmld_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APMLD_AFFAPNOE,         RBUS_ELEMENT_TYPE_PROPERTY, {apmld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_APMLD_STAMLDNOE,        RBUS_ELEMENT_TYPE_PROPERTY, {apmld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AMCONFIG_EMLMR,         RBUS_ELEMENT_TYPE_PROPERTY, {amconfig_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AMCONFIG_EMLSR,         RBUS_ELEMENT_TYPE_PROPERTY, {amconfig_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AMCONFIG_STR,           RBUS_ELEMENT_TYPE_PROPERTY, {amconfig_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AMCONFIG_NSTR,          RBUS_ELEMENT_TYPE_PROPERTY, {amconfig_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_TBL,              RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_BSSID,            RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_LINKID,           RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_RUID,             RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_PACKETSRCVD,      RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_PACKETSSENT,      RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_ERRORSSENT,       RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_UCBYTESRCVD,      RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_UCBYTESSENT,      RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_MCBYTESRCVD,      RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_MCBYTESSENT,      RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_BCBYTESRCVD,      RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFAP_BCBYTESSENT,      RBUS_ELEMENT_TYPE_PROPERTY, {affap_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_TBL,             RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_MLDMACADDR,      RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_ISBSTA,          RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_LASTCONTIME,     RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_BYTESRCVD,       RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_BYTESSENT,       RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_PACKETSRCVD,     RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_PACKETSSENT,     RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_ERRORSRCVD,      RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_ERRORSSENT,      RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_RETRANSCNT,      RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_STAMLD_AFFSTANOE,       RBUS_ELEMENT_TYPE_PROPERTY, {stamld_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_SMWF7CAP_EMLMR,         RBUS_ELEMENT_TYPE_PROPERTY, {smwf7cap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_SMWF7CAP_EMLSR,         RBUS_ELEMENT_TYPE_PROPERTY, {smwf7cap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_SMWF7CAP_STR,           RBUS_ELEMENT_TYPE_PROPERTY, {smwf7cap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_SMWF7CAP_NSTR,          RBUS_ELEMENT_TYPE_PROPERTY, {smwf7cap_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_SMCONFIG_EMLMR,         RBUS_ELEMENT_TYPE_PROPERTY, {smconfig_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_SMCONFIG_EMLSR,         RBUS_ELEMENT_TYPE_PROPERTY, {smconfig_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_SMCONFIG_STR,           RBUS_ELEMENT_TYPE_PROPERTY, {smconfig_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_SMCONFIG_NSTR,          RBUS_ELEMENT_TYPE_PROPERTY, {smconfig_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_TBL,             RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_MACADDRESS,      RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_BSSID,           RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_BYTESRCVD,       RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_BYTESSENT,       RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_PACKETSRCVD,     RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_PACKETSSENT,     RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_ERRORSSENT,      RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_SIGNALSTR,       RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_ESTMACDRDL,      RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_AFFSTA_ESTMACDRUL,      RBUS_ELEMENT_TYPE_PROPERTY, {affsta_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTAMLD_MACADDRESS,     RBUS_ELEMENT_TYPE_PROPERTY, {bstamld_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTAMLD_BSSID,          RBUS_ELEMENT_TYPE_PROPERTY, {bstamld_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTAMLD_AFFBSTALIST,    RBUS_ELEMENT_TYPE_PROPERTY, {bstamld_get_string, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTACFG_EMLMR,          RBUS_ELEMENT_TYPE_PROPERTY, {bstacfg_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTACFG_EMLSR,          RBUS_ELEMENT_TYPE_PROPERTY, {bstacfg_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTACFG_STR,            RBUS_ELEMENT_TYPE_PROPERTY, {bstacfg_get_boolean, NULL, NULL, NULL, NULL, NULL}},
+        {DM_BSTACFG_NSTR,           RBUS_ELEMENT_TYPE_PROPERTY, {bstacfg_get_boolean, NULL, NULL, NULL, NULL, NULL}},
         {DM_ETHERNET_IFACENOE,      RBUS_ELEMENT_TYPE_PROPERTY, {ethernet_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_ETHIFACE_TBL,           RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
         {DM_ETHIFACE_MACADDR,       RBUS_ELEMENT_TYPE_PROPERTY, {ethiface_get_string, NULL, NULL, NULL, NULL, NULL}},
@@ -7937,6 +11438,7 @@ static rbusError_t register_data_elements(rbusHandle_t handle)
         {DM_ETHDEVICE_TBL,          RBUS_ELEMENT_TYPE_TABLE,    {NULL, NULL, NULL, NULL, NULL, NULL}},
         {DM_ETHDEVICE_MACADDR,      RBUS_ELEMENT_TYPE_PROPERTY, {ethdevice_get_string, NULL, NULL, NULL, NULL, NULL}},
         {DM_DEVINFO_UPTIME,         RBUS_ELEMENT_TYPE_PROPERTY, {devinfo_get_ulong, NULL, NULL, NULL, NULL, NULL}},
+        {DM_DEVINFO_BOOTID,         RBUS_ELEMENT_TYPE_PROPERTY, {devinfo_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_MEMSTATUS_TOTAL,        RBUS_ELEMENT_TYPE_PROPERTY, {memstat_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_MEMSTATUS_FREE,         RBUS_ELEMENT_TYPE_PROPERTY, {memstat_get_ulong, NULL, NULL, NULL, NULL, NULL}},
         {DM_MEMSTATUS_CACHED,       RBUS_ELEMENT_TYPE_PROPERTY, {memstat_get_ulong, NULL, NULL, NULL, NULL, NULL}},
@@ -7969,7 +11471,7 @@ static rbusError_t register_data_elements(rbusHandle_t handle)
     cnt = sizeof(elements) / sizeof(rbusDataElement_t);
     rc = rbus_regDataElements(handle, cnt, elements);
     if (rc != RBUS_ERROR_SUCCESS) {
-        log_lib_e("rbus_regDataElements failed");
+        log_lib_e("rbus_regDataElements failed[%d]: %s", rc, rbusError_ToString(rc));
     }
 
     return rc;
@@ -7995,6 +11497,12 @@ static map_dm_cbs_t g_dm_cbs = {
     .sta_update_cb = dm_rbus_update_sta,
     .sta_remove_cb = dm_rbus_remove_sta,
 
+    .ap_mld_create_cb = dm_rbus_create_ap_mld,
+    .ap_mld_remove_cb = dm_rbus_remove_ap_mld,
+
+    .sta_mld_create_cb = dm_rbus_create_sta_mld,
+    .sta_mld_remove_cb = dm_rbus_remove_sta_mld,
+
     .assoc_create_cb = dm_rbus_create_assoc,
     .assoc_remove_cb = dm_rbus_remove_assoc,
 
@@ -8009,7 +11517,6 @@ int map_dm_rbus_init(void)
 {
     rbusError_t rc;
     rbusHandle_t handle;
-    uint8_t* mac = map_cfg_get()->controller_cfg.local_agent_al_mac;
 
     remove_all_ap_device();
 
@@ -8023,11 +11530,6 @@ int map_dm_rbus_init(void)
         return rc;
     }
     g_bus_handle = handle;
-
-    /* Create local agent so it gets index 0 */
-    if (maccmp(mac, g_zero_mac) && maccmp(mac, g_wildcard_mac)) {
-        create_ale_mac(mac, NULL);
-    }
 
     /* Register dm callbacks */
     map_dm_register_cbs(&g_dm_cbs);

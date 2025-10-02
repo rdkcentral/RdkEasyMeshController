@@ -94,6 +94,7 @@
 
 #define MAX_CMDU_SIZE            (MAX_NETWORK_SEGMENT_SIZE - ETH_8021Q_HDR_SIZE)
 #define MAX_TLV_SIZE             (MAX_CMDU_SIZE            - CMDU_HDR_SIZE)
+#define MAX_LAST_TLV_SIZE        (MAX_TLV_SIZE             - 3)
 #define MAX_TLV_PAYLOAD_SIZE     (MAX_TLV_SIZE             - TLV_HDR_SIZE)
 
 /*#######################################################################

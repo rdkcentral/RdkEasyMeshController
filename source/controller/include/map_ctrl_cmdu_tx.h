@@ -136,6 +136,9 @@ int map_send_link_metric_response(map_ale_info_t *ale, uint16_t mid, i1905_trans
 /* 1905.1 6.3.6 (type 0x0006) - MID must be the same as what was used in the request */
 int map_send_link_metric_response_error(map_ale_info_t *ale, uint16_t mid, uint8_t error_code);
 
+/* 1905.1 6.3.7 (type 0x0007) */
+int map_send_autoconfig_search(void);
+
 /* 1905.1 6.3.8 (type 0x0008) */
 int map_send_autoconfig_response(i1905_cmdu_t *recv_cmdu, bool ale_is_agent);
 
@@ -143,10 +146,10 @@ int map_send_autoconfig_response(i1905_cmdu_t *recv_cmdu, bool ale_is_agent);
 int map_send_autoconfig_wsc_m2(map_ale_info_t *ale, map_radio_info_t *radio, i1905_cmdu_t *recv_cmdu, uint16_t *mid);
 
 /* 1905.1 6.3.10 (type 0x000A) */
-int map_send_autoconfig_renew(uint8_t freq_band, uint16_t *mid);
+int map_send_autoconfig_renew(uint8_t freq_band, uint16_t *mid, bool reset_onboarding);
 
 /* 1905.1 6.3.10 (type 0x000A) */
-int map_send_autoconfig_renew_ucast(map_ale_info_t *ale, uint8_t freq_band, uint16_t *mid);
+int map_send_autoconfig_renew_ucast(map_ale_info_t *ale, uint8_t freq_band, uint16_t *mid, bool reset_onboarding);
 
 /* 1905.1 6.3.13 (type 0x0004) - args is of type map_vendor_specific_t */
 int map_send_vendor_specific(void *args, uint16_t *mid);
@@ -177,6 +180,7 @@ int map_send_channel_selection_request(void *args, uint16_t *mid);
 
 /* MAP_R2 17.1.14 (type 0x8009) - args is of type map_sta_info_t */
 int map_send_client_capability_query(void *args, uint16_t *mid);
+int map_send_mld_client_capability_query(void *args, uint16_t *mid);
 
 /* MAP_R2 17.1.16 (type 0x800B) */
 int map_send_ap_metrics_query(map_ale_info_t *ale, mac_addr *bssids, uint8_t bssid_nr, uint16_t *mid);
@@ -235,8 +239,14 @@ int map_send_dpp_cce_indication(map_ale_info_t *ale, uint8_t advertise, uint16_t
 /* MAP_R3 17.1.52 (type 0x802F) */
 int map_send_dpp_chirp_notification(map_dpp_chirp_value_tlv_t *chirp_value_tlv_list, int num_chirp_tlv, uint16_t *mid);
 
+/* MAP_R3 17.1.54 (type 0x802D) */
+int map_send_bss_config_response(map_ale_info_t *ale, map_bss_configuration_response_tlv_t *bss_config_resp_tlv, uint16_t *mid);
+
 /* MAP_R3 17.1.56 (type 0x802A) */
 int map_send_direct_encap_dpp(map_ale_info_t *ale, map_dpp_message_tlv_t *dpp_message_tlv, uint16_t *mid);
+
+/* MAP_R3 17.1.58 (type 0x8035) */
+int map_send_agent_list_message(map_ale_info_t *ale, uint16_t *mid);
 
 /*#######################################################################
 #                       RAW                                             #

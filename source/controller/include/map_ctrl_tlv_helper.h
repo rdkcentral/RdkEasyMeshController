@@ -32,15 +32,15 @@ i1905_receiver_link_metric_tlv_t *map_get_receiver_link_metric_tlv(mac_addr loca
 
 i1905_transmitter_link_metric_tlv_t *map_get_transmitter_link_metric_tlv(mac_addr local_al_mac, map_neighbor_link_metric_t *neighbor_lm);
 
-void map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radio_info_t *radio, uint8_t pref_type);
+int map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radio_info_t *radio, uint8_t pref_type);
 
 void map_fill_transmit_power_tlv(map_transmit_power_limit_tlv_t *tlv, map_radio_info_t *radio);
 
 /* Fill scan request tlv with all 20MHz operating class received in scan capability tlv.
    Optionally set channels != NULL to add only those.
 */
-void map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_radio_info_t *radio,
-                                       bool fresh_scan, map_channel_set_t *channels);
+int map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_radio_info_t *radio,
+                                      bool fresh_scan, map_channel_set_t *channels);
 
 void map_fill_default_8021q_settings_tlv(map_cfg_t *cfg, map_default_8021q_settings_tlv_t *tlv);
 

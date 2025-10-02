@@ -153,8 +153,16 @@
 #define CMDU_TYPE_MAP_DPP_CCE_INDICATION                        0x801d
 #define CMDU_TYPE_MAP_PROXIED_ENCAP_DPP                         0x8029
 #define CMDU_TYPE_MAP_DIRECT_ENCAP_DPP                          0x802a
+#define CMDU_TYPE_MAP_BSS_CONFIGURATION_REQUEST                 0x802c
+#define CMDU_TYPE_MAP_BSS_CONFIGURATION_RESPONSE                0x802d
+#define CMDU_TYPE_MAP_BSS_CONFIGURATION_RESULT                  0x802e
 #define CMDU_TYPE_MAP_CHIRP_NOTIFICATION                        0x802f
 #define CMDU_TYPE_MAP_1905_ENCAP_EAPOL                          0x8030
+#define CMDU_TYPE_MAP_AGENT_LIST                                0x8035
+
+/* MAP R6 */
+#define CMDU_TYPE_MAP_EARLY_AP_CAPABILITY_REPORT                0x8043
+#define CMDU_TYPE_MAP_AVAILABLE_SPECTRUM_INQUIRY                0x8049
 
 /*#######################################################################
 # CMDU message version                                                  #
@@ -217,6 +225,17 @@ static inline void *i1905_get_tlv_from_cmdu(uint8_t tlv_type, i1905_cmdu_t *cmdu
     }
 
     return NULL;
+}
+
+static inline int i1905_count_tlvs_in_cmdu(i1905_cmdu_t *cmdu)
+{
+    int idx = 0;
+
+    for (idx = 0; cmdu->list_of_TLVs[idx]; idx++) {
+        /* do nothing */
+    }
+
+    return idx;
 }
 
 /*#######################################################################

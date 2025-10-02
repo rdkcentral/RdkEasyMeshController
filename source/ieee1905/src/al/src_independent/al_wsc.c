@@ -108,7 +108,9 @@
     #define WPS_AUTH_WPA           (0x0008)
     #define WPS_AUTH_WPA2          (0x0010)
     #define WPS_AUTH_WPA2PSK       (0x0020)
-    #define WPS_AUTH_WEP           (0x0040)
+    #define WPS_AUTH_SAE           (0x0040)
+    #define WPS_AUTH_DPP           (0x0080)
+    #define WPS_AUTH_SAE_24        (0x0100) /* SAE with AKM24 */
 #define ATTR_ENCR_TYPE_FLAGS   (0x1010)
     #define WPS_ENCR_NONE          (0x0001)
     #define WPS_ENCR_WEP           (0x0002) /* deprecated */
@@ -204,6 +206,7 @@
     #define WPS_RF_24GHZ           (0x01)
     #define WPS_RF_5GHZ            (0x02)
     #define WPS_RF_60GHZ           (0x04)
+    #define WPS_RF_6GHZ            (0x08)
 #define ATTR_ASSOC_STATE       (0x1002)
     #define WPS_ASSOC_NOT_ASSOC     (0)
     #define WPS_ASSOC_CONN_SUCCESS  (1)

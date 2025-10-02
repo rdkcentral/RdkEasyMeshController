@@ -131,6 +131,9 @@ int map_parse_ap_wifi6_cap_tlv(map_ale_info_t *ale, map_ap_wifi6_cap_tlv_t *tlv)
 /* MAP_R3 17.2.73 */
 int map_parse_assoc_wifi6_sta_status_tlv(map_ale_info_t *ale, map_assoc_wifi6_sta_status_tlv_t *tlv);
 
+/* MAP_R3 17.2.75 */
+int map_parse_bss_configuration_report_tlv(map_ale_info_t *ale, map_bss_configuration_report_tlv_t *tlv);
+
 /* MAP_R3 17.2.76 */
 int map_parse_device_inventory_tlv(map_ale_info_t *ale, map_device_inventory_tlv_t *tlv);
 
@@ -143,7 +146,31 @@ int map_parse_1905_encap_eapol_tlv(map_ale_info_t *ale, map_1905_encap_eapol_tlv
 /* MAP_R3 17.2.83 */
 int map_parse_dpp_chirp_value_tlv(map_ale_info_t *ale, map_dpp_chirp_value_tlv_t *tlv);
 
+/* MAP_R3 17.2.84 */
+int map_parse_bss_configuration_request_tlv(map_ale_info_t *ale, map_bss_configuration_request_tlv_t *tlv);
+
 /* MAP_R3 17.2.86 */
 int map_parse_dpp_message_tlv(map_ale_info_t *ale, map_dpp_message_tlv_t *tlv);
+
+/*#######################################################################
+#                       MAP R6 TLV HANDLERS                             #
+########################################################################*/
+/* MAP_R6 17.2.95 */
+int map_parse_wifi7_agent_capability_tlv(map_ale_info_t *ale, map_wifi7_agent_cap_tlv_t *tlv, bool *ret_changed);
+
+/* MAP_R6 17.2.96 */
+int map_parse_agent_ap_mld_conf_tlv(map_ale_info_t *ale, map_agent_ap_mld_conf_tlv_t *tlv);
+
+/* MAP_R6 17.2.97 */
+int map_parse_bsta_mld_conf_tlv(map_ale_info_t *ale, map_bsta_mld_conf_tlv_t *tlv);
+
+/* MAP_R6 17.2.98 */
+int map_parse_assoc_sta_mld_conf_tlv(map_ale_info_t *ale, map_assoc_sta_mld_conf_tlv_t *tlv);
+
+/* MAP_R6 17.2.100 */
+int map_parse_aff_sta_metrics_tlv(map_ale_info_t *ale, map_aff_sta_metrics_tlv_t *tlv);
+
+/* MAP_R6 17.2.103 */
+int map_parse_eht_operations_tlv(map_ale_info_t *ale, map_eht_operations_tlv_t *tlv);
 
 #endif /* MAP_CTRL_TLV_PARSER_H_ */

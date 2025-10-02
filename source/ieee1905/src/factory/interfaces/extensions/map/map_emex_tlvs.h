@@ -15,12 +15,21 @@
 /* AirTies EM+ Extension TLV IDs */
 enum emex_tlv_type {
     EMEX_TLV_UNUSED                             = 0x0000,
+    EMEX_TLV_MESSAGE_TYPE                       = 0x0001,
+    EMEX_TLV_FEATURE_PROFILE                    = 0x0002,
+    EMEX_TLV_DEVICE_INFO                        = 0x0003,
     EMEX_TLV_DEVICE_METRICS                     = 0x0004,
+    EMEX_TLV_REBOOT_REQUEST                     = 0x0005,
     EMEX_TLV_ETH_STATS                          = 0x000A,
     EMEX_TLV_ETH_INTERFACES                     = 0x000F,
     EMEX_TLV_ETH_STATS_V2                       = 0x0010,
     EMEX_TLV_TYPE_ETH_NON_1905_NEIGHBOR_DEVICES = 0x0011,
     EMEX_TLV_TYPE_ETH_1905_NEIGHBOR_DEVICES     = 0x0012,
+};
+
+enum emex_message_type {
+    EMEX_MESSAGE_UNUSED                = 0x0000,
+    EMEX_MESSAGE_REBOOT_REQUEST        = 0x0001,
 };
 
 /* Ethernet interfaces TLV */

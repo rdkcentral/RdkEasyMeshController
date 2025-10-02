@@ -29,10 +29,12 @@
  *  @param is_2g Indicate if station is connected to 2G or not
  *  @param match_ssid SSID used to validate body
  *  @param match_ssid_len Length of SSID used to validate body
+ *  @param aff_sta_mac mac address of station in case this is an affiliated STA
  *  @return The status code 0-success, -ve for failure
  */
 
-int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int body_len, int supported_freq, uint8_t *match_ssid, int match_ssid_len);
+int map_80211_parse_assoc_body(map_sta_capability_t *caps, uint8_t *body, int body_len, int supported_freq,
+                               uint8_t *match_ssid, int match_ssid_len, mac_addr aff_sta_mac);
 
 
 /** @brief This function derives max phy rate in kbps from capabilities

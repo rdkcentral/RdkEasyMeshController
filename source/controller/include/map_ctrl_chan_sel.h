@@ -11,12 +11,14 @@
 #include "i1905.h"
 
 /* Update controller preference and send channel selection request */
-int map_ctrl_chan_sel_set(map_radio_info_t *radio, bool *acs_enable, map_channel_set_t *acs_channels,
-                          int *channel, int *bandwidth);
+int map_ctrl_chan_sel_set(map_radio_info_t *radio, bool *cloud_mgmt_enable, bool *acs_enable,
+                          map_channel_set_t *acs_channels, int *channel, int *bandwidth);
 
 int map_ctrl_chan_sel_set_channel(map_radio_info_t *radio, int channel);
 
 int map_ctrl_chan_sel_set_bandwidth(map_radio_info_t *radio, int bandwidth);
+
+int map_ctrl_chan_sel_set_cloud_mgmt_enable(map_radio_info_t *radio, bool enable);
 
 /* Update controller preference but do not send channel selection request
    To be used when ctl_channels are updated.

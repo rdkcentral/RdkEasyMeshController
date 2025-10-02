@@ -44,6 +44,9 @@ int map_validate_link_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 /* 1905.1 6.3.7 (type 0x0007) */
 int map_validate_ap_autoconfig_search(i1905_cmdu_t *cmdu);
 
+/* 1905.1 6.3.8 (type 0x0008) */
+int map_validate_ap_autoconfig_response(i1905_cmdu_t *cmdu);
+
 /* 1905.1 6.3.9 (type 0x0009) */
 int map_validate_ap_autoconfig_wsc(i1905_cmdu_t *cmdu);
 
@@ -128,6 +131,22 @@ int map_validate_1905_encap_eapol(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 /* MAP_R3 17.1.52 (type 0x802f) */
 int map_validate_chirp_notification(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
 
+/* MAP_R3 17.1.53 (type 0x802c) */
+int map_validate_bss_configuration_request(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
+/* MAP_R3 17.1.55 (type 0x802e) */
+int map_validate_bss_configuration_result(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
 /* MAP_R3 17.1.56 (type 0x802a) */
 int map_validate_direct_encap_dpp(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
+/*#######################################################################
+#                       MAP R6 CMDU VALIDATORS                          #
+########################################################################*/
+/* MAP_R6 17.1.62 (type 0x8043) */
+int map_validate_early_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
+/* MAP_R6 17.1.67 (type 0x8049) */
+int map_validate_available_spectrum_inquiry(map_ale_info_t *ale, i1905_cmdu_t *cmdu);
+
 #endif /* MAP_CTRL_CMDU_VALIDATOR_H_ */

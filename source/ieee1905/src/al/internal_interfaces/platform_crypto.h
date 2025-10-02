@@ -148,4 +148,23 @@ uint8_t PLATFORM_AES_ENCRYPT(uint8_t *key, uint8_t *iv, uint8_t *data, uint32_t 
 */
 uint8_t PLATFORM_AES_DECRYPT(uint8_t *key, uint8_t *iv, uint8_t *data, uint32_t data_len);
 
+/* Encrypt the provided 'data' (which is a pointer to a buffer of variable size)
+*  according to AES-SIV encryption (RFC 5297) with provided 'params' and 'key'.
+*
+*  The result is written to 'out' buffer and has the length of ('data_len' + AES_BLOCK_SIZE).
+*
+*  Return "0" if there was a problem, "1" otherwise.
+*/
+uint8_t PLATFORM_AES_SIV_ENCRYPT(const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
+                                 size_t num_params, uint8_t *params[], size_t *params_lens, uint8_t *out);
+
+/* Works similarly with "PLATFORM_AES_SIV_ENCRYPT".
+*
+*  The result (decrypted data) is written to 'out' buffer.
+*
+*  Return "0" if there was a problem, "1" otherwise.
+*/
+uint8_t PLATFORM_AES_SIV_DECRYPT(const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len,
+                                 size_t num_params, uint8_t *params[], size_t *params_lens, uint8_t *out);
+
 #endif /* PLATFORM_CRYPTO_H_ */

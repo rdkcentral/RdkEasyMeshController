@@ -21,6 +21,8 @@
 #include "map_ctrl_utils.h"
 #include "map_ctrl_cmdu_tx.h"
 #include "map_ctrl_wfa_capi.h"
+#include "map_ctrl_emex_tlv_handler.h"
+#include "map_ctrl_vendor.h"
 #include "map_ctrl_chan_sel.h"
 
 #include "map_cli.h"
@@ -85,6 +87,7 @@ static const char *g_help =
     "map_cli --command dumpInterfaces\n"
     "map_cli --command dumpBlockList\n"
     "map_cli --command dumpOpClasses\n"
+    "map_cli --command dumpMLD\n"
     "map_cli --command dumpChanSel "PAYLOAD_HELP"\n"
     "map_cli --command dumpTunneledMessage --payload '{\"mac\": \"AA:BB:CC:DD:EE:FF\",\"msgtype\":\"assoc|reassoc|btm|wnm|anqp\"}'\n"
     "map_cli --command dumpAPMetrics --payload '{\"bssid\":\"AA:BB:CC:DD:EE:FF\"}'\n"
@@ -118,6 +121,7 @@ static const char *g_help =
     "map_cli --command sendChScanReportPolicyConf "PAYLOAD_HELP"\n"
     "map_cli --command sendDPPCCEIndication "PAYLOAD_HELP"\n"
     "map_cli --command sendProxiedEncapDPP "PAYLOAD_HELP"\n"
+    "map_cli --command sendRebootRequestMessage "PAYLOAD_HELP"\n"
     "map_cli --command sendRawMessage --payload '$ifname|MSB raw message bytes in hex separated by ws (network byte order) LSB'\n"
 
 /* VARIOUS */
@@ -469,6 +473,19 @@ static const char *g_help_send_proxied_encap_dpp =
     "-Example-\n"
     "map_cli --command sendProxiedEncapDPP --payload '{\"almac\":\"AA:BB:CC:DD:EE:FF\",\"encap\":{\"stamac\":\"AA:BB:CC:DD:EE:FF\",\"frame_indicator\":0,\"frame_type\":10,\"frame\":\"AABBCCDDEEFF\"},\"chirp\":{\"stamac\":\"AA:BB:CC:DD:EE:FF\",\"hash_validity\":1,\"hash\":\"AABBCCDDEEFF\"}}'\n";
 
+static const char *g_help_send_reboot_request_message =
+    "~Send Reboot Request Message Help~\n"
+    "This function sends an Airties reboot request message. Field 'factory_reset' is required when 'action=reset'\n\n"
+    "-Payload format-\n"
+    "   {\n"
+    "       \"almac\": \"AA:BB:CC:DD:EE:FF\",\n"
+    "       \"action\": reboot|reset,\n"
+    "       \"factory_reset\": true|false,\n"
+    "   }\n\n"
+    "-Example-\n"
+    "map_cli --command sendRebootRequestMessage --payload '{\"almac\": \"AA:BB:CC:DD:EE:FF\", \"action\": \"reboot\"}'\n"
+    "map_cli --command sendRebootRequestMessage --payload '{\"almac\": \"AA:BB:CC:DD:EE:FF\", \"action\": \"reset\", \"factory_reset\": true}'\n";
+
 static const char *g_help_send_wfa_capi =
     "~Send WFA CAPI Help~\n"
     "This command is used for WFA certification to send Control API commands as specified in the Wi-Fi Testsuite Control API Specification.\n"
@@ -541,14 +558,7 @@ static void cli_version(UNUSED const char *event, UNUSED const char *payload, UN
 
 static void cli_dump_info(UNUSED const char *event, UNUSED const char *payload, UNUSED void *context)
 {
-    mac_addr_str    gw_mac_str;
-    mac_addr        gw_mac = {0};
-
     map_dm_dump_agent_info_tree(map_cli_printf);
-
-    i1905_get_gateway_mac_address(gw_mac);
-    map_cli_printf("|---- GATEWAY MAC : [%s] -------|\n", mac_to_string(gw_mac, gw_mac_str));
-
 }
 
 static void cli_dump_interfaces(UNUSED const char *event, UNUSED const char *payload, UNUSED void *context)
@@ -602,6 +612,11 @@ static void cli_dump_op_classes(UNUSED const char *event, UNUSED const char *pay
             map_cli_printf("%*s%s\n", (i > 0) ? 45 : 2, "", map_cs_to_string(&channel_set2, ',', buf, sizeof(buf)));
         }
     }
+}
+
+static void cli_dump_mld(UNUSED const char *event, UNUSED const char *payload, UNUSED void *context)
+{
+    map_dm_dump_mld(map_cli_printf);
 }
 
 static void cli_dump_chan_sel(UNUSED const char *event, const char *payload, UNUSED void *context)
@@ -750,12 +765,12 @@ static void cli_dump_ap_metrics(UNUSED const char *event, const char *payload, U
         }
     }
     map_cli_printf("       -----------------------------------------------\n");
-    map_cli_printf("    -unicast bytes tx   : %"PRIu64"\n", bss->extended_metrics.ucast_bytes_tx);
-    map_cli_printf("    -unicast bytes rx   : %"PRIu64"\n", bss->extended_metrics.ucast_bytes_rx);
-    map_cli_printf("    -multicast bytes tx : %"PRIu64"\n", bss->extended_metrics.mcast_bytes_tx);
-    map_cli_printf("    -multicast bytes rx : %"PRIu64"\n", bss->extended_metrics.mcast_bytes_rx);
-    map_cli_printf("    -broadcast bytes tx : %"PRIu64"\n", bss->extended_metrics.bcast_bytes_tx);
-    map_cli_printf("    -broadcast bytes rx : %"PRIu64"\n", bss->extended_metrics.bcast_bytes_rx);
+    map_cli_printf("    -unicast bytes tx   : %"PRIu64"\n", bss->extended_metrics.tx_ucast_bytes);
+    map_cli_printf("    -unicast bytes rx   : %"PRIu64"\n", bss->extended_metrics.rx_ucast_bytes);
+    map_cli_printf("    -multicast bytes tx : %"PRIu64"\n", bss->extended_metrics.tx_mcast_bytes);
+    map_cli_printf("    -multicast bytes rx : %"PRIu64"\n", bss->extended_metrics.rx_mcast_bytes);
+    map_cli_printf("    -broadcast bytes tx : %"PRIu64"\n", bss->extended_metrics.tx_bcast_bytes);
+    map_cli_printf("    -broadcast bytes rx : %"PRIu64"\n", bss->extended_metrics.rx_bcast_bytes);
 
 out:
     JSON_PUT_CHECK_ARGS_OK
@@ -863,7 +878,7 @@ static void cli_dump_sta_metrics(UNUSED const char *event, const char *payload, 
         if (link_metrics) {
             map_cli_printf("    dl_mac_datarate: %u Mbps\n", link_metrics->dl_mac_datarate);
             map_cli_printf("    ul_mac_datarate: %u Mbps\n", link_metrics->ul_mac_datarate);
-            map_cli_printf("    rssi: %d dBm\n", RCPI_TO_RSSI(link_metrics->rssi));
+            map_cli_printf("    rssi: %d dBm\n", link_metrics->rssi);
         }
     } else if (!strcmp(type, "extended_metrics")) {
         map_cli_printf("--Associated STA Extended Link Metrics--\n\n");
@@ -1057,7 +1072,7 @@ static void cli_set_channel(UNUSED const char *event, const char *payload, UNUSE
     }
     args_ok = true;
 
-    map_ctrl_chan_sel_set(radio, NULL, NULL, channel >= 0 ? &channel : NULL, bw >= 0 ? &bw : NULL);
+    map_ctrl_chan_sel_set(radio, NULL, NULL, NULL, channel >= 0 ? &channel : NULL, bw >= 0 ? &bw : NULL);
 
     map_cli_printf("OK\n");
 
@@ -1206,12 +1221,12 @@ static void cli_send_autoconfig_renew(UNUSED const char *event, const char *payl
 
     args_ok = true;
     if (ale) {
-        if (map_send_autoconfig_renew_ucast(ale, IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA)) {
+        if (map_send_autoconfig_renew_ucast(ale, IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA, true)) {
             map_cli_printf("map_send_autoconfig_renew_ucast() failed\n");
             goto out;
         }
     } else {
-        if (map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA)) {
+        if (map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA, true)) {
             map_cli_printf("map_send_autoconfig_renew() failed\n");
             goto out;
         }
@@ -1303,10 +1318,11 @@ static void cli_send_client_capability_query(UNUSED const char *event, const cha
      *   }
      */
 
-    map_ale_info_t *ale     = NULL;
-    map_sta_info_t *sta     = NULL;
-    mac_addr        sta_mac;
-    bool            args_ok = false;
+    map_ale_info_t     *ale     = NULL;
+    map_sta_mld_info_t *sta_mld = NULL;
+    map_sta_info_t     *sta     = NULL;
+    mac_addr            sta_mac;
+    bool                args_ok = false;
 
     struct {
         struct json_object *object;
@@ -1321,16 +1337,31 @@ static void cli_send_client_capability_query(UNUSED const char *event, const cha
     }
 
     /* Get sta */
-    if (json_get_mac(json.object, "stamac", sta_mac) ||
-        !(sta = map_dm_get_sta_from_ale(ale, sta_mac))) {
+    if (json_get_mac(json.object, "stamac", sta_mac)) {
+        map_cli_printf("STA MAC missing\n");
+        goto out;
+    }
+
+    /* Check if this MLD or regular sta */
+    if ((sta_mld = map_dm_get_sta_mld_from_ale(ale, sta_mac))) {
+        /* OK */
+    } else if ((sta = map_dm_get_sta_from_ale(ale, sta_mac))) {
+        /* Still send to sta_mld if this an affiliated sta */
+        sta_mld = sta->sta_mld;
+    } else {
         map_cli_printf("STA not found\n");
         goto out;
     }
 
-
     args_ok = true;
-    if (map_send_client_capability_query(sta, MID_NA)) {
-        goto out;
+    if (sta_mld) {
+        if (map_send_mld_client_capability_query(sta_mld, MID_NA)) {
+            goto out;
+        }
+    } else {
+        if (map_send_client_capability_query(sta, MID_NA)) {
+            goto out;
+        }
     }
 
     map_cli_printf("OK\n");
@@ -1402,12 +1433,10 @@ static void cli_send_unassoc_sta_link_metrics_query(UNUSED const char *event, co
      *   }
      */
 
-    map_ale_info_t                           *ale          = NULL;
-    map_unassoc_sta_link_metrics_query_tlv_t  tlv          = { 0 };
-    mac_addr                                  sta_macs[64]; /* array over all channels */
-    size_t                                    sta_macs_idx = 0;
-    unsigned int                              i, j;
-    bool                                      args_ok      = false;
+    map_ale_info_t                           *ale     = NULL;
+    map_unassoc_sta_link_metrics_query_tlv_t  tlv     = {.tlv_type = TLV_TYPE_UNASSOCIATED_STA_LINK_METRICS_QUERY};
+    uint8_t                                   i, j;
+    bool                                      args_ok = false;
 
     struct {
         struct json_object *object;
@@ -1438,11 +1467,17 @@ static void cli_send_unassoc_sta_link_metrics_query(UNUSED const char *event, co
 
     /* Channels */
     if (!json_object_object_get_ex(json.object, "channels", &json.channels.object) ||
-        !json_object_is_type(json.channels.object, json_type_array)) {
+        !json_object_is_type(json.channels.object, json_type_array) ||
+        json_object_array_length(json.channels.object) > UINT8_MAX) {
         goto out;
     }
 
-    for (i = 0; i < json_object_array_length(json.channels.object) && i < MAX_CHANNEL_PER_OP_CLASS; i++) {
+    tlv.channels_nr = json_object_array_length(json.channels.object);
+    if (!(tlv.channels = calloc(tlv.channels_nr, sizeof(*tlv.channels)))) {
+        goto out;
+    }
+
+    for (i = 0; i < tlv.channels_nr; i++) {
         struct json_object *obj = json_object_array_get_idx(json.channels.object, i);
 
         if (!obj || !json_object_is_type(obj, json_type_object)) {
@@ -1458,26 +1493,28 @@ static void cli_send_unassoc_sta_link_metrics_query(UNUSED const char *event, co
 
         /* STA macs */
         if (!json_object_object_get_ex(obj, "stamacs", &json.channels.stamacs) ||
-            !json_object_is_type(json.channels.stamacs, json_type_array)) {
+            !json_object_is_type(json.channels.stamacs, json_type_array) ||
+            json_object_array_length(json.channels.stamacs) > UINT8_MAX) {
             goto out;
         }
 
-        tlv.channels[i].sta_macs = &sta_macs[sta_macs_idx];
-        for (j = 0; j < json_object_array_length(json.channels.stamacs) && sta_macs_idx < ARRAY_SIZE(sta_macs); j++) {
+        tlv.channels[i].sta_macs_nr = json_object_array_length(json.channels.stamacs);
+        if (!(tlv.channels[i].sta_macs = calloc(tlv.channels[i].sta_macs_nr, sizeof(*tlv.channels[i].sta_macs)))) {
+            goto out;
+        }
+
+        for (j = 0; j < tlv.channels[i].sta_macs_nr; j++) {
             struct json_object *obj2 = json_object_array_get_idx(json.channels.stamacs, j);
 
             if (!obj2 || !json_object_is_type(obj2, json_type_string)) {
                 goto out;
             }
 
-            if (mac_from_string(json_object_get_string(obj2), sta_macs[sta_macs_idx])) {
+            if (mac_from_string(json_object_get_string(obj2), tlv.channels[i].sta_macs[j])) {
                 goto out;
             }
-            sta_macs_idx++;
         }
-        tlv.channels[i].sta_macs_nr = j;
     }
-    tlv.channels_nr = i;
 
     args_ok = true;
 
@@ -1489,6 +1526,8 @@ static void cli_send_unassoc_sta_link_metrics_query(UNUSED const char *event, co
     map_cli_printf("OK\n");
 
 out:
+    free_1905_TLV_structure2((uint8_t *)&tlv);
+
     JSON_PUT_CHECK_ARGS_OK
 }
 
@@ -1515,9 +1554,10 @@ static void cli_send_beacon_metrics_query(UNUSED const char *event, const char *
      */
 
     map_ale_info_t                 *ale          = NULL;
-    map_beacon_metrics_query_tlv_t  tlv = { 0 };
+    map_beacon_metrics_query_tlv_t  tlv          = {.tlv_type = TLV_TYPE_BEACON_METRICS_QUERY};
     const char                     *rep_det, *ssid;
-    unsigned int                    i, j;
+    uint8_t                         i;
+    int                             j;
     bool                            args_ok      = false;
 
     struct {
@@ -1596,11 +1636,17 @@ static void cli_send_beacon_metrics_query(UNUSED const char *event, const char *
 
     /* Get ap_channel_reports */
     if (!json_object_object_get_ex(json.object, "ap_channel_reports", &json.ap_channel_reports.object) ||
-        !json_object_is_type(json.ap_channel_reports.object, json_type_array)) {
+        !json_object_is_type(json.ap_channel_reports.object, json_type_array) ||
+        json_object_array_length(json.ap_channel_reports.object) > UINT8_MAX) {
         goto out;
     }
 
-    for (i = 0; i < json_object_array_length(json.ap_channel_reports.object) && i < MAX_OP_CLASS; i++) {
+    tlv.ap_channel_reports_nr = json_object_array_length(json.ap_channel_reports.object);
+    if (!(tlv.ap_channel_reports = calloc(tlv.ap_channel_reports_nr, sizeof(*tlv.ap_channel_reports)))) {
+        goto out;
+    }
+
+    for (i = 0; i < tlv.ap_channel_reports_nr; i++) {
         struct json_object *obj = json_object_array_get_idx(json.ap_channel_reports.object, i);
 
         if (!obj || !json_object_is_type(obj, json_type_object)) {
@@ -1620,7 +1666,7 @@ static void cli_send_beacon_metrics_query(UNUSED const char *event, const char *
             goto out;
         }
 
-        for (j = 0; j < json_object_array_length(json.ap_channel_reports.channels); j++) {
+        for (j = 0; j < (int)json_object_array_length(json.ap_channel_reports.channels); j++) {
             struct json_object *obj2 = json_object_array_get_idx(json.ap_channel_reports.channels, j);
 
             if (!obj2 || !json_object_is_type(obj2, json_type_int)) {
@@ -1629,7 +1675,6 @@ static void cli_send_beacon_metrics_query(UNUSED const char *event, const char *
             map_cs_set(&tlv.ap_channel_reports[i].channels, json_object_get_int(obj2));
         }
     }
-    tlv.ap_channel_reports_nr = i;
 
     args_ok = true;
 
@@ -1641,6 +1686,8 @@ static void cli_send_beacon_metrics_query(UNUSED const char *event, const char *
     map_cli_printf("OK\n");
 
 out:
+    free_1905_TLV_structure2((uint8_t *)&tlv);
+
     JSON_PUT_CHECK_ARGS_OK
 }
 
@@ -1703,7 +1750,7 @@ static void cli_send_client_steering_request(UNUSED const char *event, const cha
     map_steer_t    *steer   = (map_steer_t *)steer_buf;
     const char*     mode;
     bool            args_ok = false;
-    unsigned int    i;
+    int             i;
 
     struct {
         struct json_object *object;
@@ -1787,7 +1834,7 @@ static void cli_send_client_steering_request(UNUSED const char *event, const cha
         goto out;
     }
 
-    for (i = 0; i < json_object_array_length(json.targets.object) && i < MAX_STEER_TARGET; i++) {
+    for (i = 0; i < (int)json_object_array_length(json.targets.object) && i < MAX_STEER_TARGET; i++) {
         struct json_object *obj = json_object_array_get_idx(json.targets.object, i);
 
         if (!obj || !json_object_is_type(obj, json_type_object)) {
@@ -1857,7 +1904,7 @@ static void cli_send_client_assoc_control_request(UNUSED const char *event, cons
     map_client_assoc_control_request_tlv_t  tlv = {0};
     bool                                    block;
     bool                                    args_ok = false;
-    unsigned int                            i;
+    int                                     i;
 
     struct {
         struct json_object *object;
@@ -1906,7 +1953,7 @@ static void cli_send_client_assoc_control_request(UNUSED const char *event, cons
         goto out;
     }
 
-    for (i = 0; i < json_object_array_length(json.stamacs) && i < MAX_STATION_PER_BSS; i++) {
+    for (i = 0; i < (int)json_object_array_length(json.stamacs) && i < MAX_STATION_PER_BSS; i++) {
         struct json_object *obj = json_object_array_get_idx(json.stamacs, i);
 
         if (!obj || !json_object_is_type(obj, json_type_string)) {
@@ -2263,7 +2310,7 @@ static void cli_send_channel_scan_request(UNUSED const char *event, const char *
     * }
     */
 
-    map_channel_scan_request_tlv_t  channel_scan_req_tlv = {0};
+    map_channel_scan_request_tlv_t  channel_scan_req_tlv = {.tlv_type = TLV_TYPE_CHANNEL_SCAN_REQUEST};
     map_ale_info_t                 *ale;
     int                             l, i, j, channel_nr, channel_len, k, channel;
     bool                            args_ok = false;
@@ -2336,12 +2383,14 @@ static void cli_send_channel_scan_request(UNUSED const char *event, const char *
 
         /* get number of opclass */
         if (!json_object_object_get_ex(radio_obj, "no_of_opclass", &json.radio_list.no_of_opclass) ||
-            !json_object_is_type(json.radio_list.no_of_opclass, json_type_int)) {
+            !json_object_is_type(json.radio_list.no_of_opclass, json_type_int) ||
+            json_object_get_int(json.radio_list.no_of_opclass) < 0 ||
+            json_object_get_int(json.radio_list.no_of_opclass) > UINT8_MAX) {
             goto out;
         }
 
         channel_scan_req_tlv.radios[i].op_classes_nr = json_object_get_int(json.radio_list.no_of_opclass);
-        if (errno == EINVAL || (int8_t)channel_scan_req_tlv.radios[i].op_classes_nr < 0) {
+        if (!(channel_scan_req_tlv.radios[i].op_classes = calloc(channel_scan_req_tlv.radios[i].op_classes_nr, sizeof(*channel_scan_req_tlv.radios[i].op_classes)))) {
             goto out;
         }
 
@@ -2420,6 +2469,8 @@ static void cli_send_channel_scan_request(UNUSED const char *event, const char *
 
     map_cli_printf("OK\n");
 out:
+    free_1905_TLV_structure2((uint8_t *)&channel_scan_req_tlv);
+
     JSON_PUT_CHECK_ARGS_OK
 }
 
@@ -3130,6 +3181,113 @@ out:
     JSON_PUT_CHECK_ARGS_OK
 }
 
+static void cli_send_reboot_request_message(UNUSED const char *event, const char *payload, UNUSED void *context)
+{
+    /*
+     * payload:
+     *   {
+     *      "almac": "AA:BB:CC:DD:EE:FF",
+     *      "action": reboot|reset,
+     *      "factory_reset": true|false,
+     *   }
+     */
+    struct {
+        struct json_object *object;
+        struct json_object *action;
+        struct json_object *factory_reset;
+    } json;
+
+    map_vendor_tlv_tuple_t tlvs[2];
+    map_ale_info_t *ale = NULL;
+    uint16_t tlv_type, msg_type;
+    uint8_t buf_msg_type_tlv[4] = {0};
+    uint8_t *buf_reboot_request_tlv = NULL, *p;
+    uint8_t action_type = 0, reset_type = 0, reboot_request_tlv_len = 0;
+    bool args_ok = false;
+    const char *action;
+
+    JSON_PARSE
+
+    CHECK_PRINT_HELP(g_help_send_reboot_request_message);
+
+    if (!(ale = json_get_ale(json.object, "almac"))) {
+        map_cli_printf("ALE not found\n");
+        goto out;
+    }
+
+    if (!map_emex_agent_is_feature_supported(ale, MAP_EMEX_FEATURE_REBOOT_RESET)) {
+        args_ok = true;
+        map_cli_printf("Reboot request is not supported by the agent\n");
+        goto out;
+    }
+
+    /* AirTies Message Type TLV */
+    tlv_type = EMEX_TLV_MESSAGE_TYPE;
+    p = buf_msg_type_tlv;
+    _I2B(&tlv_type, &p);
+    msg_type = EMEX_MESSAGE_REBOOT_REQUEST;
+    _I2B(&msg_type, &p);
+
+    /* AirTies Reboot Request TLV */
+    tlv_type = EMEX_TLV_REBOOT_REQUEST;
+    if (!json_object_object_get_ex(json.object, "action", &json.action) ||
+        !json_object_is_type(json.action, json_type_string)) {
+        goto out;
+    }
+    if (NULL == (action = json_object_get_string(json.action))) {
+        goto out;
+    }
+
+    if (!strcmp(action, "reboot")) {
+        action_type = MAP_EMEX_REBOOT_ACTION_REBOOT;
+        reboot_request_tlv_len = 3; /* 2 (tlv type) + 1 (action) */
+    } else if (!strcmp(action, "reset")) {
+        action_type = MAP_EMEX_REBOOT_ACTION_RESET;
+        reboot_request_tlv_len = 4; /* 2 (tlv type) + 1 (action) + 1 (reset type) */
+    } else {
+        map_cli_printf("invalid action type\n");
+        goto out;
+    }
+
+    buf_reboot_request_tlv = calloc(1, reboot_request_tlv_len);
+    if (!buf_reboot_request_tlv) {
+        map_cli_printf("Failed to allocate memory");
+        goto out;
+    }
+
+    p = buf_reboot_request_tlv;
+    _I2B(&tlv_type, &p);
+    _I1B(&action_type, &p);
+
+    if (action_type == MAP_EMEX_REBOOT_ACTION_RESET) {
+        if (!json_object_object_get_ex(json.object, "factory_reset", &json.factory_reset) ||
+            !json_object_is_type(json.factory_reset, json_type_boolean)) {
+            goto out;
+        }
+
+        reset_type = json_object_get_boolean(json.factory_reset) ? MAP_EMEX_RESET_FACTORY_RESET : MAP_EMEX_RESET_SOFT_RESET;
+        _I1B(&reset_type, &p);
+    }
+
+    tlvs[0].len = 4; /* 2 (tlv type) + 2 (msg type) */
+    tlvs[0].data = buf_msg_type_tlv;
+    tlvs[1].len = reboot_request_tlv_len;
+    tlvs[1].data = buf_reboot_request_tlv;
+
+    args_ok = true;
+
+    if (map_ctrl_vendor_send_message(ale, tlvs, 2, MID_NA)) {
+        goto out;
+    }
+
+    map_cli_printf("OK\n");
+
+out:
+    SFREE(buf_reboot_request_tlv);
+
+    JSON_PUT_CHECK_ARGS_OK
+}
+
 /*#######################################################################
 #                       CLI SUBSCRIPTIONS                               #
 ########################################################################*/
@@ -3141,6 +3299,7 @@ static map_subscription_t g_cli_subscriptions[] = {
     { "dumpInterfaces",                         cli_dump_interfaces,                        (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
     { "dumpBlockList",                          cli_dump_blocklist,                         (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
     { "dumpOpClasses",                          cli_dump_op_classes,                        (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
+    { "dumpMLD",                                cli_dump_mld,                               (SUBS_FLAG_MODE_FULL) },
     { "dumpChanSel",                            cli_dump_chan_sel,                          (SUBS_FLAG_MODE_FULL) },
     { "dumpTunneledMessage",                    cli_dump_tunneled_msg,                      (SUBS_FLAG_MODE_FULL) },
     { "dumpAPMetrics",                          cli_dump_ap_metrics,                        (SUBS_FLAG_MODE_FULL) },
@@ -3174,6 +3333,7 @@ static map_subscription_t g_cli_subscriptions[] = {
     { "sendChScanReportPolicyConf",             cli_send_ch_scan_reporting_policy_config,   (SUBS_FLAG_MODE_FULL) },
     { "sendDPPCCEIndication",                   cli_send_dpp_cce_indication,                (SUBS_FLAG_MODE_FULL) },
     { "sendProxiedEncapDPP",                    cli_send_proxied_encap_dpp,                 (SUBS_FLAG_MODE_FULL) },
+    { "sendRebootRequestMessage",               cli_send_reboot_request_message,            (SUBS_FLAG_MODE_FULL) },
     { "sendRawMessage",                         cli_send_raw_message,                       (SUBS_FLAG_MODE_FULL | SUBS_FLAG_MODE_REDUCED) },
 
     /* VARIOUS */

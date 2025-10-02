@@ -33,12 +33,16 @@
 #include "map_ctrl_onboarding_handler.h"
 #include "map_ctrl_config.h"
 #include "map_ctrl_cli.h"
+#include "map_ctrl_emex_tlv_handler.h"
 #include "map_ctrl_topology_tree.h"
 #include "map_ctrl_chan_sel.h"
+#include "map_ctrl_sta.h"
+#include "map_data_model.h"
 #include "map_ctrl_nbapi.h"
 
 #include "map_timer_handler.h"
 #include "map_retry_handler.h"
+#include "map_ctrl_vendor.h"
 #include "map_staging_list.h"
 #include "map_blocklist.h"
 
@@ -145,7 +149,7 @@ dormant_loop:
         }
 
         /* 1905 stack */
-        if (i1905_init(get_controller_cfg()->al_mac, interface_cb, map_cmdu_rx_cb)) {
+        if (i1905_init(get_controller_cfg()->al_mac, interface_cb, map_cmdu_rx_cb, map_dm_get_ale_key_info)) {
             log_ctrl_e("init_map_controller_callback failed");
             break;
         }
@@ -193,6 +197,24 @@ dormant_loop:
             break;
         }
 
+        /* Sta handling */
+        if (map_ctrl_sta_init()) {
+            log_ctrl_e("map_ctrl_sta_init failed");
+            break;
+        }
+
+        /* EMEX */
+        if (map_emex_init()) {
+            log_ctrl_e("map_emex_init failed");
+            break;
+        }
+
+        /* Vendor */
+        if (map_ctrl_vendor_init()) {
+            log_ctrl_e("map_ctrl_vendor_init failed");
+            break;
+        }
+
         /* Northbound API */
         if (map_ctrl_nbapi_init()) {
             log_ctrl_e("map_ctrl_nbapi_init failed");
@@ -215,6 +237,12 @@ dormant_loop:
     map_stglist_fini();
 
     map_ctrl_nbapi_fini();
+
+    map_ctrl_vendor_fini();
+
+    map_emex_fini();
+
+    map_ctrl_sta_fini();
 
     map_ctrl_chan_sel_fini();
 

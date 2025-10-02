@@ -66,7 +66,7 @@ static uint8_t onboarding_status_check_timer_cb(UNUSED char* timer_id, void *ale
     /* Send autoconfig renew if not all M1 where received */
     if (ale->radios_nr > 0 && !map_is_all_radio_M1_received(ale)) {
         log_ctrl_i("sending config renew to ALE[%s]", ale->al_mac_str);
-        if (map_send_autoconfig_renew_ucast(ale, IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA)) {
+        if (map_send_autoconfig_renew_ucast(ale, IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA, false)) {
             log_ctrl_e("map_send_autoconfig_renew failed");
         }
     }
@@ -77,6 +77,15 @@ static uint8_t onboarding_status_check_timer_cb(UNUSED char* timer_id, void *ale
     }
 
     return 0; /* Keep running */
+}
+
+static uint8_t delayed_channnel_selection_timer_cb(UNUSED char* timer_id, void *arg)
+{
+    map_radio_info_t *radio = arg;
+
+    map_agent_handle_channel_selection(radio->ale, radio, MAP_CHAN_SEL_REQUEST);
+
+    return 1; /* Remove timer */
 }
 
 /*#######################################################################
@@ -94,6 +103,7 @@ int map_build_and_send_policy_config(void *args, uint16_t *mid)
     map_unsuccessful_assoc_policy_tlv_t     unsuccess_assoc_policy_tlv;
     map_default_8021q_settings_tlv_t        default_8021q_settings_tlv;
     map_traffic_separation_policy_tlv_t     traffic_separation_policy_tlv;
+    int                                     radios_nr;
     int                                     idx;
 
     if (ale == NULL) {
@@ -106,17 +116,23 @@ int map_build_and_send_policy_config(void *args, uint16_t *mid)
 
     /* See TRS "WLAN-Controller_M4" for the used values below */
 
+    if ((radios_nr = ale->radios_nr) > MAX_RADIO_PER_AGENT) {
+        log_ctrl_w("ALE[%s] has more radios[%d] than expected", ale->al_mac_str, radios_nr);
+        radios_nr = MAX_RADIO_PER_AGENT;
+    }
+
     /* Update Metric reporting policy TLV */
-    metric_policy_tlv.radios_nr                 = ale->radios_nr;
+    metric_policy_tlv.radios_nr                 = radios_nr;
     metric_policy_tlv.metric_reporting_interval = 1;
     tlvs.metric_policy_tlv = &metric_policy_tlv;
 
     /* Update steering policy TLV */
-    steering_policy_tlv.radios_nr                  = ale->radios_nr;
-    steering_policy_tlv.local_steering_dis_macs_nr = 0;
-    steering_policy_tlv.btm_steering_dis_macs_nr   = 0;
-    steering_policy_tlv.local_steering_dis_macs    = NULL;
-    steering_policy_tlv.btm_steering_dis_macs      = NULL;
+    steering_policy_tlv.radios_nr                  = radios_nr;
+    steering_policy_tlv.local_steering_dis_macs_nr = 0;    //ale->local_steering_disallow_macs_nr;
+    steering_policy_tlv.btm_steering_dis_macs_nr   = 0;    //ale->btm_steering_disallow_macs_nr;
+    steering_policy_tlv.local_steering_dis_macs    = NULL; //ale->local_steering_disallow_macs;
+    steering_policy_tlv.btm_steering_dis_macs      = NULL; //ale->btm_steering_disallow_macs;
+    tlvs.steering_policy_tlv = &steering_policy_tlv;
 
     idx = 0;
     map_dm_foreach_radio(ale, radio) {
@@ -135,13 +151,14 @@ int map_build_and_send_policy_config(void *args, uint16_t *mid)
         set_radio_state_policy_config_ack_not_received(&radio->state);
 
         idx++;
+        if (idx == radios_nr) {
+            break;
+        }
     }
-
-    tlvs.steering_policy_tlv = &steering_policy_tlv;
 
     /* For profile 2 and higher */
     /* Add Channel scan reporting policy TLV: report independent channel scans */
-    channel_scan_report_policy_tlv.report_independent_ch_scans = 0;  /* TODO: wbd_slave crashes when reporting independant scan results */
+    channel_scan_report_policy_tlv.report_independent_ch_scans = 0;  /* TODO: some agents crash when reporting independant scan results */
     tlvs.channel_scan_report_policy_tlv = &channel_scan_report_policy_tlv;
 
     /* Add Unsuccessfull association policy TLV: report maximum 60 per minute */
@@ -190,7 +207,8 @@ int map_handle_policy_config_sent(int status, void *args, UNUSED void *compl_use
 int map_build_and_send_initial_channel_scan_req(void *args, UNUSED uint16_t *mid)
 {
     map_radio_info_t               *radio = args;
-    map_channel_scan_request_tlv_t  channel_scan_req_tlv = {0};
+    map_channel_scan_request_tlv_t  channel_scan_req_tlv = {.tlv_type = TLV_TYPE_CHANNEL_SCAN_REQUEST};
+    int                             ret = -1;
 
     if (!is_initial_channel_scan_required()) {
         return 0;
@@ -205,16 +223,22 @@ int map_build_and_send_initial_channel_scan_req(void *args, UNUSED uint16_t *mid
     */
     bool fresh_scan = !radio->scan_caps.boot_only && radio->last_scan_info.last_scan_status_failed;
 
-    map_fill_channel_scan_request_tlv(&channel_scan_req_tlv, radio, fresh_scan, /* all channels */ NULL);
+    if (map_fill_channel_scan_request_tlv(&channel_scan_req_tlv, radio, fresh_scan, /* all channels */ NULL)) {
+        log_ctrl_e("map_fill_channel_scan_request_tlv failed");
+        goto cleanup;
+    }
 
-    if (map_send_channel_scan_request(radio->ale, &channel_scan_req_tlv, MID_NA)) {
+    if ((ret = map_send_channel_scan_request(radio->ale, &channel_scan_req_tlv, MID_NA))) {
         log_ctrl_e("map_send_channel_scan_request failed");
-        return -1;
+        goto cleanup;
     }
 
     radio->last_scan_info.last_scan_req_time = acu_get_timestamp_sec();
 
-    return 0;
+cleanup:
+    free_1905_TLV_structure2((uint8_t *)&channel_scan_req_tlv);
+
+    return ret;
 }
 
 int map_handle_initial_channel_scan_request_sent(int status, void *args, UNUSED void *compl_user_data)
@@ -336,13 +360,52 @@ int map_agent_cancel_channel_selection(map_ale_info_t *ale)
         map_unregister_retry(retry_id);
     }
 
-    /* Stop per RADIO select timer */
+    /* Stop per RADIO select and delayed timer */
     map_dm_foreach_radio(ale, radio) {
         map_dm_get_radio_timer_id(retry_id, radio, CHAN_SELECT_REQ_RETRY_ID);
         if (map_is_timer_registered(retry_id)) {
             map_unregister_retry(retry_id);
         }
+        map_agent_cancel_delayed_channel_selection(radio);
     }
 
     return 0;
 }
+
+int map_agent_start_delayed_channel_selection(map_radio_info_t *radio, uint32_t delay_sec)
+{
+    timer_id_t timer_id;
+    int ret = 0;
+
+    if (WFA_CERT()) {
+        return 0;
+    }
+
+    map_dm_get_radio_timer_id(timer_id, radio, DELAYED_CHAN_SELECT_REQ_TIMER_ID);
+
+    if (map_is_timer_registered(timer_id)) {
+        if ((ret = map_timer_restart_callback(timer_id))) {
+            log_ctrl_e("failed restarting timer[%s]", timer_id);
+        }
+    } else {
+        if ((ret = map_timer_register_callback(delay_sec, timer_id, radio, delayed_channnel_selection_timer_cb))) {
+            log_ctrl_e("failed starting timer[%s]", timer_id);
+        }
+    }
+
+    return ret;
+}
+
+int map_agent_cancel_delayed_channel_selection(map_radio_info_t *radio)
+{
+    timer_id_t timer_id;
+
+    map_dm_get_radio_timer_id(timer_id, radio, DELAYED_CHAN_SELECT_REQ_TIMER_ID);
+
+    if (map_is_timer_registered(timer_id)) {
+        map_timer_unregister_callback(timer_id);
+    }
+
+    return 0;
+}
+

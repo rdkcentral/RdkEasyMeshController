@@ -310,7 +310,7 @@ i1905_transmitter_link_metric_tlv_t *map_get_transmitter_link_metric_tlv(mac_add
     - MAP_CHAN_SEL_PREF_AGENT:      use agent preference "pref_op_class_list"
     - MAP_CHAN_SEL_PERF_MERGED:     use merged preference "merged_pref_op_class_list"
 */
-void map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radio_info_t *radio, uint8_t pref_type)
+int map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radio_info_t *radio, uint8_t pref_type)
 {
     map_op_class_list_t *op_class_list = &radio->merged_pref_op_class_list; /* default and MAP_CHAN_SEL_PREF_MERGED */
     uint8_t              i;
@@ -323,18 +323,27 @@ void map_fill_channel_preference_tlv(map_channel_preference_tlv_t *tlv, map_radi
 
     tlv->tlv_type = TLV_TYPE_CHANNEL_PREFERENCE;
     maccpy(tlv->radio_id, radio->radio_id);
+    tlv->op_classes_nr = 0;
 
-    for (i = 0; i < op_class_list->op_classes_nr && i < MAX_OP_CLASS; i++) {
-        map_op_class_t                        *op_class     = &op_class_list->op_classes[i];
-        map_channel_preference_tlv_op_class_t *tlv_op_class = &tlv->op_classes[i];
+    if (op_class_list->op_classes_nr > 0) {
+        if (!(tlv->op_classes = calloc(op_class_list->op_classes_nr, sizeof(*tlv->op_classes)))) {
+            return -1;
+        }
 
-        tlv_op_class->op_class = op_class->op_class;
-        tlv_op_class->pref     = op_class->pref;
-        tlv_op_class->reason   = op_class->reason;
-        map_cs_copy(&tlv_op_class->channels, &op_class->channels);
+        tlv->op_classes_nr = op_class_list->op_classes_nr;
+
+        for (i = 0; i < tlv->op_classes_nr; i++) {
+            map_op_class_t                        *op_class     = &op_class_list->op_classes[i];
+            map_channel_preference_tlv_op_class_t *tlv_op_class = &tlv->op_classes[i];
+
+            tlv_op_class->op_class = op_class->op_class;
+            tlv_op_class->pref     = op_class->pref;
+            tlv_op_class->reason   = op_class->reason;
+            map_cs_copy(&tlv_op_class->channels, &op_class->channels);
+        }
     }
 
-    tlv->op_classes_nr = i;
+    return 0;
 }
 
 void map_fill_transmit_power_tlv(map_transmit_power_limit_tlv_t *tlv, map_radio_info_t *radio)
@@ -344,7 +353,7 @@ void map_fill_transmit_power_tlv(map_transmit_power_limit_tlv_t *tlv, map_radio_
     tlv->transmit_power_eirp = radio->tx_pwr_limit;
 }
 
-void map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_radio_info_t *radio,
+int map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_radio_info_t *radio,
                                        bool fresh_scan, map_channel_set_t *channels)
 {
     map_channel_scan_request_tlv_radio_t *rsri = &tlv->radios[0];
@@ -359,43 +368,52 @@ void map_fill_channel_scan_request_tlv(map_channel_scan_request_tlv_t *tlv, map_
     rsri->op_classes_nr = 0;
 
     if (!fresh_scan) {
-        return;
+        return 0;
     }
 
     /* Add all 20MHz op classes from scan cap tlv */
-    for (i = 0; i < radio->scan_caps.op_class_list.op_classes_nr && rsri->op_classes_nr < MAX_OP_CLASS; i++) {
-        map_op_class_t     *op_class     = &radio->scan_caps.op_class_list.op_classes[i];
-        map_tlv_op_class_t *tlv_op_class = &rsri->op_classes[rsri->op_classes_nr];
-        uint16_t            bw;
-
-        if (0 != map_get_bw_from_op_class(op_class->op_class, &bw) || 20 != bw) {
-            continue;
+    if (radio->scan_caps.op_class_list.op_classes_nr > 0) {
+        /* Allocate room for all op classes */
+        if (!(rsri->op_classes = calloc(radio->scan_caps.op_class_list.op_classes_nr, sizeof(*rsri->op_classes)))) {
+            return -1;
         }
 
-        /* Start with what we received from channel scan capabilities */
-        tlv_op_class->op_class = op_class->op_class;
-        map_cs_copy(&tlv_op_class->channels, &op_class->channels);
+        for (i = 0; i < radio->scan_caps.op_class_list.op_classes_nr; i++) {
+            map_op_class_t     *op_class     = &radio->scan_caps.op_class_list.op_classes[i];
+            map_tlv_op_class_t *tlv_op_class = &rsri->op_classes[rsri->op_classes_nr];
+            uint16_t            bw;
 
-        if (channels) {
-            /* If 0 channels then add all supported channels in op_class */
-            if (map_cs_nr(&tlv_op_class->channels) == 0) {
-                if (0 != map_get_channel_set_from_op_class(op_class->op_class, &tlv_op_class->channels)) {
-                    continue;
-                }
-                map_cs_and(&tlv_op_class->channels, &radio->ctl_channels);
-            }
-
-            /* Only keep requested channels */
-            map_cs_and(&tlv_op_class->channels, channels);
-
-            /* Skip op_class if no channels set */
-            if (map_cs_nr(&tlv_op_class->channels) == 0) {
+            if (0 != map_get_bw_from_op_class(op_class->op_class, &bw) || 20 != bw) {
                 continue;
             }
-        }
 
-        rsri->op_classes_nr++;
+            /* Start with what we received from channel scan capabilities */
+            tlv_op_class->op_class = op_class->op_class;
+            map_cs_copy(&tlv_op_class->channels, &op_class->channels);
+
+            if (channels) {
+                /* If 0 channels then add all supported channels in op_class */
+                if (map_cs_nr(&tlv_op_class->channels) == 0) {
+                    if (0 != map_get_channel_set_from_op_class(op_class->op_class, &tlv_op_class->channels)) {
+                        continue;
+                    }
+                    map_cs_and(&tlv_op_class->channels, &radio->ctl_channels);
+                }
+
+                /* Only keep requested channels */
+                map_cs_and(&tlv_op_class->channels, channels);
+
+                /* Skip op_class if no channels set */
+                if (map_cs_nr(&tlv_op_class->channels) == 0) {
+                    continue;
+                }
+            }
+
+            rsri->op_classes_nr++;
+        }
     }
+
+    return 0;
 }
 
 void map_fill_default_8021q_settings_tlv(map_cfg_t *cfg, map_default_8021q_settings_tlv_t *tlv)

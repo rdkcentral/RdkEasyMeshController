@@ -1,0 +1,67 @@
+{
+   OpenSSL compression methods initialization
+   Memcheck:Leak
+   fun:malloc
+   fun:CRYPTO_malloc
+   ...
+   fun:SSL_COMP_get_compression_methods
+}
+{
+   g++ leak
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:call_init.part.0
+}
+{
+   Check framework leaks (emalloc)
+   Memcheck:Leak
+   fun:malloc
+   fun:emalloc
+   ...
+   fun:main
+}
+{
+   Check framework leaks (erealloc)
+   Memcheck:Leak
+   fun:realloc
+   fun:erealloc
+   ...
+   fun:main
+}
+{
+   Check framework leaks (receiving test results)
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:receive_test_result
+   fun:srunner_run
+   fun:main
+}
+{
+   Check framework leaks (init logging)
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:srunner_init_logging
+   fun:srunner_run
+   fun:main
+}
+{
+   Check framework leaks (pass msg)
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:pass_msg
+   fun:srunner_run
+   fun:main
+}
+{
+   Check framework leaks (setup pipe)
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:setup_pipe
+   fun:srunner_run
+   fun:main
+}

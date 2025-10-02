@@ -20,6 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <libubox/utils.h>
+
 #define LOG_TAG "dm"
 
 #include "map_data_model.h"
@@ -45,6 +47,11 @@
 ########################################################################*/
 typedef struct {
     list_head_t list;
+    uint8_t hash[SHA256_MAC_LEN];
+} map_dm_dpp_enrollee_hash_t;
+
+typedef struct {
+    list_head_t list;
     list_head_t hlist;
     mac_addr    mac;
 } inactive_sta_t;
@@ -57,7 +64,7 @@ static map_event_lists_t g_event_lists;
 
 static LIST_HEAD(g_dm_cbs_list);
 static LIST_HEAD(g_dm_unassociated_station_list);
-
+static LIST_HEAD(g_dpp_hash_list);
 
 /* Inactive sta list */
 static LIST_HEAD(g_inactive_sta_list);
@@ -156,6 +163,34 @@ static void call_bss_remove_cbs(map_bss_info_t *bss)
     list_for_each_entry(cbs, &g_dm_cbs_list, list) if (cbs->bss_remove_cb) cbs->bss_remove_cb(bss);
 }
 
+static void call_ap_mld_create_cbs(map_ap_mld_info_t *ap_mld)
+{
+    map_dm_cbs_t *cbs;
+
+    list_for_each_entry(cbs, &g_dm_cbs_list, list) if (cbs->ap_mld_create_cb) cbs->ap_mld_create_cb(ap_mld);
+}
+
+static void call_ap_mld_update_cbs(map_ap_mld_info_t *ap_mld)
+{
+    map_dm_cbs_t *cbs;
+
+    list_for_each_entry(cbs, &g_dm_cbs_list, list) if (cbs->ap_mld_update_cb) cbs->ap_mld_update_cb(ap_mld);
+}
+
+static void call_ap_mld_remove_cbs(map_ap_mld_info_t *ap_mld)
+{
+    map_dm_cbs_t *cbs;
+
+    list_for_each_entry(cbs, &g_dm_cbs_list, list) if (cbs->ap_mld_remove_cb) cbs->ap_mld_remove_cb(ap_mld);
+}
+
+static void call_bsta_mld_update_cbs(map_bsta_mld_info_t *bsta_mld)
+{
+    map_dm_cbs_t *cbs;
+
+    list_for_each_entry(cbs, &g_dm_cbs_list, list) if (cbs->bsta_mld_update_cb) cbs->bsta_mld_update_cb(bsta_mld);
+}
+
 static void call_sta_create_cbs(map_sta_info_t *sta)
 {
     map_dm_cbs_t *cbs;
@@ -175,6 +210,20 @@ static void call_sta_remove_cbs(map_sta_info_t *sta)
     map_dm_cbs_t *cbs;
 
     list_for_each_entry(cbs, &g_dm_cbs_list, list) if (cbs->sta_remove_cb) cbs->sta_remove_cb(sta);
+}
+
+static void call_sta_mld_create_cbs(map_sta_mld_info_t *sta_mld)
+{
+    map_dm_cbs_t *cbs;
+
+    list_for_each_entry(cbs, &g_dm_cbs_list, list) if (cbs->sta_mld_create_cb) cbs->sta_mld_create_cb(sta_mld);
+}
+
+static void call_sta_mld_remove_cbs(map_sta_mld_info_t *sta_mld)
+{
+    map_dm_cbs_t *cbs;
+
+    list_for_each_entry(cbs, &g_dm_cbs_list, list) if (cbs->sta_mld_remove_cb) cbs->sta_mld_remove_cb(sta_mld);
 }
 
 static void call_assoc_create_cbs(map_assoc_data_t *assoc)
@@ -217,6 +266,50 @@ static void call_failconn_remove_cbs(map_failconn_data_t *failconn)
     map_dm_cbs_t *cbs;
 
     list_for_each_entry(cbs, &g_dm_cbs_list, list) if (cbs->failconn_remove_cb) cbs->failconn_remove_cb(failconn);
+}
+
+/*#######################################################################
+#                       DPP ENROLLEE HASH LIST                          #
+########################################################################*/
+static void map_dm_dpp_hash_list_fini(void) {
+    map_dm_clear_dpp_hash_list();
+}
+
+void map_dm_clear_dpp_hash_list(void) {
+    map_dm_dpp_enrollee_hash_t *entry, *tmp;
+
+    list_for_each_entry_safe(entry, tmp, &g_dpp_hash_list, list) {
+        list_del(&entry->list);
+        free(entry);
+    }
+}
+
+int map_dm_add_dpp_hash(const uint8_t *hash) {
+    if (map_dm_get_dpp_hash(hash)) {
+        /* already exists */
+        return 0;
+    }
+
+    map_dm_dpp_enrollee_hash_t *new_entry = calloc(1, sizeof(map_dm_dpp_enrollee_hash_t));
+    if (!new_entry) {
+        return -1;
+    }
+
+    memcpy(new_entry->hash, hash, sizeof(new_entry->hash));
+    list_add_tail(&new_entry->list, &g_dpp_hash_list);
+    return 0;
+}
+
+bool map_dm_get_dpp_hash(const uint8_t *hash) {
+    map_dm_dpp_enrollee_hash_t *entry;
+
+    list_for_each_entry(entry, &g_dpp_hash_list, list) {
+        if (memcmp(entry->hash, hash, sizeof(entry->hash)) == 0) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /*#######################################################################
@@ -375,6 +468,23 @@ static inline void cleanup_sta_timers(map_sta_info_t *sta)
     map_timer_unregister_callback_prefix(timer_id);
 }
 
+static inline void cleanup_sta_mld_timers(map_sta_mld_info_t *sta_mld)
+{
+    timer_id_t timer_id;
+
+    map_dm_get_sta_mld_timer_id(timer_id, sta_mld, "");
+    map_unregister_retry_prefix(timer_id);
+    map_timer_unregister_callback_prefix(timer_id);
+}
+
+static void set_counter_48(uint8_t *array, uint64_t value) {
+    int i;
+    for (i = 5; i >= 0; i--) {
+        array[i] = (uint8_t)(value & 0xFF);  // Extract the least significant byte
+        value >>= 8;                         // Shift the value right by 8 bits
+    }
+}
+
 /*#######################################################################
 #                       ALE                                             #
 ########################################################################*/
@@ -418,9 +528,19 @@ map_ale_info_t *map_dm_create_ale(mac_addr al_mac)
         return NULL;
     }
 
+    /* Init key info counters */
+    set_counter_48(ale->key_info.encr_rx_counter, 0);
+    set_counter_48(ale->key_info.encr_tx_counter, 1);
+    set_counter_48(ale->key_info.integrity_rx_counter, 0);
+    set_counter_48(ale->key_info.integrity_tx_counter, 1);
+
+    /* Set back pointer for bsta_mld */
+    ale->bsta_mld.ale = ale;
+
     /* Init lists */
     INIT_LIST_HEAD(&ale->list);
     INIT_LIST_HEAD(&ale->radio_list);
+    INIT_LIST_HEAD(&ale->ap_mld_list);
 
     /* Add to linked list */
     list_add_tail(&ale->list, &g_ale_list);
@@ -429,10 +549,43 @@ map_ale_info_t *map_dm_create_ale(mac_addr al_mac)
     call_ale_create_cbs(ale);
 
     log_lib_d("-----------------------------------------------------");
-    log_lib_d("| New MAP Agent %s ", ale->al_mac_str);
+    if (maccmp(al_mac, map_cfg_get()->controller_cfg.al_mac)) {
+        log_lib_d("| %s MAP Agent %s", ale->is_local ? "Local" : "New", ale->al_mac_str);
+    } else {
+        log_lib_d("| MAP Controller %s", ale->al_mac_str);
+    }
     log_lib_d("-----------------------------------------------------");
 
     return ale;
+}
+
+void map_dm_remove_ale_key_info(map_ale_info_t *ale)
+{
+    if (!ale)
+        return;
+
+    memset(ale->key_info.ptk, 0, sizeof(ale->key_info.ptk));
+    ale->key_info.ptk_len = 0;
+    memset(ale->key_info.gtk, 0, sizeof(ale->key_info.gtk));
+    ale->key_info.gtk_len = 0;
+    set_counter_48(ale->key_info.encr_rx_counter, 0);
+    set_counter_48(ale->key_info.encr_tx_counter, 1);
+    set_counter_48(ale->key_info.integrity_rx_counter, 0);
+    set_counter_48(ale->key_info.integrity_tx_counter, 1);
+}
+
+int map_dm_get_ale_key_info(mac_addr al_mac, map_1905_sec_key_info_t *key_info)
+{
+    map_ale_info_t *ale;
+
+    map_dm_foreach_ale(ale) {
+        if (!maccmp(ale->al_mac, al_mac)) {
+            memcpy(key_info, &ale->key_info, sizeof(*key_info));
+            return 0;
+        }
+    }
+
+    return -1;
 }
 
 map_ale_info_t* map_dm_get_ale(mac_addr al_mac)
@@ -481,13 +634,38 @@ map_ale_info_t *map_dm_get_ale_from_src_mac(mac_addr src_mac)
 
 int map_dm_remove_ale(map_ale_info_t *ale)
 {
-    map_radio_info_t *radio, *next;
+    map_ap_mld_info_t *ap_mld, *next_ap_mld;
+    map_radio_info_t *radio, *next_radio;
     int i;
 
     ale->removing = true;
 
+    /* Call remove callbacks before removing radios to avoid that they need
+       to be remove one by one.  This is ok for current use cases.
+    */
+    call_ale_remove_cbs(ale);
+
+    /* cleanup the ap mld */
+    map_dm_foreach_ap_mld_safe(ale, ap_mld, next_ap_mld) {
+        if (map_dm_remove_ap_mld(ap_mld)) {
+            log_lib_e("failed Removing ap_mld");
+        }
+    }
+
+    /* cleanup the radios */
+    map_dm_foreach_radio_safe(ale, radio, next_radio) {
+        if (map_dm_remove_radio(radio)) {
+            log_lib_e("failed Removing radio");
+            /* procceed cleaning other resources Event if cleanup of one radio failed. */
+        }
+    }
+
     /* Cleanup all the timers */
     cleanup_ale_timers(ale);
+
+    /* Remove steering disallowed macs lists */
+    free(ale->btm_steering_disallow_macs);
+    free(ale->local_steering_disallow_macs);
 
     /* Remove local interface list */
     free(ale->local_iface_list);
@@ -497,19 +675,6 @@ int map_dm_remove_ale(map_ale_info_t *ale)
 
     /* Remove bachaul sta interface list */
     free(ale->backhaul_sta_iface_list);
-
-    /* Call remove callbacks before removing radios to avoid that they need
-       to be remove one by one.  This is ok for current use cases.
-    */
-    call_ale_remove_cbs(ale);
-
-    /* cleanup the radios */
-    map_dm_foreach_radio_safe(ale, radio, next) {
-        if (map_dm_remove_radio(radio)) {
-            log_lib_e("failed Removing radio");
-            /* procceed cleaning other resources Event if cleanup of one radio failed. */
-        }
-    }
 
     /* cleanup neighbor link metric references */
     if (ale->eth_neigh_link_metric_list != NULL) {
@@ -538,6 +703,9 @@ int map_dm_remove_ale(map_ale_info_t *ale)
     free(ale->dpp_info.encap_msg.frame);
     free(ale->dpp_info.message.frame);
     free(ale->dpp_info.encap_eapol.frame);
+
+    /* Clean 1905 security specific allocations */
+    map_dm_remove_ale_key_info(ale);
 
     /* Free list of ethernet device macs */
     free(ale->eth_device_list.macs);
@@ -577,6 +745,8 @@ map_radio_info_t *map_dm_create_radio(map_ale_info_t *ale, mac_addr radio_id)
     /* Update radio_id */
     maccpy(radio->radio_id, radio_id);
     mac_to_string(radio->radio_id, radio->radio_id_str);
+    b64_encode(radio->radio_id, sizeof(radio->radio_id), radio->radio_id_base64, sizeof(radio->radio_id_base64));
+    //TODO: acu_base64_encode_to_buf(radio->radio_id, sizeof(mac_addr), radio->radio_id_base64, sizeof(radio->radio_id_base64));
 
     /* Set state */
     set_radio_state_on(&radio->state);
@@ -640,9 +810,6 @@ int map_dm_remove_radio(map_radio_info_t *radio)
 {
     map_bss_info_t *bss, *next;
 
-    /* Cleanup all the retry timers associated with this radio */
-    cleanup_radio_timers(radio);
-
     /* Call remove callbacks before removing bss to avoid that they need
        to be remove one by one.  This is ok for current use cases.
     */
@@ -655,6 +822,9 @@ int map_dm_remove_radio(map_radio_info_t *radio)
             /* Procceed cleaning other resources Event if cleanup of one BSS failed */
         }
     }
+
+    /* Cleanup all the retry timers associated with this radio */
+    cleanup_radio_timers(radio);
 
     /* Cleanup scan results list */
     if (radio->scanned_bssid_list) {
@@ -676,19 +846,32 @@ int map_dm_remove_radio(map_radio_info_t *radio)
     free(radio->ht_caps);
     free(radio->vht_caps);
     free(radio->he_caps);
+    free(radio->eht_caps);
 
     free(radio->cap_op_class_list.op_classes);
     free(radio->pref_op_class_list.op_classes);
     free(radio->ctrl_pref_op_class_list.op_classes);
+    free(radio->disallowed_op_class_list.op_classes);
     free(radio->merged_pref_op_class_list.op_classes);
     free(radio->curr_op_class_list.op_classes);
-    free(radio->op_restriction_list.op_classes);
     free(radio->scan_caps.op_class_list.op_classes);
 
+    map_dm_free_op_restriction_list(radio);
     map_dm_free_cac_methods(radio->cac_caps.cac_method, radio->cac_caps.cac_method_count);
 
     free(radio->cac_completion_info.detected_pairs);
     free(radio->wifi6_caps);
+    if (radio->wifi7_caps) {
+        SFREE(radio->wifi7_caps->ap_str_records);
+        SFREE(radio->wifi7_caps->ap_nstr_records);
+        SFREE(radio->wifi7_caps->ap_emlsr_records);
+        SFREE(radio->wifi7_caps->ap_emlmr_records);
+        SFREE(radio->wifi7_caps->bsta_str_records);
+        SFREE(radio->wifi7_caps->bsta_nstr_records);
+        SFREE(radio->wifi7_caps->bsta_emlsr_records);
+        SFREE(radio->wifi7_caps->bsta_emlmr_records);
+        SFREE(radio->wifi7_caps);
+    }
 
     /* Unlink */
     radio->ale->radios_nr--;
@@ -739,6 +922,7 @@ map_bss_info_t *map_dm_create_bss(map_radio_info_t *radio, mac_addr bssid)
     for (i = 0; i < MAP_MAX_MAC_HASH; i++) {
         INIT_LIST_HEAD(&bss->sta_hlist[i]);
     }
+    INIT_LIST_HEAD(&bss->aff_ap_list);
 
     /* Add to linked list */
     bss->radio = radio;
@@ -820,6 +1004,10 @@ int map_dm_remove_bss(map_bss_info_t *bss)
     /* Unlink */
     bss->radio->bsss_nr--;
     list_del(&bss->list);
+    if (bss->ap_mld) {
+        list_del(&bss->aff_ap_list);
+        call_ap_mld_update_cbs(bss->ap_mld);
+    }
 
     log_lib_d("Bss[%s] removed", bss->bssid_str);
 
@@ -831,8 +1019,8 @@ int map_dm_remove_bss(map_bss_info_t *bss)
 /*#######################################################################
 #                       STA                                             #
 ########################################################################*/
-
-int map_dm_sta_init_payload(map_sta_info_t *sta, void *payload) {
+int map_dm_sta_init_payload(map_sta_info_t *sta, void *payload)
+{
     if (!sta) {
         return -1;
     }
@@ -846,7 +1034,7 @@ int map_dm_sta_init_payload(map_sta_info_t *sta, void *payload) {
     return 0;
 }
 
-map_sta_info_t *map_dm_create_sta(map_bss_info_t *bss, mac_addr mac)
+static map_sta_info_t *create_sta(map_bss_info_t *bss, map_sta_mld_info_t *sta_mld, mac_addr mac)
 {
     map_sta_info_t *sta = NULL;
 
@@ -895,13 +1083,22 @@ reinit:
         return NULL;
     }
 
+    /* Init lists */
+    INIT_LIST_HEAD(&sta->list);
+    INIT_LIST_HEAD(&sta->hlist);
+
     /* Link with bss */
     sta->bss = bss;
     bss->stas_nr++;
-    INIT_LIST_HEAD(&sta->list);
-    INIT_LIST_HEAD(&sta->hlist);
     list_add_tail(&sta->list, &bss->sta_list);
     list_add_tail(&sta->hlist, &bss->sta_hlist[mac_hash(sta->mac)]);
+
+    /* Link to sta_mld when this is affiliated sta */
+    if (sta_mld) {
+        sta_mld->aff_sta_nr++;
+        sta->sta_mld = sta_mld;
+        list_add_tail(&sta->aff_sta_list, &sta_mld->aff_sta_list);
+    }
 
     /* Remove from inactive sta list */
     inactive_sta_remove(mac);
@@ -910,23 +1107,38 @@ reinit:
     call_sta_create_cbs(sta);
 
     log_lib_d("-----------------------------------------------------");
-    log_lib_d("| New STA %s ", sta->mac_str);
+    log_lib_d("| New %sSTA %s", sta_mld ? "Affiliated " : "", sta->mac_str);
     log_lib_d("-----------------------------------------------------");
 
     return sta;
 }
 
+map_sta_info_t *map_dm_create_sta(map_bss_info_t *bss, mac_addr mac)
+{
+    return create_sta(bss, NULL, mac);
+}
+
+map_sta_info_t *map_dm_create_aff_sta(map_bss_info_t *bss, map_sta_mld_info_t *sta_mld, mac_addr mac)
+{
+    return create_sta(bss, sta_mld, mac);
+}
+
 int map_dm_update_sta_bss(map_bss_info_t *bss, map_sta_info_t *sta)
 {
-    int h = mac_hash(sta->mac);
+    int  h      = mac_hash(sta->mac);
+    bool roamed = sta->bss;
+
+    if (sta->bss == bss) {
+        return 0;
+    }
 
     /* Remove from old bss (can only be NULL when called from create_bss above) */
     if (sta->bss) {
-        if (sta->bss == bss) {
-            return 0;
+        if (roamed) {
+            /* Call remove callbacks (for old bss) */
+            call_sta_remove_cbs(sta);
         }
 
-        call_sta_remove_cbs(sta);
         /* Cleanup retry timers associated with STA */
         cleanup_sta_timers(sta);
 
@@ -941,7 +1153,10 @@ int map_dm_update_sta_bss(map_bss_info_t *bss, map_sta_info_t *sta)
     list_add_tail(&sta->list,  &bss->sta_list);
     list_add_tail(&sta->hlist, &bss->sta_hlist[h]);
 
-    call_sta_create_cbs(sta);
+    if (roamed) {
+        /* Call create callbacks (for new bss) */
+        call_sta_create_cbs(sta);
+    }
 
     return 0;
 }
@@ -1030,9 +1245,6 @@ int map_dm_remove_sta(map_sta_info_t *sta)
         sta->beacon_metrics = NULL;
     }
 
-    /* Cleanup STA traffic stats */
-    SFREE(sta->traffic_stats);
-
     /* Cleanup STA assoc frame */
     SFREE(sta->assoc_frame);
 
@@ -1056,6 +1268,10 @@ int map_dm_remove_sta(map_sta_info_t *sta)
     sta->bss->stas_nr--;
     list_del_init(&sta->list);
     list_del_init(&sta->hlist);
+    if (sta->sta_mld) {
+        sta->sta_mld->aff_sta_nr--;
+        list_del(&sta->aff_sta_list);
+    }
     sta->bss = NULL;
 
     unassociated_station_list_add(sta);
@@ -1063,6 +1279,235 @@ int map_dm_remove_sta(map_sta_info_t *sta)
     /* Add to inactive sta list */
     inactive_sta_add(sta->mac);
 
+    return 0;
+}
+
+/*#######################################################################
+#                       AP MLD                                          #
+########################################################################*/
+map_ap_mld_info_t* map_dm_create_ap_mld(map_ale_info_t *ale, mac_addr mld_mac)
+{
+    map_ap_mld_info_t *ap_mld;
+    int                i;
+
+    if ((ap_mld = map_dm_get_ap_mld(ale, mld_mac))) {
+        return ap_mld;
+    }
+
+    if (!(ap_mld = calloc(1, sizeof(map_ap_mld_info_t)))) {
+        log_lib_e("failed to allocating memory");
+        return NULL;
+    }
+
+    /* Update mac address */
+    maccpy(ap_mld->mac, mld_mac);
+    mac_to_string(ap_mld->mac, ap_mld->mac_str);
+
+    /* Init lists */
+    INIT_LIST_HEAD(&ap_mld->list);
+    INIT_LIST_HEAD(&ap_mld->aff_ap_list);
+    INIT_LIST_HEAD(&ap_mld->sta_mld_list);
+    for (i = 0; i < MAP_MAX_MAC_HASH; i++) {
+        INIT_LIST_HEAD(&ap_mld->sta_mld_hlist[i]);
+    }
+
+    /* Add to linked list */
+    ap_mld->ale = ale;
+    ale->ap_mld_nr++;
+    list_add_tail(&ap_mld->list, &ale->ap_mld_list);
+
+    /* Call create callbacks */
+    call_ap_mld_create_cbs(ap_mld);
+
+    log_lib_d("-----------------------------------------------------");
+    log_lib_d("| New AP_MLD %s", ap_mld->mac_str);
+    log_lib_d("-----------------------------------------------------");
+
+    return ap_mld;
+}
+
+map_ap_mld_info_t* map_dm_get_ap_mld(map_ale_info_t *ale, mac_addr mld_mac)
+{
+    map_ap_mld_info_t *ap_mld;
+
+    map_dm_foreach_ap_mld(ale, ap_mld) {
+        if (!maccmp(ap_mld->mac, mld_mac)) {
+            return ap_mld;
+        }
+    }
+
+    return NULL;
+}
+
+int map_dm_remove_ap_mld(map_ap_mld_info_t *ap_mld)
+{
+    map_bss_info_t *bss, *next_bss;
+    map_sta_mld_info_t *sta_mld, *next_sta_mld;
+
+    /* Call remove callbacks */
+    call_ap_mld_remove_cbs(ap_mld);
+
+    /* Remove affiliated aps */
+    map_dm_foreach_aff_ap_safe(ap_mld, bss, next_bss) {
+         map_dm_bss_set_ap_mld(bss, NULL);
+    }
+
+    /* Remove sta_mld */
+    map_dm_foreach_sta_mld_safe(ap_mld, sta_mld, next_sta_mld) {
+        map_dm_remove_sta_mld(sta_mld);
+    }
+
+    /* Unlink */
+    ap_mld->ale->ap_mld_nr--;
+    list_del(&ap_mld->list);
+
+    log_lib_d("AP_MLD[%s] removed", ap_mld->mac_str);
+
+    free(ap_mld);
+
+    return 0;
+}
+
+/*#######################################################################
+#                       STA_MLD                                         #
+########################################################################*/
+map_sta_mld_info_t *map_dm_create_sta_mld(map_ap_mld_info_t *ap_mld, mac_addr mac)
+{
+    map_sta_mld_info_t *sta_mld;
+
+    if ((sta_mld = map_dm_get_sta_mld(ap_mld, mac))) {
+        return sta_mld;
+    }
+
+    if (!(sta_mld = calloc(1, sizeof(map_sta_mld_info_t)))) {
+        log_lib_e("failed to allocating memory");
+        return NULL;
+    }
+
+    /* Update mac address */
+    maccpy(sta_mld->mac, mac);
+    mac_to_string(sta_mld->mac, sta_mld->mac_str);
+
+    sta_mld->assoc_ts = acu_get_timestamp_sec();
+
+    /* Init lists */
+    INIT_LIST_HEAD(&sta_mld->list);
+    INIT_LIST_HEAD(&sta_mld->hlist);
+    INIT_LIST_HEAD(&sta_mld->aff_sta_list);
+
+    /* Link with ap_mld */
+    sta_mld->ap_mld = ap_mld;
+    ap_mld->sta_mld_nr++;
+    list_add_tail(&sta_mld->list,  &ap_mld->sta_mld_list);
+    list_add_tail(&sta_mld->hlist, &ap_mld->sta_mld_hlist[mac_hash(sta_mld->mac)]);
+
+    /* Remove from inactive sta list */
+    inactive_sta_remove(mac);
+
+    /* Call create callbacks */
+    call_sta_mld_create_cbs(sta_mld);
+
+    log_lib_d("-----------------------------------------------------");
+    log_lib_d("| New STA MLD %s", sta_mld->mac_str);
+    log_lib_d("-----------------------------------------------------");
+
+    return sta_mld;
+}
+
+static map_sta_mld_info_t *get_sta_mld_h(map_ap_mld_info_t *ap_mld, mac_addr mac, int h)
+{
+    map_sta_mld_info_t *sta_mld;
+
+    list_for_each_entry(sta_mld, &ap_mld->sta_mld_hlist[h], hlist) {
+        if (!maccmp(sta_mld->mac, mac)) {
+            return sta_mld;
+        }
+    }
+
+    return NULL;
+}
+
+static map_sta_mld_info_t *get_sta_mld_from_ale_h(map_ale_info_t *ale, mac_addr mac, int h)
+{
+    map_ap_mld_info_t  *ap_mld;
+    map_sta_mld_info_t *sta_mld;
+
+    map_dm_foreach_ap_mld(ale, ap_mld) {
+        if ((sta_mld = get_sta_mld_h(ap_mld, mac, h))) {
+            return sta_mld;
+        }
+    }
+
+    return NULL;
+}
+
+map_sta_mld_info_t *map_dm_get_sta_mld(map_ap_mld_info_t *ap_mld, mac_addr mac)
+{
+    return get_sta_mld_h(ap_mld, mac, mac_hash(mac));
+}
+
+map_sta_mld_info_t* map_dm_get_sta_mld_from_ale(map_ale_info_t *ale, mac_addr mac)
+{
+    return get_sta_mld_from_ale_h(ale, mac, mac_hash(mac));
+}
+
+map_sta_mld_info_t *map_dm_get_sta_mld_gbl(mac_addr mac)
+{
+    map_ale_info_t     *ale;
+    map_sta_mld_info_t *sta_mld;
+    int                 h = mac_hash(mac);
+
+    map_dm_foreach_agent_ale(ale) {
+        if ((sta_mld = get_sta_mld_from_ale_h(ale, mac, h))) {
+            return sta_mld;
+        }
+    }
+
+    return NULL;
+}
+
+map_sta_info_t *map_dm_get_aff_sta(map_sta_mld_info_t *sta_mld, mac_addr mac)
+{
+    map_sta_info_t *sta;
+
+    map_dm_foreach_aff_sta(sta_mld, sta) {
+        if (!maccmp(sta->mac, mac)) {
+            return sta;
+        }
+    }
+
+    return NULL;
+}
+
+int map_dm_remove_sta_mld(map_sta_mld_info_t *sta_mld)
+{
+    map_sta_info_t *sta, *next;
+
+    /* Remove affiliated sta */
+    map_dm_foreach_aff_sta_safe(sta_mld, sta, next) {
+        map_dm_remove_sta(sta);
+    }
+
+    /* Call remove callbacks */
+    call_sta_mld_remove_cbs(sta_mld);
+
+    /* Cleanup retry timers associated with STA */
+    cleanup_sta_mld_timers(sta_mld);
+
+    /* Cleanup STA assoc frame */
+    free(sta_mld->assoc_frame);
+
+    /* Unlink */
+    sta_mld->ap_mld->sta_mld_nr--;
+    list_del(&sta_mld->list);
+    list_del(&sta_mld->hlist);
+
+    /* Add to inactive sta list */
+    inactive_sta_add(sta_mld->mac);
+
+    log_lib_d("STA_MLD[%s] removed", sta_mld->mac_str);
+
+    free(sta_mld);
     return 0;
 }
 
@@ -1227,6 +1672,9 @@ void map_dm_ale_set_onboard_status(map_ale_info_t *ale, map_onboard_status_t sta
         ale->ale_onboard_status = status;
         if (ale->ale_onboard_status == ALE_NODE_ONBOARDED) {
             ale->ale_onboarding_time = acu_get_timestamp_sec();
+            if(!ale->ale_onboarded_first_time) {
+                ale->ale_onboarded_first_time = true;
+            }
         }
         update = true;
     }
@@ -1264,6 +1712,24 @@ void map_dm_ale_set_upstream_info(map_ale_info_t *ale, mac_addr us_al_mac, mac_a
     }
 
     if (update) {
+        if (0 && !maccmp(get_root_ale_node()->al_mac, us_al_mac) && !ale->is_local) {
+            map_ale_info_t *local;
+            bool local_found = false;
+
+            log_lib_e("ale %s has controller as us_al_mac", ale->al_mac_str);
+            map_dm_foreach_agent_ale(local) {
+                if (local->is_local) {
+                    local_found = true;
+                    break;
+                }
+            }
+
+            if (!local_found) {
+                log_lib_e("no local agent, set ale %s as local", ale->al_mac_str);
+                ale->is_local = true;
+            }
+        }
+
         call_ale_update_cbs(ale);
     }
 }
@@ -1289,7 +1755,21 @@ void map_dm_radio_set_capabilities(map_radio_info_t *radio)
     call_radio_update_cbs(radio);
 }
 
-void map_dm_radio_set_channel(map_radio_info_t *radio, uint8_t op_class, uint8_t channel, uint16_t bw, uint8_t tx_pwr)
+void map_dm_radio_set_channel_configurable(map_radio_info_t *radio, bool channel_configurable)
+{
+    bool update = false;
+
+    if (radio->channel_configurable != channel_configurable) {
+        radio->channel_configurable = channel_configurable;
+        update = true;
+    }
+
+    if (update) {
+        call_radio_update_cbs(radio);
+    }
+}
+
+void map_dm_radio_set_channel(map_radio_info_t *radio, uint8_t op_class, uint8_t channel, uint8_t highest_bw_channel, uint16_t bw, uint8_t tx_pwr)
 {
     bool update = false;
 
@@ -1308,6 +1788,12 @@ void map_dm_radio_set_channel(map_radio_info_t *radio, uint8_t op_class, uint8_t
         update = true;
     }
 
+    if (highest_bw_channel && radio->highest_bw_channel != highest_bw_channel) {
+        /* highest_bw_channel=0 when called from topo response */
+        radio->highest_bw_channel = highest_bw_channel;
+        update = true;
+    }
+
     if (radio->current_tx_pwr != tx_pwr) {
         radio->current_tx_pwr = tx_pwr;
         update = true;
@@ -1318,18 +1804,24 @@ void map_dm_radio_set_channel(map_radio_info_t *radio, uint8_t op_class, uint8_t
     }
 }
 
-void map_dm_radio_set_chan_sel(map_radio_info_t *radio, bool acs_enable, map_channel_set_t *acs_channels, uint8_t channel, uint16_t bw)
+void map_dm_radio_set_chan_sel(map_radio_info_t *radio, bool cloud_mgmt_enable, bool acs_enable,
+                               map_channel_set_t *acs_channels, uint8_t channel, uint16_t bw)
 {
     map_radio_chan_sel_t *chan_sel = &radio->chan_sel;
     bool                  update   = false;
 
-    if (map_cs_compare(&chan_sel->acs_channels, acs_channels)) {
-        map_cs_copy(&chan_sel->acs_channels, acs_channels);
+    if (chan_sel->cloud_mgmt_enable != cloud_mgmt_enable) {
+        chan_sel->cloud_mgmt_enable = cloud_mgmt_enable;
         update = true;
     }
 
     if (chan_sel->acs_enable != acs_enable) {
         chan_sel->acs_enable = acs_enable;
+        update = true;
+    }
+
+    if (map_cs_compare(&chan_sel->acs_channels, acs_channels)) {
+        map_cs_copy(&chan_sel->acs_channels, acs_channels);
         update = true;
     }
 
@@ -1465,9 +1957,213 @@ void map_dm_sta_steering_completed(map_ale_info_t *ale)
     steering_history->btm_response = IEEE80211_BTM_STATUS_UNKNOWN;
 }
 
+void map_dm_bss_set_ap_mld(map_bss_info_t *bss, map_ap_mld_info_t *ap_mld)
+{
+    if (bss->ap_mld == ap_mld) {
+        return;
+    }
+
+    if (bss->ap_mld) {
+        /* Remove from other ap_mld */
+        bss->ap_mld->aff_ap_nr--;
+        list_del(&bss->aff_ap_list);
+
+        call_ap_mld_update_cbs(bss->ap_mld);
+    }
+    bss->prev_ap_mld = bss->ap_mld;
+
+    /* Add to new ap_mld */
+    if (ap_mld) {
+        ap_mld->aff_ap_nr++;
+        list_add_tail(&bss->aff_ap_list, &ap_mld->aff_ap_list);
+    }
+    bss->ap_mld = ap_mld;
+
+    call_bss_update_cbs(bss);
+    bss->prev_ap_mld = NULL;
+}
+
+void map_dm_ap_mld_set(map_ap_mld_info_t *ap_mld, size_t ssid_len, uint8_t *ssid,
+                       bool str, bool nstr, bool emlsr, bool emlmr,
+                       map_aff_ap_cfg_t *aff_aps, size_t aff_ap_nr)
+{
+    map_bss_info_t *old_aff_ap, *new_aff_ap, *next;
+    bool update = false;
+    size_t i;
+
+    ssid_len = min(ssid_len, MAX_SSID_LEN - 1);
+
+    if (ap_mld->ssid_len != ssid_len || memcmp(ap_mld->ssid, ssid, ssid_len)) {
+        ap_mld->ssid_len = ssid_len;
+        memcpy(ap_mld->ssid, ssid, ssid_len);
+        ap_mld->ssid[ap_mld->ssid_len] = 0;
+        update = true;
+    }
+
+    if (ap_mld->enabled_mld_modes.str != str) {
+        ap_mld->enabled_mld_modes.str = str;
+        update = true;
+    }
+
+    if (ap_mld->enabled_mld_modes.nstr != nstr) {
+        ap_mld->enabled_mld_modes.nstr = nstr;
+        update = true;
+    }
+
+    if (ap_mld->enabled_mld_modes.emlsr != emlsr) {
+        ap_mld->enabled_mld_modes.emlsr = emlsr;
+        update = true;
+    }
+
+    if (ap_mld->enabled_mld_modes.emlmr != emlmr) {
+        ap_mld->enabled_mld_modes.emlmr = emlmr;
+        update = true;
+    }
+
+    /* Check affiliated aps */
+    /* Remove? */
+    map_dm_foreach_aff_ap_safe(ap_mld, old_aff_ap, next) {
+        bool found = false;
+
+        for (i = 0; i < aff_ap_nr; i++) {
+            new_aff_ap = aff_aps[i].bss;
+            if (new_aff_ap == old_aff_ap) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            map_dm_bss_set_ap_mld(old_aff_ap, NULL);
+            update = true;
+        }
+    }
+
+    /* Add ? */
+    for (i = 0; i < aff_ap_nr; i++) {
+        bool found = false;
+        new_aff_ap = aff_aps[i].bss;
+
+        map_dm_foreach_aff_ap(ap_mld, old_aff_ap) {
+            if (new_aff_ap == old_aff_ap) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            map_dm_bss_set_ap_mld(new_aff_ap, ap_mld);
+            update = true;
+        }
+
+        /* Check link_id */
+        if (new_aff_ap->link_id != aff_aps[i].link_id) {
+            new_aff_ap->link_id = aff_aps[i].link_id;
+            update = true;
+        }
+    }
+
+    if (update) {
+        call_ap_mld_update_cbs(ap_mld);
+    }
+}
+
+void map_dm_bsta_mld_set(map_bsta_mld_info_t *bsta_mld, bool valid,
+                         mac_addr bsta_mld_mac, mac_addr ap_mld_mac,
+                         bool str, bool nstr, bool emlsr, bool emlmr,
+                         mac_addr *aff_bsta_macs, size_t aff_bsta_mac_nr)
+{
+    bool update = false;
+
+    if (bsta_mld->valid != valid) {
+        bsta_mld->valid = valid;
+        update = true;
+
+        if (!valid) {
+            /* Clear fields */
+            maccpy(bsta_mld->mac,        g_zero_mac);
+            maccpy(bsta_mld->ap_mld_mac, g_zero_mac);
+
+            bsta_mld->aff_bsta_mac_nr = 0;
+
+            bsta_mld->enabled_mld_modes.str   = false;
+            bsta_mld->enabled_mld_modes.nstr  = false;
+            bsta_mld->enabled_mld_modes.emlsr = false;
+            bsta_mld->enabled_mld_modes.emlmr = false;
+
+            /* Skip all the rest */
+            goto check_update;
+        }
+    }
+
+    if (bsta_mld_mac && maccmp(bsta_mld->mac, bsta_mld_mac)) {
+        maccpy(bsta_mld->mac, bsta_mld_mac);
+        mac_to_string(bsta_mld->mac, bsta_mld->mac_str);
+        update = true;
+    }
+
+    if (ap_mld_mac && maccmp(bsta_mld->ap_mld_mac, ap_mld_mac)) {
+        maccpy(bsta_mld->ap_mld_mac, ap_mld_mac);
+        update = true;
+    }
+
+    if (bsta_mld->enabled_mld_modes.str != str) {
+        bsta_mld->enabled_mld_modes.str = str;
+        update = true;
+    }
+
+    if (bsta_mld->enabled_mld_modes.nstr != nstr) {
+        bsta_mld->enabled_mld_modes.nstr = nstr;
+        update = true;
+    }
+
+    if (bsta_mld->enabled_mld_modes.emlsr != emlsr) {
+        bsta_mld->enabled_mld_modes.emlsr = emlsr;
+        update = true;
+    }
+
+    if (bsta_mld->enabled_mld_modes.emlmr != emlmr) {
+        bsta_mld->enabled_mld_modes.emlmr = emlmr;
+        update = true;
+    }
+
+    if (aff_bsta_macs) {
+        if (aff_bsta_mac_nr > MAX_MLD_AFF_APSTA) {
+            aff_bsta_mac_nr = MAX_MLD_AFF_APSTA;
+        }
+
+        size_t len = aff_bsta_mac_nr * sizeof(mac_addr);
+
+        if (bsta_mld->aff_bsta_mac_nr != aff_bsta_mac_nr ||
+            memcmp(bsta_mld->aff_bsta_macs, aff_bsta_macs, len)) {
+
+            bsta_mld->aff_bsta_mac_nr = aff_bsta_mac_nr;
+            memcpy(bsta_mld->aff_bsta_macs, aff_bsta_macs, len);
+            update = true;
+        }
+    }
+
+check_update:
+    if (update) {
+        call_bsta_mld_update_cbs(bsta_mld);
+    }
+}
+
 /*#######################################################################
 #                       VARIOUS                                         #
 ########################################################################*/
+void map_dm_free_op_restriction_list(map_radio_info_t *radio)
+{
+    uint8_t i;
+
+    for (i = 0; i < radio->op_restriction_list.op_classes_nr; i++) {
+        SFREE(radio->op_restriction_list.op_classes[i].channels);
+    }
+
+    SFREE(radio->op_restriction_list.op_classes);
+    radio->op_restriction_list.op_classes_nr = 0;
+}
+
 void map_dm_free_cac_methods(map_cac_method_t *cac_method, uint8_t count)
 {
     uint8_t i;
@@ -1527,6 +2223,11 @@ void map_dm_get_sta_timer_id(timer_id_t id, map_sta_info_t *sta, const char *typ
     snprintf(id, sizeof(timer_id_t), "STA-%s_%s-%s", sta->bss->bssid_str, sta->mac_str, type);
 }
 
+void map_dm_get_sta_mld_timer_id(timer_id_t id, map_sta_mld_info_t *sta_mld, const char *type)
+{
+    snprintf(id, sizeof(timer_id_t), "MSTA-%s_%s-%s", sta_mld->ap_mld->mac_str, sta_mld->mac_str, type);
+}
+
 void map_dm_mark_stas(map_ale_info_t *ale)
 {
     map_radio_info_t *radio;
@@ -1563,6 +2264,32 @@ void map_dm_remove_marked_stas(map_ale_info_t *ale, unsigned int min_assoc_time)
     }
 }
 
+void map_dm_mark_sta_mlds(map_ale_info_t *ale)
+{
+    map_ap_mld_info_t  *ap_mld;
+    map_sta_mld_info_t *sta_mld;
+
+    map_dm_foreach_ap_mld(ale, ap_mld) {
+        map_dm_foreach_sta_mld(ap_mld, sta_mld) {
+            map_dm_mark_sta_mld(sta_mld);
+        }
+    }
+}
+
+void map_dm_remove_marked_sta_mlds(map_ale_info_t *ale)
+{
+    map_ap_mld_info_t  *ap_mld;
+    map_sta_mld_info_t *sta_mld, *next_sta_mld;
+
+    map_dm_foreach_ap_mld(ale, ap_mld) {
+        map_dm_foreach_sta_mld_safe(ap_mld, sta_mld, next_sta_mld) {
+            if (map_dm_is_marked_sta_mld(sta_mld)) {
+                map_dm_remove_sta_mld(sta_mld);
+            }
+        }
+    }
+}
+
 /*#######################################################################
 #                       INIT                                            #
 ########################################################################*/
@@ -1576,6 +2303,7 @@ int map_dm_init(void)
 
     INIT_LIST_HEAD(&g_dm_cbs_list);
     INIT_LIST_HEAD(&g_dm_unassociated_station_list);
+    INIT_LIST_HEAD(&g_dpp_hash_list);
 
     map_dm_rbus_init();
     map_dm_eth_device_list_init(call_ale_eth_device_list_update_cbs);
@@ -1621,6 +2349,7 @@ void map_dm_fini(void)
         map_dm_remove_ale(ale);
     }
 
+    map_dm_dpp_hash_list_fini();
     inactive_sta_fini();
 }
 

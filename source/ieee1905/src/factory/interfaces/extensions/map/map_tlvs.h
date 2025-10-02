@@ -156,16 +156,42 @@
 /*#######################################################################
 # MAP R3 TLV types                                                      #
 ########################################################################*/
+#define TLV_TYPE_1905_LAYER_SECURITY_CAPABILITY           0xA9
 #define TLV_TYPE_AP_WIFI6_CAPABILITIES                    0xAA
-#define TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT       0xB0
+#define TLV_TYPE_MIC                                      0xAB
 #define TLV_TYPE_ENCRYPTED_PAYLOAD                        0xAC
+#define TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT       0xB0
+#define TLV_TYPE_BSS_CONFIGURATION_REPORT                 0xB7
 #define TLV_TYPE_BSSID                                    0xB8
-#define TLV_TYPE_DPP_CCE_INDICATION                       0xD2
+#define TLV_TYPE_BSS_CONFIGURATION_REQUEST                0xBB
+#define TLV_TYPE_AKM_SUITE_CAPABILITIES                   0xCC
 #define TLV_TYPE_1905_ENCAP_DPP                           0xCD
 #define TLV_TYPE_1905_ENCAP_EAPOL                         0xCE
 #define TLV_TYPE_DPP_MESSAGE                              0xD1
+#define TLV_TYPE_DPP_CCE_INDICATION                       0xD2
 #define TLV_TYPE_DPP_CHIRP_VALUE                          0xD3
 #define TLV_TYPE_DEVICE_INVENTORY                         0xD4
+#define TLV_TYPE_AGENT_LIST                               0xD5
+
+/*#######################################################################
+# MAP R4 TLV types                                                      #
+########################################################################*/
+#define TLV_TYPE_CONTROLLER_CAPABILITY                    0xDD
+
+/*#######################################################################
+# MAP R6 TLV types                                                      #
+########################################################################*/
+#define TLV_TYPE_WIFI7_AGENT_CAPABILITIES                 0xDF
+#define TLV_TYPE_AGENT_AP_MLD_CONFIGURATION               0xE0
+#define TLV_TYPE_BACKHAUL_STA_MLD_CONFIGURATION           0xE1
+#define TLV_TYPE_ASSOCIATED_STA_MLD_CONFIGURATION         0xE2
+#define TLV_TYPE_MLD_STRUCTURE                            0xE3
+#define TLV_TYPE_AFFILIATED_STA_METRICS                   0xE4
+#define TLV_TYPE_AFFILIATED_AP_METRICS                    0xE5
+#define TLV_TYPE_TID_TO_LINK_MAPPING_POLICY               0xE6
+#define TLV_TYPE_EHT_OPERATIONS                           0xE7
+#define TLV_TYPE_AVAILABLE_SPECTRUM_INQUIRY_REQUEST       0xE8
+#define TLV_TYPE_AVAILABLE_SPECTRUM_INQUIRY_RESPONSE      0xE9
 
 /*#######################################################################
 # Types used in other TLV                                               #
@@ -182,7 +208,7 @@ typedef struct  {
 #define MAP_SERVICE_AGENT               0x01
 #define MAP_SERVICE_EMEX_CONTROLLER     0xA0
 #define MAP_SERVICE_EMEX_AGENT          0xA1
-#define MAX_SERVICE            8
+#define MAX_SERVICE                     8
 
 typedef struct mapSupportedServiceTLV {
     uint8_t  tlv_type;
@@ -269,11 +295,11 @@ typedef struct {
 } map_ap_radio_basic_cap_tlv_op_class_t;
 
 typedef struct mapApRadioBasicCapabilitiesTLV {
-    uint8_t                               tlv_type;
-    mac_addr                              radio_id;
-    uint8_t                               max_bss;
-    uint8_t                               op_classes_nr;
-    map_ap_radio_basic_cap_tlv_op_class_t op_classes[MAX_OP_CLASS];
+    uint8_t                                tlv_type;
+    mac_addr                               radio_id;
+    uint8_t                                max_bss;
+    uint8_t                                op_classes_nr;
+    map_ap_radio_basic_cap_tlv_op_class_t *op_classes;
 } map_ap_radio_basic_cap_tlv_t;
 
 /*#######################################################################
@@ -403,10 +429,10 @@ typedef struct {
 } map_channel_preference_tlv_op_class_t;
 
 typedef struct mapChannelPreferenceTLV {
-    uint8_t                               tlv_type;
-    mac_addr                              radio_id;
-    uint8_t                               op_classes_nr;
-    map_channel_preference_tlv_op_class_t op_classes[MAX_OP_CLASS];
+    uint8_t                                tlv_type;
+    mac_addr                               radio_id;
+    uint8_t                                op_classes_nr;
+    map_channel_preference_tlv_op_class_t *op_classes;
 } map_channel_preference_tlv_t;
 
 /*###########################################################################
@@ -418,16 +444,16 @@ typedef struct {
 } map_radio_operation_restriction_tlv_channel_t;
 
 typedef struct  {
-    uint8_t                                       op_class;
-    uint8_t                                       channels_nr;
-    map_radio_operation_restriction_tlv_channel_t channels[MAX_CHANNEL_PER_OP_CLASS];
+    uint8_t                                        op_class;
+    uint8_t                                        channels_nr;
+    map_radio_operation_restriction_tlv_channel_t *channels;
 } map_radio_operation_restriction_tlv_op_class_t;
 
 typedef struct mapRadioOperationRestrictionTLV {
-    uint8_t                                        tlv_type;
-    mac_addr                                       radio_id;
-    uint8_t                                        op_classes_nr;
-    map_radio_operation_restriction_tlv_op_class_t op_classes[MAX_OP_CLASS];
+    uint8_t                                         tlv_type;
+    mac_addr                                        radio_id;
+    uint8_t                                         op_classes_nr;
+    map_radio_operation_restriction_tlv_op_class_t *op_classes;
 } map_radio_operation_restriction_tlv_t;
 
 /*#######################################################################
@@ -462,11 +488,11 @@ typedef struct {
 } map_operating_channel_report_tlv_op_class_t;
 
 typedef struct mapOperatingChannelReportTLV {
-    uint8_t                                     tlv_type;
-    mac_addr                                    radio_id;
-    uint8_t                                     op_classes_nr;
-    map_operating_channel_report_tlv_op_class_t op_classes[MAX_OP_CLASS];
-    uint8_t                                     transmit_power_eirp;
+    uint8_t                                      tlv_type;
+    mac_addr                                     radio_id;
+    uint8_t                                      op_classes_nr;
+    map_operating_channel_report_tlv_op_class_t *op_classes;
+    uint8_t                                      transmit_power_eirp;
 } map_operating_channel_report_tlv_t;
 
 /*#######################################################################
@@ -550,7 +576,7 @@ typedef struct {
     uint32_t report_time_interval;
     uint32_t downlink_data_rate;
     uint32_t uplink_data_rate;
-    uint8_t  uplink_rssi;
+    uint8_t  uplink_rcpi;
 } map_assoc_sta_link_metrics_tlv_bss_t;
 
 typedef struct mapAssociatedStaLinkMetricsTLV {
@@ -570,10 +596,10 @@ typedef struct {
 } map_unassoc_sta_link_metrics_query_tlv_channel_t;
 
 typedef struct mapUnassocStaMetricsQueryTLV {
-    uint8_t                                          tlv_type;
-    uint8_t                                          op_class;
-    uint8_t                                          channels_nr;
-    map_unassoc_sta_link_metrics_query_tlv_channel_t channels[MAX_CHANNEL_PER_OP_CLASS];
+    uint8_t                                           tlv_type;
+    uint8_t                                           op_class;
+    uint8_t                                           channels_nr;
+    map_unassoc_sta_link_metrics_query_tlv_channel_t *channels;
 } map_unassoc_sta_link_metrics_query_tlv_t;
 
 /*######################################################################################
@@ -601,18 +627,18 @@ typedef struct mapUnassocStaMetricsResponseTLV {
 #define MAP_BEACON_REPORT_DETAIL_ALL       2
 
 typedef struct mapBeaconMetricsQueryTLV {
-    uint8_t            tlv_type;
-    mac_addr           sta_mac;
-    uint8_t            op_class;
-    uint8_t            channel;
-    mac_addr           bssid;
-    uint8_t            reporting_detail;
-    uint8_t            ssid_len;
-    uint8_t            ssid[MAX_SSID_LEN];
-    uint8_t            element_ids_nr;
-    uint8_t            element_ids[255];
-    uint8_t            ap_channel_reports_nr;
-    map_tlv_op_class_t ap_channel_reports[MAX_OP_CLASS];
+    uint8_t             tlv_type;
+    mac_addr            sta_mac;
+    uint8_t             op_class;
+    uint8_t             channel;
+    mac_addr            bssid;
+    uint8_t             reporting_detail;
+    uint8_t             ssid_len;
+    uint8_t             ssid[MAX_SSID_LEN];
+    uint8_t             element_ids_nr;
+    uint8_t             element_ids[255];
+    uint8_t             ap_channel_reports_nr;
+    map_tlv_op_class_t *ap_channel_reports;
 } map_beacon_metrics_query_tlv_t;
 
 /*#######################################################################
@@ -749,13 +775,13 @@ typedef struct mapHigherLayerDataTLV {
 typedef struct mapAssocStaTrafficStatsTLV {
     uint8_t  tlv_type;
     mac_addr sta_mac;
-    uint32_t txbytes;
-    uint32_t rxbytes;
-    uint32_t txpkts;
-    uint32_t rxpkts;
-    uint32_t txpkterrors;
-    uint32_t rxpkterrors;
-    uint32_t retransmission_cnt;
+    uint32_t tx_bytes;
+    uint32_t rx_bytes;
+    uint32_t tx_packets;
+    uint32_t rx_packets;
+    uint32_t tx_packet_errors;
+    uint32_t rx_packet_errors;
+    uint32_t retransmissions;
 } map_assoc_sta_traffic_stats_tlv_t;
 
 /*#######################################################################
@@ -792,12 +818,12 @@ typedef struct mapChannelScanReportPolicyTLV {
 #define MAP_SCAN_IMPACT_RADIO_UNAVAILABLE 0x03 /* Radio unavailable for >=2 seconds */
 
 typedef struct {
-    mac_addr           radio_id;
-    uint8_t            boot_only:   1;
-    uint8_t            scan_impact: 2;
-    uint32_t           min_scan_interval;
-    uint8_t            op_classes_nr;
-    map_tlv_op_class_t op_classes[MAX_OP_CLASS];
+    mac_addr            radio_id;
+    uint8_t             boot_only:   1;
+    uint8_t             scan_impact: 2;
+    uint32_t            min_scan_interval;
+    uint8_t             op_classes_nr;
+    map_tlv_op_class_t *op_classes;
 } map_channel_scan_cap_tlv_radio_t;
 
 typedef struct mapChannelScanCapabilitiesTLV {
@@ -810,9 +836,9 @@ typedef struct mapChannelScanCapabilitiesTLV {
 # Channel scan request TLV associated structures ("Section 17.2.39")    #
 ########################################################################*/
 typedef struct {
-    mac_addr           radio_id;
-    uint8_t            op_classes_nr;
-    map_tlv_op_class_t op_classes[MAX_OP_CLASS];
+    mac_addr            radio_id;
+    uint8_t             op_classes_nr;
+    map_tlv_op_class_t *op_classes;
 } map_channel_scan_request_tlv_radio_t;
 
 typedef struct mapChannelScanRequestTLV {
@@ -921,7 +947,7 @@ typedef struct mapCACCompletionReportTLV {
 } map_cac_completion_report_tlv_t;
 
 /*#######################################################################
-# CAC statiu report TLV associated structures ("Section 17.2.45")       #
+# CAC status report TLV associated structures ("Section 17.2.45")       #
 ########################################################################*/
 typedef struct mapCACStatusReportTLV {
     uint8_t                       tlv_type;
@@ -943,10 +969,10 @@ typedef struct mapCACStatusReportTLV {
 #define MAX_CAC_METHODS                      4
 
 typedef struct {
-    uint8_t            cac_method;
-    uint32_t           cac_duration;
-    uint8_t            op_classes_nr;
-    map_tlv_op_class_t op_classes[MAX_OP_CLASS];
+    uint8_t             cac_method;
+    uint32_t            cac_duration;
+    uint8_t             op_classes_nr;
+    map_tlv_op_class_t *op_classes;
 } map_cac_cap_tlv_method_t;
 
 typedef struct  {
@@ -1116,12 +1142,12 @@ typedef struct mapRadioMetricsTLV {
 typedef struct mapAPExtendedMetricsTLV {
     uint8_t  tlv_type;
     mac_addr bssid;
-    uint32_t ucast_bytes_tx;
-    uint32_t ucast_bytes_rx;
-    uint32_t mcast_bytes_tx;
-    uint32_t mcast_bytes_rx;
-    uint32_t bcast_bytes_tx;
-    uint32_t bcast_bytes_rx;
+    uint32_t tx_ucast_bytes;
+    uint32_t rx_ucast_bytes;
+    uint32_t tx_mcast_bytes;
+    uint32_t rx_mcast_bytes;
+    uint32_t tx_bcast_bytes;
+    uint32_t rx_bcast_bytes;
 } map_ap_ext_metrics_tlv_t;
 
 /*####################################################################################
@@ -1168,9 +1194,9 @@ typedef struct mapBackhaulSTARadioCapabilitiesTLV {
     mac_addr bsta_mac;
 } map_backhaul_sta_radio_cap_tlv_t;
 
-/*#######################################################################
-# Backhaul BSS configuration associated structures ("Section 17.2.66")  #
-########################################################################*/
+/*###########################################################################
+# Backhaul BSS configuration TLV associated structures ("Section 17.2.66")  #
+############################################################################*/
 typedef struct mapBhBssConfigTLV {
     uint8_t  tlv_type;
     mac_addr bssid;
@@ -1178,6 +1204,35 @@ typedef struct mapBhBssConfigTLV {
     uint8_t  p2_bsta_disallowed: 1;   /* 1: profile-2 bh sta association disallowed, 0: allowed */
     uint8_t  reserved:           6;
 } map_backhaul_bss_configuration_tlv_t;
+
+/*###############################################################################
+# 1905 Layer Security Capability TLV associated structures ("Section 17.2.67")   #
+################################################################################*/
+#define MAP_1905_ONBOARDING_PROTOCOL_DPP  0x00
+#define MAP_1905_MIC_ALGO_HMAC_SHA256     0x00
+#define MAP_1905_ENCRPYT_ALGO_AES_SIV     0x00
+
+typedef struct map1905SecurityCapTLV {
+    uint8_t  tlv_type;
+    uint8_t  onboarding_protocol;
+    uint8_t  mic_algorithm;
+    uint8_t  encryption_algorithm;
+} map_1905_security_cap_tlv_t;
+
+/*#######################################################################
+# MIC TLV associated structures                    ("Section 17.2.68")  #
+########################################################################*/
+typedef struct micTLV {
+    uint8_t   tlv_type;
+    uint8_t   gtk_key_id  : 2;
+    uint8_t   mic_version : 2;
+    uint8_t   reserved    : 4;
+    uint8_t   integrity_tx_counter[INTEGRITY_TX_COUNTER_LEN];
+    mac_addr  src_al_mac;
+    uint16_t  mic_len;
+    uint8_t  *mic;
+} map_mic_tlv_t;
+#define SIZEOF_MIC_TLV  (sizeof(map_mic_tlv_t) - sizeof(uint8_t *))
 
 /*#######################################################################
 # Encrypted Payload TLV associated structures      ("Section 17.2.69")  #
@@ -1192,7 +1247,7 @@ typedef struct mapEncryptedPayloadTLV {
 } map_encrypted_payload_tlv_t;
 
 /*#######################################################################
-# AP Wi-Fi 6 Capabilities associated structures ("Section 17.2.72")     #
+# AP Wi-Fi 6 Capabilities TLV associated structures ("Section 17.2.72") #
 ########################################################################*/
 typedef struct mapAPWiFi6CapTLV {
     uint8_t  tlv_type;
@@ -1202,10 +1257,9 @@ typedef struct mapAPWiFi6CapTLV {
 } map_ap_wifi6_cap_tlv_t;
 
 
-/*################################################################################
-# Associated Wi-Fi 6 STA Status Report associated structures ("Section 17.2.73") #
-#################################################################################*/
-
+/*####################################################################################
+# Associated Wi-Fi 6 STA Status Report TLV associated structures ("Section 17.2.73") #
+#####################################################################################*/
 typedef struct mapAssocWiFi6STAStatusTLV {
     uint8_t tlv_type;
     mac_addr sta_mac;
@@ -1222,62 +1276,37 @@ typedef struct mapBSSIDTLV {
     mac_addr bssid;
 } map_bssid_tlv_t;
 
-/*#######################################################################
-# 1905 Encap DPP TLV ("Section 17.2.79")                            #
-########################################################################*/
-typedef struct map1905EncapDPPTLV {
+/*########################################################################
+# BSS Configuration Report TLV associated structures("Section 17.2.75")  #
+#########################################################################*/
+typedef struct {
+    mac_addr bssid;
+    uint8_t  backhaul_bss:         1; /* 0: in use,          1: not in use  */
+    uint8_t  fronthaul_bss:        1; /* 0: in use,          1: not in use  */
+    uint8_t  r1_disallowed_status: 1; /* 0: allowed,         1: disallowed  */
+    uint8_t  r2_disallowed_status: 1; /* 0: allowed,         1: disallowed  */
+    uint8_t  multiple_bssid:       1; /* 0: not configured,  1: configured  */
+    uint8_t  transmitted_bssid:    1; /* 0: non transmitted, 1: transmitted */
+    uint8_t  reserved1:            2;
+    uint8_t  reserved2;
+    uint8_t  ssid_len;
+    char     ssid[MAX_SSID_LEN];
+} map_bss_configuration_bss_t;
+
+typedef struct {
+    mac_addr  ruid;
+    uint8_t   bss_nr;
+    map_bss_configuration_bss_t bss[MAX_BSS_PER_RADIO];
+} map_bss_configuration_radio_t;
+
+typedef struct mapBSSConfigurationReportTLV {
     uint8_t   tlv_type;
-    uint8_t   enrollee_mac_present:   1;
-    uint8_t   reserved1:              1;
-    uint8_t   dpp_frame_indicator:    1;
-    uint8_t   reserved2:              5;
-    mac_addr  sta_mac;
-    uint8_t   frame_type;
-    uint16_t  frame_len;
-    uint8_t  *frame;
-} map_1905_encap_dpp_tlv_t;
+    uint8_t   radios_nr;
+    map_bss_configuration_radio_t radios[MAX_RADIO_PER_AGENT];
+} map_bss_configuration_report_tlv_t;
 
 /*#######################################################################
-# DPP Message TLV ("Section 17.2.80")                                   #
-########################################################################*/
-typedef struct map1905EncapEapolTLV {
-    uint8_t   tlv_type;
-    uint16_t  frame_len;
-    uint8_t  *frame;
-} map_1905_encap_eapol_tlv_t;
-
-/*#######################################################################
-# DPP CCE Indication TLV ("Section 17.2.82")                            #
-########################################################################*/
-typedef struct mapDPPCCEIndicationTLV {
-    uint8_t  tlv_type;
-    uint8_t advertise;
-} map_dpp_cce_indication_tlv_t;
-
-/*#######################################################################
-# DPP Chirp Value TLV ("Section 17.2.83")                               #
-########################################################################*/
-typedef struct mapDPPChirpValueTLV {
-    uint8_t   tlv_type;
-    uint8_t   enrollee_mac_present:   1;
-    uint8_t   hash_validity:          1;
-    uint8_t   reserved:               6;
-    mac_addr  sta_mac;
-    uint8_t   hash_len;
-    uint8_t  *hash;
-} map_dpp_chirp_value_tlv_t;
-
-/*#######################################################################
-# DPP Message TLV ("Section 17.2.86")                                   #
-########################################################################*/
-typedef struct mapDPPMessageTLV {
-    uint8_t   tlv_type;
-    uint16_t  frame_len;
-    uint8_t  *frame;
-} map_dpp_message_tlv_t;
-
-/*#######################################################################
-# Device Inventory TLV ("Section 17.2.76")                              #
+# Device Inventory TLV associated structures ("Section 17.2.76")        #
 ########################################################################*/
 typedef struct {
     mac_addr  ruid;
@@ -1297,6 +1326,300 @@ typedef struct mapDeviceInventoryTLV {
 } map_device_inventory_tlv_t;
 
 /*#######################################################################
+# Agent List TLV associated structures       ("Section 17.2.77")        #
+########################################################################*/
+typedef struct {
+    mac_addr al_mac;
+    uint8_t  map_profile;
+    uint8_t  security;
+} map_agent_entry_t;
+
+typedef struct {
+#define MAX_AGENT 16
+    uint8_t tlv_type;
+    uint8_t agent_nr;
+    map_agent_entry_t entries[MAX_AGENT];
+} map_agent_list_tlv_t;
+
+/*#######################################################################
+# AKM Suite Capabilities TLV associated structures ("Section 17.2.78")  #
+########################################################################*/
+typedef struct {
+    uint8_t   oui[3];
+    uint8_t   akm_suite_type;
+} map_akm_suite_t;
+
+typedef struct mapAKMSuiteCapTLV {
+    uint8_t                tlv_type;
+    uint8_t                bh_akm_suites_nr;
+    map_akm_suite_t        *bh_akm_suites;
+    uint8_t                fh_akm_suites_nr;
+    map_akm_suite_t        *fh_akm_suites;
+} map_akm_suite_cap_tlv_t;
+
+/*#######################################################################
+# 1905 Encap DPP TLV associated structures ("Section 17.2.79")          #
+########################################################################*/
+typedef struct map1905EncapDPPTLV {
+    uint8_t   tlv_type;
+    uint8_t   enrollee_mac_present:   1;
+    uint8_t   reserved1:              1;
+    uint8_t   dpp_frame_indicator:    1;
+    uint8_t   reserved2:              5;
+    mac_addr  sta_mac;
+    uint8_t   frame_type;
+    uint16_t  frame_len;
+    uint8_t  *frame;
+} map_1905_encap_dpp_tlv_t;
+
+/*#######################################################################
+# DPP Message TLV associated structures ("Section 17.2.80")             #
+########################################################################*/
+typedef struct map1905EncapEapolTLV {
+    uint8_t   tlv_type;
+    uint16_t  frame_len;
+    uint8_t  *frame;
+} map_1905_encap_eapol_tlv_t;
+
+/*#######################################################################
+# DPP CCE Indication TLV associated structures ("Section 17.2.82")      #
+########################################################################*/
+typedef struct mapDPPCCEIndicationTLV {
+    uint8_t  tlv_type;
+    uint8_t advertise;
+} map_dpp_cce_indication_tlv_t;
+
+/*#######################################################################
+# DPP Chirp Value TLV associated structures ("Section 17.2.83")         #
+########################################################################*/
+typedef struct mapDPPChirpValueTLV {
+    uint8_t   tlv_type;
+    uint8_t   enrollee_mac_present:   1;
+    uint8_t   hash_validity:          1;
+    uint8_t   reserved:               6;
+    mac_addr  sta_mac;
+    uint8_t   hash_len;
+    uint8_t  *hash;
+} map_dpp_chirp_value_tlv_t;
+
+/*########################################################################
+# BSS Configuration Request TLV associated structures("Section 17.2.84") #
+#########################################################################*/
+typedef struct mapBSSConfigurationRequestTLV {
+    uint8_t   tlv_type;
+    uint16_t  obj_len;
+    uint8_t  *obj;
+} map_bss_configuration_request_tlv_t;
+
+/*#########################################################################
+# BSS Configuration Response TLV associated structures("Section 17.2.85") #
+##########################################################################*/
+typedef struct mapBSSConfigurationResponseTLV {
+    uint8_t   tlv_type;
+    uint16_t  obj_len;
+    uint8_t  *obj;
+} map_bss_configuration_response_tlv_t;
+
+/*#######################################################################
+# DPP Message TLV associated structures ("Section 17.2.86")             #
+########################################################################*/
+typedef struct mapDPPMessageTLV {
+    uint8_t   tlv_type;
+    uint16_t  frame_len;
+    uint8_t  *frame;
+} map_dpp_message_tlv_t;
+
+/*#######################################################################
+# Controller Capability TLV associated structures ("Section 17.2.94")   #
+########################################################################*/
+#define MAP_CONTROLLER_CAP_KIBMIB_COUNTER  0x80 /* Bit 7 */
+#define MAP_CONTROLLER_CAP_EARLY_AP_CAP    0x40 /* Bit 6 */
+
+typedef struct mapControllerCapabilityTLV {
+    uint8_t tlv_type;
+    uint8_t capability;
+} map_controller_capability_tlv_t;
+
+/*##########################################################################
+# Wi-Fi 7 Agent Capabilities TLV associated structures ("Section 17.2.95") #
+###########################################################################*/
+typedef struct {
+    mac_addr                    ruid;
+    uint8_t                     reserved[24];
+    map_radio_wifi7_caps_t      cap;
+} map_wifi7_agent_cap_tlv_radio_t;
+
+typedef struct mapWiFi7AgentCapTLV {
+    uint8_t tlv_type;
+    uint8_t max_mlds;
+    uint8_t ap_max_links:            4;
+    uint8_t bsta_max_links:          4;
+    uint8_t tid_to_link_map_cap:     2;
+    uint8_t reserved1:               6;
+    uint8_t reserved2[13];
+    uint8_t radios_nr;
+    map_wifi7_agent_cap_tlv_radio_t radios[MAX_RADIO_PER_AGENT];
+} map_wifi7_agent_cap_tlv_t;
+
+/*##########################################################################
+# Agent AP MLD Configuration TLV associated structures ("Section 17.2.96") #
+###########################################################################*/
+typedef struct {
+    uint8_t  aff_ap_mac_valid: 1;
+    uint8_t  link_id_valid:    1;
+    mac_addr radio_id;
+    mac_addr aff_ap_mac;
+    uint8_t  link_id;
+} map_agent_ap_mld_conf_tlv_aff_ap_t;
+
+typedef struct {
+    uint8_t                            ap_mld_mac_valid: 1;
+    uint8_t                            ssid_len;
+    uint8_t                            ssid[MAX_SSID_LEN];
+    mac_addr                           ap_mld_mac;
+    uint8_t                            str:              1;
+    uint8_t                            nstr:             1;
+    uint8_t                            emlsr:            1;
+    uint8_t                            emlmr:            1;
+    uint8_t                            aff_ap_nr;
+    map_agent_ap_mld_conf_tlv_aff_ap_t aff_aps[MAX_MLD_AFF_APSTA];
+} map_agent_ap_mld_conf_tlv_ap_mld_t;
+
+typedef struct mapAgentAPMLDConfTLV {
+    uint8_t                            tlv_type;
+    uint8_t                            ap_mld_nr;
+    map_agent_ap_mld_conf_tlv_ap_mld_t ap_mlds[MAX_BSS_PER_RADIO];
+} map_agent_ap_mld_conf_tlv_t;
+
+/*##############################################################################
+# Backhaul STA MLD Configuration TLV associated structures ("Section 17.2.97") #
+###############################################################################*/
+typedef struct {
+    uint8_t  aff_bsta_mac_valid: 1;
+    mac_addr radio_id;
+    mac_addr aff_bsta_mac;
+} map_bsta_mld_conf_tlv_aff_bsta_t;
+
+typedef struct mapBSTAMLDConfTLV {
+    uint8_t                          tlv_type;
+    uint8_t                          bsta_mld_mac_valid: 1;
+    uint8_t                          ap_mld_mac_valid:   1;
+    mac_addr                         bsta_mld_mac;
+    mac_addr                         ap_mld_mac;
+    uint8_t                          str:                1;
+    uint8_t                          nstr:               1;
+    uint8_t                          emlsr:              1;
+    uint8_t                          emlmr:              1;
+    uint8_t                          aff_bsta_nr;
+    map_bsta_mld_conf_tlv_aff_bsta_t aff_bstas[MAX_MLD_AFF_APSTA];
+} map_bsta_mld_conf_tlv_t;
+
+/*################################################################################
+# Associated STA MLD Configuration TLV associated structures ("Section 17.2.98") #
+#################################################################################*/
+typedef struct {
+    mac_addr bssid;
+    mac_addr aff_sta_mac;
+} map_assoc_sta_mld_conf_tlv_aff_sta_t;
+
+typedef struct mapAssocSTAMLDConfTLV {
+    uint8_t                              tlv_type;
+    mac_addr                             sta_mld_mac;
+    mac_addr                             ap_mld_mac;
+    uint8_t                              str:   1;
+    uint8_t                              nstr:  1;
+    uint8_t                              emlsr: 1;
+    uint8_t                              emlmr: 1;
+    uint8_t                              aff_sta_nr;
+    map_assoc_sta_mld_conf_tlv_aff_sta_t aff_stas[MAX_MLD_AFF_APSTA];
+} map_assoc_sta_mld_conf_tlv_t;
+
+/*################################################################################
+# Affiliated STA Metrics TLV associated structures ("Section 17.2.100")          #
+#################################################################################*/
+/* NOTE: EM R6 adds 998 reserved bytes for this TLV.  That is odd given that this TLV
+   can be part of the AP Metrics Response multiple times -> do not check on this.
+*/
+#define MAP_AFF_STA_METRICS_TLV_RESERVED_LEN_ZERO 0
+#define MAP_AFF_STA_METRICS_TLV_RESERVED_LEN_R6   998
+
+typedef struct mapAffSTAMetricsTLV {
+    uint8_t  tlv_type;
+    mac_addr sta_mac;
+    uint32_t tx_bytes;
+    uint32_t rx_bytes;
+    uint32_t tx_packets;
+    uint32_t rx_packets;
+    uint32_t tx_packet_errors;
+    uint16_t reserved_len;
+} map_aff_sta_metrics_tlv_t;
+
+/*################################################################################
+# Affiliated AP Metrics TLV associated structures ("Section 17.2.101")           #
+#################################################################################*/
+/* NOTE: EM R6 adds 988 reserved bytes for this TLV.  That is odd given that this TLV
+   can be part of the AP Metrics Response multiple times -> do not check on this.
+*/
+#define MAP_AFF_AP_METRICS_TLV_RESERVED_LEN_ZERO 0
+#define MAP_AFF_AP_METRICS_TLV_RESERVED_LEN_R6   988
+
+typedef struct mapAffAPMetricsTLV {
+    uint8_t  tlv_type;
+    mac_addr bssid;
+    uint32_t tx_packets;
+    uint32_t rx_packets;
+    uint32_t tx_packet_errors;
+    uint32_t tx_ucast_bytes;
+    uint32_t rx_ucast_bytes;
+    uint32_t tx_mcast_bytes;
+    uint32_t rx_mcast_bytes;
+    uint32_t tx_bcast_bytes;
+    uint32_t rx_bcast_bytes;
+    uint16_t reserved_len;
+} map_aff_ap_metrics_tlv_t;
+
+/*#######################################################################
+# EHT Operations TLV associated structures ("Section 17.2.103")         #
+########################################################################*/
+typedef struct {
+    mac_addr                        bssid;
+    map_ap_eht_operations_t         eht_ops;
+    uint8_t                         reserved[16];
+} map_eht_operations_tlv_bss_t;
+
+typedef struct {
+    mac_addr                        ruid;
+    uint8_t                         bsss_nr;
+    map_eht_operations_tlv_bss_t    bsss[MAX_BSS_PER_RADIO];
+    uint8_t                         reserved[25];
+} map_eht_operations_tlv_radio_t;
+
+typedef struct mapEHTOperationsTLV {
+    uint8_t tlv_type;
+    uint8_t reserved[32];
+    uint8_t radios_nr;
+    map_eht_operations_tlv_radio_t radios[MAX_RADIO_PER_AGENT];
+} map_eht_operations_tlv_t;
+
+/*##############################################################################################
+#     Available Spectrum Inquiry Request TLV associated structures ("Section 17.2.104")         #
+###############################################################################################*/
+typedef struct mapAvailableSpecInqReqTLV {
+    uint8_t   tlv_type;
+    uint16_t  req_len;
+    uint8_t  *req;
+} map_available_spec_inq_req_tlv_t;
+
+/*##############################################################################################
+#     Available Spectrum Inquiry Response TLV associated structures ("Section 17.2.105")       #
+###############################################################################################*/
+typedef struct mapAvailableSpecInqRespTLV {
+    uint8_t   tlv_type;
+    uint16_t  resp_len;
+    uint8_t  *resp;
+} map_available_spec_inq_resp_tlv_t;
+
+/*#######################################################################
 # PUBLIC FUNCTIONS                                                      #
 ########################################################################*/
 /* Common handlers for profile 1 and 2 steering request */
@@ -1308,5 +1631,7 @@ void map_free_p1_p2_steering_request_tlv(void *memory_structure, bool profile2);
 void map_r1_register_tlvs(void);
 void map_r2_register_tlvs(void);
 void map_r3_register_tlvs(void);
+void map_r4_register_tlvs(void);
+void map_r6_register_tlvs(void);
 
 #endif /* MAP_TLVS_H_ */

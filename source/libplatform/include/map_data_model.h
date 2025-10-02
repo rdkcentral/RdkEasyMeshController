@@ -23,12 +23,15 @@
 #include "map_channel_set.h"
 #include "map_timer_handler.h"
 #include "map_utils.h"
+#include "1905_platform.h"
 
 /* Forward declarations */
 struct map_ale_info_s;
 struct map_radio_info_s;
 struct map_bss_info_s;
 struct map_sta_info_s;
+struct map_ap_mld_info_s;
+struct map_sta_mld_info_s;
 
 /*#######################################################################
 #                       RADIO CAPABILITY TYPES                          #
@@ -73,24 +76,29 @@ typedef struct map_radio_he_capability_s {
     uint8_t  reserved:                 7;
 } map_radio_he_capability_t;
 
+typedef struct map_radio_eht_capability_s {
+    /* TODO */
+    int dummy;
+} map_radio_eht_capability_t;
+
 /*#######################################################################
 #                       STA INFO TYPES                                  #
 ########################################################################*/
 typedef struct map_client_traffic_stats_s {
-    uint64_t txbytes;
-    uint64_t rxbytes;
-    uint32_t txpkts;
-    uint32_t rxpkts;
-    uint32_t txpkterrors;
-    uint32_t rxpkterrors;
-    uint32_t retransmission_cnt;
+    uint64_t tx_bytes;
+    uint64_t rx_bytes;
+    uint32_t tx_packets;
+    uint32_t rx_packets;
+    uint32_t tx_packet_errors;
+    uint32_t rx_packet_errors;
+    uint32_t retransmissions;
 } map_sta_traffic_stats_t;
 
 typedef struct map_client_link_metrics_s {
     uint32_t age;
     uint32_t dl_mac_datarate;
     uint32_t ul_mac_datarate;
-    uint8_t  rssi;
+    int8_t   rssi;
 } map_sta_link_metrics_t;
 
 typedef struct map_client_metrics_s {
@@ -117,27 +125,39 @@ typedef struct map_beacon_metrics_s {
     uint8_t  subelements[0];
 } STRUCT_PACKED map_sta_beacon_metrics_t;
 
+typedef struct map_mld_modes_s {
+    bool str;
+    bool nstr;
+    bool emlsr;
+    bool emlmr;
+} map_mld_modes_t;
+
 typedef struct map_sta_capability_s {
-    bool     valid;
-    uint8_t  max_tx_spatial_streams;
-    uint8_t  max_rx_spatial_streams;
-    uint16_t max_bandwidth;
-    uint8_t  supported_standard;
-    uint8_t  he_support:         1;
-    uint8_t  vht_support:        1;
-    uint8_t  ht_support:         1;
-    uint8_t  erp_support:        1;  /* ofdm rates, false for 11B */
-    uint8_t  sgi_support:        1;
-    uint8_t  dot11k_support:     1;
-    uint8_t  dot11k_brp_support: 1;
-    uint8_t  dot11k_bra_support: 1;
-    uint8_t  dot11v_btm_support: 1;
-    uint8_t  backhaul_sta:       1;
-    uint8_t  mbo_support:        1;
-    uint32_t max_phy_rate;           /* in kbps */
-    map_radio_ht_capability_t ht_caps;
+    bool            valid;
+    uint8_t         max_tx_spatial_streams;
+    uint8_t         max_rx_spatial_streams;
+    uint16_t        max_bandwidth;
+    uint8_t         supported_standard;
+    uint8_t         eht_support:        1;
+    uint8_t         he_support:         1;
+    uint8_t         vht_support:        1;
+    uint8_t         ht_support:         1;
+    uint8_t         erp_support:        1;  /* ofdm rates, false for 11B */
+    uint8_t         sgi_support:        1;
+    uint8_t         dot11k_support:     1;
+    uint8_t         dot11k_brp_support: 1;
+    uint8_t         dot11k_bra_support: 1;
+    uint8_t         dot11v_btm_support: 1;
+    uint8_t         backhaul_sta:       1;
+    uint8_t         mbo_support:        1;
+    uint32_t        max_phy_rate;           /* in kbps */
+
+    map_mld_modes_t mld_modes;
+
+    map_radio_ht_capability_t  ht_caps;
     map_radio_vht_capability_t vht_caps;
-    map_radio_he_capability_t he_caps;
+    map_radio_he_capability_t  he_caps;
+    map_radio_eht_capability_t eht_caps;
 } map_sta_capability_t;
 
 typedef struct map_tunneled_msg_s {
@@ -170,7 +190,7 @@ typedef struct map_wifi6_sta_tid_info_s {
     uint8_t TID_nr;
     uint8_t TID[MAX_NUM_TID];
     uint8_t queue_size[MAX_NUM_TID];
-} map_wifi6_sta_tid_info_s;
+} map_wifi6_sta_tid_info_t;
 
 typedef enum map_steering_history_trigger_event_s {
     MAP_STEERING_TRIGGER_EVENT_UNKNOWN = 0x0,
@@ -230,17 +250,24 @@ typedef struct map_sta_info_s {
     array_list_t               *metrics;
     array_list_t               *beacon_metrics;
     uint8_t                     bmquery_status;
-    map_sta_traffic_stats_t    *traffic_stats;
+    map_sta_traffic_stats_t     traffic_stats;
     struct map_bss_info_s      *bss;
     uint16_t                    assoc_frame_len;
     uint8_t                    *assoc_frame;
     map_tunneled_msg_t         *tunneled_msg;
     uint16_t                    last_disassoc_reason_code;
     map_sta_ext_link_metrics_t  last_sta_ext_metrics;
-    map_wifi6_sta_tid_info_s    wifi6_sta_tid_info;
+    map_wifi6_sta_tid_info_t    wifi6_sta_tid_info;
     array_list_t               *steering_history;
     uint32_t                    steering_history_size_delta;
     map_sta_steering_stats_t    steering_stats;
+
+    /* MLO */
+    int                         dm_as_idx;
+    bool                        dm_as_removed;
+    list_head_t                 aff_sta_list;
+    struct map_sta_mld_info_s  *sta_mld;  /* Set in case this is an affiliated AP */
+    uint8_t                     link_id;
 } map_sta_info_t;
 
 /*#######################################################################
@@ -265,13 +292,27 @@ typedef struct map_ap_metric_s {
 
 typedef struct map_ap_extended_metrics_s {
     bool     valid;
-    uint64_t ucast_bytes_tx;
-    uint64_t ucast_bytes_rx;
-    uint64_t mcast_bytes_tx;
-    uint64_t mcast_bytes_rx;
-    uint64_t bcast_bytes_tx;
-    uint64_t bcast_bytes_rx;
+    uint64_t tx_ucast_bytes;
+    uint64_t rx_ucast_bytes;
+    uint64_t tx_mcast_bytes;
+    uint64_t rx_mcast_bytes;
+    uint64_t tx_bcast_bytes;
+    uint64_t rx_bcast_bytes;
 } map_ap_extended_metrics_t;
+
+typedef struct map_ap_eht_operations_s {
+    uint8_t   eht_op_info_valid:                   1;
+    uint8_t   disabled_subchan_valid:              1;
+    uint8_t   eht_default_pe_duration:             1;
+    uint8_t   group_addr_bu_indication_limit:      1;
+    uint8_t   group_addr_bu_indication_exp:        2;
+    uint8_t   reserved:                            2;
+    uint32_t  basic_eht_mcs_nss;
+    uint8_t   control;
+    uint8_t   ccfs0;
+    uint8_t   ccfs1;
+    uint16_t  disabled_subchan_bitmap;
+} map_ap_eht_operations_t;
 
 /*#######################################################################
 #                       BSS INFO                                        #
@@ -287,6 +328,7 @@ typedef struct map_bss_info_s {
 
     int                        dm_idx;
     bool                       dm_removed;
+
     uint8_t                    ssid_len;
     char                       ssid[MAX_SSID_LEN];
     uint16_t                   state;     /* active/configured/wps_enabled */
@@ -296,7 +338,25 @@ typedef struct map_bss_info_s {
     array_list_t              *neigh_link_metric_list;
     map_ap_metric_t            metrics;
     map_ap_extended_metrics_t  extended_metrics;
+    map_ap_eht_operations_t    eht_ops;
+    struct {
+        uint8_t                    backhaul_bss:         1;
+        uint8_t                    fronthaul_bss:        1;
+        uint8_t                    r1_disallowed_status: 1;
+        uint8_t                    r2_disallowed_status: 1;
+        uint8_t                    multiple_bssid:       1;
+        uint8_t                    transmitted_bssid:    1;
+        uint8_t                    reserved:             2;
+    } flags;
     struct map_radio_info_s   *radio;
+
+    /* MLO */
+    int                        dm_aa_idx;
+    bool                       dm_aa_removed;
+    list_head_t                aff_ap_list;
+    struct map_ap_mld_info_s  *ap_mld;      /* Set in case this is an affiliated AP */
+    struct map_ap_mld_info_s  *prev_ap_mld; /* Needed for dm update */
+    uint8_t                    link_id;
 } map_bss_info_t;
 
 /*#######################################################################
@@ -308,16 +368,16 @@ typedef struct map_bss_info_s {
   - Controller channel preference
   - Scan capability op class list
   - CAC method op clas list
-  - Wi-Fi 6 capabilities
 
-   Fields op_class, channel_count, channel_list are used for all
-   Fields eirp, pref, reason for some
+   Fields op_class and channels are used for all
+   Fields eirp, pref, reason, enable for some
 */
 typedef struct map_op_class_s {
     uint8_t           op_class;
     uint8_t           eirp;      /* Radio basic capabilities */
     uint8_t           pref;      /* Agent and controller channel preference */
     uint8_t           reason;    /* Agent and controller channel preference */
+    bool              enable;    /* Used only for disallowed op class list */
     map_channel_set_t channels;
 } map_op_class_t;
 
@@ -332,9 +392,9 @@ typedef struct map_channel_restriction_s {
 } map_channel_restriction_t;
 
 typedef struct map_op_restriction_s {
-    uint8_t                   op_class;
-    uint8_t                   channel_count;
-    map_channel_restriction_t channel_list[MAX_CHANNEL_PER_OP_CLASS];
+    uint8_t                    op_class;
+    uint8_t                    channels_nr;
+    map_channel_restriction_t *channels;
 } map_op_restriction_t;
 
 typedef struct map_op_restriction_list_s {
@@ -371,6 +431,12 @@ typedef struct map_agent_capablity_s {
 
     /* Metric collection interval TLV */
     uint32_t metric_collection_interval;
+
+    /* Wi-Fi 7 Agent Capability TLV */
+    uint8_t max_mlds;
+    uint8_t ap_max_links;
+    uint8_t bsta_max_links;
+    uint8_t tid_to_link_map_cap;
 } map_agent_capability_t;
 
 typedef struct map_radio_metrics_s {
@@ -480,6 +546,7 @@ typedef struct map_radio_wifi6_capabilities_s {
 } map_radio_wifi6_caps_t;
 
 typedef struct {
+    bool              cloud_mgmt_enable; /* Cloud channel managment (apply acs_channels) */
     bool              acs_enable;        /* ACS enabled or not */
     map_channel_set_t acs_channels;      /* List of channels ACS may use */
     uint8_t           channel;           /* Fixed channel to be used when acs_enable = false */
@@ -488,6 +555,33 @@ typedef struct {
     map_channel_set_t def_pref_channels;
     map_channel_set_t pref_channels;
 } map_radio_chan_sel_t;
+
+typedef struct {
+    mac_addr ruid;
+    uint8_t  freq_separation:      5;
+    uint8_t  reserved:             3;
+} map_radio_wifi7_records_t;
+
+typedef struct map_radio_wifi7_capabilities_s {
+    map_mld_modes_t                 ap_mld_modes;
+    map_mld_modes_t                 bsta_mld_modes;
+    uint8_t                         ap_str_records_nr;
+    map_radio_wifi7_records_t      *ap_str_records;
+    uint8_t                         ap_nstr_records_nr;
+    map_radio_wifi7_records_t      *ap_nstr_records;
+    uint8_t                         ap_emlsr_records_nr;
+    map_radio_wifi7_records_t      *ap_emlsr_records;
+    uint8_t                         ap_emlmr_records_nr;
+    map_radio_wifi7_records_t      *ap_emlmr_records;
+    uint8_t                         bsta_str_records_nr;
+    map_radio_wifi7_records_t      *bsta_str_records;
+    uint8_t                         bsta_nstr_records_nr;
+    map_radio_wifi7_records_t      *bsta_nstr_records;
+    uint8_t                         bsta_emlsr_records_nr;
+    map_radio_wifi7_records_t      *bsta_emlsr_records;
+    uint8_t                         bsta_emlmr_records_nr;
+    map_radio_wifi7_records_t      *bsta_emlmr_records;
+} map_radio_wifi7_caps_t;
 
 /*#######################################################################
 #                       RADIO INFO                                      #
@@ -502,6 +596,7 @@ typedef struct map_unassociated_sta_info_s {
 typedef struct map_radio_info_s {
     mac_addr                     radio_id;
     mac_addr_str                 radio_id_str;
+    char                         radio_id_base64[9];      /* This is used in Data elements (len = 6 * 4 / 3 + 1) */
 
     list_head_t                  list;
     list_head_t                  bss_list;
@@ -509,11 +604,14 @@ typedef struct map_radio_info_s {
 
     int                          dm_idx;
     bool                         dm_removed;
+
     uint8_t                      supported_freq;
+    uint16_t                     auth_modes_flag;         /* Regular supported auth modes*/
     uint16_t                     band_type_5G;
     uint8_t                      max_bss;
     uint8_t                      current_op_class;
     uint8_t                      current_op_channel;
+    uint8_t                      highest_bw_channel;      /* Used to obtain secondary channel offset in 320MHz */
     uint16_t                     current_bw;
     uint8_t                      current_tx_pwr;          /* From operating channel report */
     uint8_t                      tx_pwr_limit;            /* Used in channel selection request when not 0 */
@@ -524,15 +622,18 @@ typedef struct map_radio_info_s {
     map_radio_ht_capability_t   *ht_caps;
     map_radio_vht_capability_t  *vht_caps;
     map_radio_he_capability_t   *he_caps;
+    map_radio_eht_capability_t  *eht_caps;
     map_radio_scan_capability_t  scan_caps;
     map_radio_cac_capability_t   cac_caps;
     map_radio_wifi6_caps_t      *wifi6_caps;
+    map_radio_wifi7_caps_t      *wifi7_caps;
     char                         vendor[MAP_INVENTORY_ITEM_LEN + 1];
 
     map_op_class_list_t          curr_op_class_list;         /* Current operating classes (operating channel report TLV) */
     map_op_class_list_t          cap_op_class_list;          /* Radio basic capabilities TLV */
     map_op_class_list_t          pref_op_class_list;         /* Agent preference from channel preference report */
     map_op_class_list_t          ctrl_pref_op_class_list;    /* Controller preference to be set in channel selection request */
+    map_op_class_list_t          disallowed_op_class_list;   /* Disallowed opclass list, empty channel list means all allowed */
     map_op_class_list_t          merged_pref_op_class_list;  /* Controller and agent merged preference */
     map_op_restriction_list_t    op_restriction_list;        /* Radio operating restriction */
 
@@ -554,11 +655,91 @@ typedef struct map_radio_info_s {
 } map_radio_info_t;
 
 /*#######################################################################
+#                       STA MLD INFO                                    #
+########################################################################*/
+typedef struct map_sta_mld_info_s {
+    mac_addr                  mac;
+    mac_addr_str              mac_str;
+
+    int                       dm_idx;
+    bool                      dm_removed;
+    bool                      marked;
+
+    list_head_t               list;
+    list_head_t               hlist;
+    list_head_t               aff_sta_list; /* map_sta_info_t */
+    size_t                    aff_sta_nr;
+
+    struct map_ap_mld_info_s *ap_mld;
+
+    map_mld_modes_t           supported_mld_modes;
+    map_mld_modes_t           enabled_mld_modes;
+
+    uint64_t                  assoc_ts;
+    uint16_t                  assoc_frame_len;
+    uint8_t                  *assoc_frame;
+
+    map_sta_traffic_stats_t   traffic_stats;
+    map_wifi6_sta_tid_info_t  wifi6_sta_tid_info;
+} map_sta_mld_info_t;
+
+/*#######################################################################
+#                       AP MLD INFO                                     #
+########################################################################*/
+typedef struct map_ap_mld_info_s {
+    mac_addr                  mac;
+    mac_addr_str              mac_str;
+
+    struct map_ale_info_s    *ale;
+
+    list_head_t               list;
+    list_head_t               aff_ap_list;                     /* map_bss_info_t */
+    size_t                    aff_ap_nr;
+
+    list_head_t               sta_mld_list;                    /* map_mld_sta_info_t */
+    list_head_t               sta_mld_hlist[MAP_MAX_MAC_HASH]; /* map_mld_sta_info_t */
+    size_t                    sta_mld_nr;
+
+    int                       dm_idx;
+    bool                      dm_removed;
+
+    uint8_t                   ssid_len;
+    char                      ssid[MAX_SSID_LEN];
+
+    map_mld_modes_t           enabled_mld_modes;
+} map_ap_mld_info_t;
+
+/*#######################################################################
+#                       BSTA MLD INFO                                   #
+########################################################################*/
+/* Notes:
+   - there can only be one per ALE
+   - this struct is less important at the moment -> just storing mac addresses
+*/
+typedef struct map_bsta_mld_info_s {
+    bool                   valid;
+
+    mac_addr               mac;
+    mac_addr_str           mac_str;
+
+    struct map_ale_info_s *ale;
+
+    mac_addr               ap_mld_mac;  /* ap_mld to which this bsta mld is connected. TODO: link? */
+
+    mac_addr               aff_bsta_macs[MAX_MLD_AFF_APSTA];
+    size_t                 aff_bsta_mac_nr;
+
+    map_mld_modes_t        enabled_mld_modes;
+} map_bsta_mld_info_t;
+
+/*#######################################################################
 #                       ALE INFO TYPES                                  #
 ########################################################################*/
 typedef enum {
-    MAP_PROFILE_1 = 1, /* Multiap Profile-1 */
-    MAP_PROFILE_2 = 2  /* Multiap Profile-2 */
+    MAP_PROFILE_1  = 1, /* Multiap Profile-1  */
+    MAP_PROFILE_2  = 2, /* Multiap Profile-2  */
+    MAP_PROFILE_3  = 3, /* Multiap Profile-3  */
+    MAP_PROFILE_4P = 4  /* Multiap Profile-4+ */
 } map_profile_t;
 
 typedef struct map_tx_metric_params_s {
@@ -814,8 +995,15 @@ typedef struct map_dpp_message_s {
     uint8_t *frame;
 } map_dpp_message_t;
 
+typedef struct map_bss_configuration_request_s {
+    uint16_t obj_len;
+    uint8_t *obj;
+} map_bss_configuration_request_t;
+
 typedef struct map_dpp_info_s {
+    bool onboarding_status;
     bool cce_advertised;
+    map_bss_configuration_request_t bss_config_req;
     map_dpp_chirp_t chirp;
     map_dpp_encap_msg_t encap_msg;
     map_dpp_encap_eapol_t encap_eapol;
@@ -844,6 +1032,11 @@ typedef struct map_ale_info_s {
     list_head_t                 radio_list;
     uint8_t                     radios_nr;
 
+    list_head_t                 ap_mld_list;
+    uint8_t                     ap_mld_nr;
+
+    map_bsta_mld_info_t         bsta_mld;
+
     mac_addr                    src_mac;                        /* Source mac used by ALE (mostly same as al_mac) */
     bool                        removing;
     int                         dm_idx;
@@ -855,6 +1048,7 @@ typedef struct map_ale_info_s {
     uint16_t                    state;
     uint8_t                     ale_bcu_status;
     map_onboard_status_t        ale_onboard_status;             /* onboarding status: holds flags to define different onboarding  state */
+    bool                        ale_onboarded_first_time;       /* Indicator of being onboarded first time. Once it is set, never changes */
     uint64_t                    ale_onboarding_time;            /* Timestamp in seconds of ALE onboarding */
     uint64_t                    keep_alive_time;                /* Timestamp in seconds of last received topology response */
     uint8_t                     first_chan_sel_req_done;
@@ -884,9 +1078,15 @@ typedef struct map_ale_info_s {
     map_cac_status_report_t     cac_status_report;
     map_emex_t                  emex;
     map_dpp_info_t              dpp_info;
+    map_1905_sec_key_info_t     key_info;
     map_device_inventory_t      inventory;
     bool                        inventory_exists;
     map_eth_device_list_t       eth_device_list;
+
+    mac_addr                   *btm_steering_disallow_macs;
+    size_t                      btm_steering_disallow_macs_nr;
+    mac_addr                   *local_steering_disallow_macs;
+    size_t                      local_steering_disallow_macs_nr;
 
     map_sta_info_t             *last_sta_steered;
 } map_ale_info_t;
@@ -990,10 +1190,13 @@ int map_dm_remove_bss(map_bss_info_t *bss);
 /** Create new STA if not exist. */
 map_sta_info_t *map_dm_create_sta(map_bss_info_t *bss, mac_addr mac);
 
+/** Create new affiliated STA if not exist. */
+map_sta_info_t *map_dm_create_aff_sta(map_bss_info_t *bss, map_sta_mld_info_t *sta_mld, mac_addr mac);
+
 /** Get STA from bss */
 map_sta_info_t* map_dm_get_sta(map_bss_info_t *bss, mac_addr mac);
 
-/** Get STA from  ale */
+/** Get STA from ale */
 map_sta_info_t* map_dm_get_sta_from_ale(map_ale_info_t *ale, mac_addr mac);
 
 /** Get sta global */
@@ -1001,6 +1204,39 @@ map_sta_info_t *map_dm_get_sta_gbl(mac_addr mac);
 
 /** Remove sta. */
 int map_dm_remove_sta(map_sta_info_t *sta);
+
+/** Create AP MLD */
+map_ap_mld_info_t* map_dm_create_ap_mld(map_ale_info_t *ale, mac_addr mld_mac);
+
+/** Get AP MLD from ale */
+map_ap_mld_info_t* map_dm_get_ap_mld(map_ale_info_t* ale, mac_addr mld_mac);
+
+/* Remove AP MLD */
+int map_dm_remove_ap_mld(map_ap_mld_info_t *ap_mld);
+
+/* Create STA MLD */
+map_sta_mld_info_t *map_dm_create_sta_mld(map_ap_mld_info_t *ap_mld, mac_addr mac);
+
+/* Get STA MLD from AP MLD */
+map_sta_mld_info_t *map_dm_get_sta_mld(map_ap_mld_info_t *ap_mld, mac_addr mac);
+
+/* Get STA MLD from ALE */
+map_sta_mld_info_t *map_dm_get_sta_mld_from_ale(map_ale_info_t *ale, mac_addr mac);
+
+/* Get STA MLD global */
+map_sta_mld_info_t *map_dm_get_sta_mld_gbl(mac_addr mac);
+
+/* Get AFF STA from STA MLD */
+map_sta_info_t *map_dm_get_aff_sta(map_sta_mld_info_t *sta_mld, mac_addr mac);
+
+/* Remove STA MLD */
+int map_dm_remove_sta_mld(map_sta_mld_info_t *sta_mld);
+
+/* Clean-up stored key information of ale */
+void map_dm_remove_ale_key_info(map_ale_info_t *ale);
+
+/* Get secure 1905 key information of ale */
+int map_dm_get_ale_key_info(mac_addr al_mac, map_1905_sec_key_info_t *key_info);
 
 /** Link sta to other bss
  *
@@ -1021,6 +1257,8 @@ map_failconn_data_t *map_dm_create_failconn(mac_addr sta_mac, mac_addr bssid, ui
 #                       VARIOUS                                         #
 ########################################################################*/
 /** Remove cac methods info if exist. */
+void map_dm_free_op_restriction_list(map_radio_info_t *radio);
+
 void map_dm_free_cac_methods(map_cac_method_t *cac_method, uint8_t count);
 
 void map_dm_free_non_1905_neighbor_list(map_ale_info_t *ale);
@@ -1035,7 +1273,15 @@ void map_dm_get_radio_timer_id(timer_id_t id, map_radio_info_t *radio, const cha
 
 void map_dm_get_sta_timer_id(timer_id_t id, map_sta_info_t *sta, const char *type);
 
+void map_dm_get_sta_mld_timer_id(timer_id_t id, map_sta_mld_info_t *sta, const char *type);
+
 bool map_dm_is_inactive_sta(mac_addr mac);
+
+void map_dm_clear_dpp_hash_list(void);
+
+int map_dm_add_dpp_hash(const uint8_t *hash);
+
+bool map_dm_get_dpp_hash(const uint8_t *hash);
 
 #define map_dm_is_bh_sta(sta) (sta->sta_caps.backhaul_sta)
 #define map_dm_is_mbo_sta(sta) (sta->sta_caps.mbo_support)
@@ -1045,9 +1291,13 @@ bool map_dm_is_inactive_sta(mac_addr mac);
 #define map_dm_get_sta_assoc_ts_delta2(ts, assoc_ts) (ts                      + MAP_ASSOC_TS_DELTA - assoc_ts)
 
 
-#define map_dm_mark_sta(sta)      do { sta->marked = true; } while(0)
-#define map_dm_unmark_sta(sta)    do { sta->marked = false; } while(0)
-#define map_dm_is_marked_sta(sta) (sta->marked)
+#define map_dm_mark_sta(sta)              do { sta->marked = true; } while(0)
+#define map_dm_unmark_sta(sta)            do { sta->marked = false; } while(0)
+#define map_dm_is_marked_sta(sta)         (sta->marked)
+
+#define map_dm_mark_sta_mld(sta_mld)      do { sta_mld->marked = true; } while(0)
+#define map_dm_unmark_sta_mld(sta_mld)    do { sta_mld->marked = false; } while(0)
+#define map_dm_is_marked_sta_mld(sta_mld) (sta_mld->marked)
 
 /* Mark all sta of an ale */
 void map_dm_mark_stas(map_ale_info_t *ale);
@@ -1055,42 +1305,67 @@ void map_dm_mark_stas(map_ale_info_t *ale);
 /* Remove sta that are marked and where associated longer than "min_assoc_time */
 void map_dm_remove_marked_stas(map_ale_info_t *ale, unsigned int min_assoc_time);
 
+/* Mark all sta mld of an ale */
+void map_dm_mark_sta_mlds(map_ale_info_t *ale);
+
+/* Remove sta mld that are marked */
+void map_dm_remove_marked_sta_mlds(map_ale_info_t *ale);
+
+/* Check if this als has MLD devices */
+#define map_dm_ale_has_mld(ale) (ale->ap_mld_nr > 0)
+
 /*#######################################################################
 #                       ITERATORS                                       #
 ########################################################################*/
 extern map_ale_info_t* get_root_ale_node();
 
 /* ALEs */
-#define map_dm_foreach_ale(ale)                     list_for_each_entry(ale, map_dm_get(), list)
-#define map_dm_foreach_ale_safe(ale, next)          list_for_each_entry_safe(ale, next, map_dm_get(), list)
+#define map_dm_foreach_ale(ale)                            list_for_each_entry(ale, map_dm_get(), list)
+#define map_dm_foreach_ale_safe(ale, next)                 list_for_each_entry_safe(ale, next, map_dm_get(), list)
 
 /* Agent ALEs (so skip controller) */
-#define map_dm_foreach_agent_ale(ale)               list_for_each_entry(ale, map_dm_get(), list) if (ale != get_root_ale_node())
-#define map_dm_foreach_agent_ale_safe(ale, next)    list_for_each_entry_safe(ale, next, map_dm_get(), list) if (ale != get_root_ale_node())
+#define map_dm_foreach_agent_ale(ale)                      list_for_each_entry(ale, map_dm_get(), list) if (ale != get_root_ale_node())
+#define map_dm_foreach_agent_ale_safe(ale, next)           list_for_each_entry_safe(ale, next, map_dm_get(), list) if (ale != get_root_ale_node())
 
 /* Radios */
-#define map_dm_foreach_radio(ale, radio)            list_for_each_entry(radio, &ale->radio_list, list)
-#define map_dm_foreach_radio_safe(ale, radio, next) list_for_each_entry_safe(radio, next, &ale->radio_list, list)
+#define map_dm_foreach_radio(ale, radio)                   list_for_each_entry(radio, &ale->radio_list, list)
+#define map_dm_foreach_radio_safe(ale, radio, next)        list_for_each_entry_safe(radio, next, &ale->radio_list, list)
 
 /* Bsss */
-#define map_dm_foreach_bss(radio, bss)              list_for_each_entry(bss, &radio->bss_list, list)
-#define map_dm_foreach_bss_safe(radio, bss, next)   list_for_each_entry_safe(bss, next, &radio->bss_list, list)
+#define map_dm_foreach_bss(radio, bss)                     list_for_each_entry(bss, &radio->bss_list, list)
+#define map_dm_foreach_bss_safe(radio, bss, next)          list_for_each_entry_safe(bss, next, &radio->bss_list, list)
 
 /* Stas */
-#define map_dm_foreach_sta(bss, sta)                list_for_each_entry(sta, &bss->sta_list, list)
-#define map_dm_foreach_sta_safe(bss, sta, next)     list_for_each_entry_safe(sta, next, &bss->sta_list, list)
+#define map_dm_foreach_sta(bss, sta)                       list_for_each_entry(sta, &bss->sta_list, list)
+#define map_dm_foreach_sta_safe(bss, sta, next)            list_for_each_entry_safe(sta, next, &bss->sta_list, list)
+
+/* AP MLD's */
+#define map_dm_foreach_ap_mld(ale, ap_mld)                 list_for_each_entry(ap_mld, &ale->ap_mld_list, list)
+#define map_dm_foreach_ap_mld_safe(ale, ap_mld, next)      list_for_each_entry_safe(ap_mld, next, &ale->ap_mld_list, list)
+
+/* STA MLD's */
+#define map_dm_foreach_sta_mld(ap_mld, sta_mld)            list_for_each_entry(sta_mld, &ap_mld->sta_mld_list, list)
+#define map_dm_foreach_sta_mld_safe(ap_mld, sta_mld, next) list_for_each_entry_safe(sta_mld, next, &ap_mld->sta_mld_list, list)
+
+/* Affiliated AP's from AP MLD */
+#define map_dm_foreach_aff_ap(ap_mld, bss)                 list_for_each_entry(bss, &ap_mld->aff_ap_list, aff_ap_list)
+#define map_dm_foreach_aff_ap_safe(ap_mld, bss, next)      list_for_each_entry_safe(bss, next, &ap_mld->aff_ap_list, aff_ap_list)
+
+/* Affiliated STA's from STA MLD */
+#define map_dm_foreach_aff_sta(sta_mld, sta)               list_for_each_entry(sta, &sta_mld->aff_sta_list, aff_sta_list)
+#define map_dm_foreach_aff_sta_safe(sta_mld, sta, next)    list_for_each_entry_safe(sta, next, &sta_mld->aff_sta_list, aff_sta_list)
 
 /* Assoc Events */
-#define map_dm_foreach_assoc(assoc)                 list_for_each_entry(assoc, &map_dm_get_events()->assoc_list, list)
-#define map_dm_foreach_assoc_safe(assoc, next)      list_for_each_entry_safe(assoc, next, &map_dm_get_events()->assoc_list, list)
+#define map_dm_foreach_assoc(assoc)                        list_for_each_entry(assoc, &map_dm_get_events()->assoc_list, list)
+#define map_dm_foreach_assoc_safe(assoc, next)             list_for_each_entry_safe(assoc, next, &map_dm_get_events()->assoc_list, list)
 
 /* Disassoc Events */
-#define map_dm_foreach_disassoc(disasoc)            list_for_each_entry(disasoc, &map_dm_get_events()->disassoc_list, list)
-#define map_dm_foreach_disassoc_safe(disasoc, next) list_for_each_entry_safe(disasoc, next, &map_dm_get_events()->disassoc_list, list)
+#define map_dm_foreach_disassoc(disasoc)                   list_for_each_entry(disasoc, &map_dm_get_events()->disassoc_list, list)
+#define map_dm_foreach_disassoc_safe(disasoc, next)        list_for_each_entry_safe(disasoc, next, &map_dm_get_events()->disassoc_list, list)
 
 /* Failconn Events */
-#define map_dm_foreach_failconn(failcon)            list_for_each_entry(failconn, &map_dm_get_events()->failconn_list, list)
-#define map_dm_foreach_failconn_safe(failcon, next) list_for_each_entry_safe(failcon, next, &map_dm_get_events()->failconn_list, list)
+#define map_dm_foreach_failconn(failcon)                   list_for_each_entry(failconn, &map_dm_get_events()->failconn_list, list)
+#define map_dm_foreach_failconn_safe(failcon, next)        list_for_each_entry_safe(failcon, next, &map_dm_get_events()->failconn_list, list)
 
 /*#######################################################################
 #                       DM UPDATE CALLBACKS AND FUNCTIONS               #
@@ -1117,9 +1392,18 @@ typedef struct {
     void (*bss_update_cb)(map_bss_info_t *bss);
     void (*bss_remove_cb)(map_bss_info_t *bss);
 
+    void (*ap_mld_create_cb)(map_ap_mld_info_t *ap_mld);
+    void (*ap_mld_update_cb)(map_ap_mld_info_t *ap_mld);
+    void (*ap_mld_remove_cb)(map_ap_mld_info_t *ap_mld);
+
+    void (*bsta_mld_update_cb)(map_bsta_mld_info_t *bsta_mld);
+
     void (*sta_create_cb)(map_sta_info_t *sta);
     void (*sta_update_cb)(map_sta_info_t *sta);
     void (*sta_remove_cb)(map_sta_info_t *sta);
+
+    void (*sta_mld_create_cb)(map_sta_mld_info_t *sta_mld);
+    void (*sta_mld_remove_cb)(map_sta_mld_info_t *sta_mld);
 
     void (*assoc_create_cb)(map_assoc_data_t *assoc);
     void (*assoc_remove_cb)(map_assoc_data_t *assoc);
@@ -1161,11 +1445,15 @@ void map_dm_radio_set_capabilities(map_radio_info_t *radio);
 /* Update scan results */
 void map_dm_radio_scan_result(map_radio_info_t *radio);
 
+/* Update channel configurable */
+void map_dm_radio_set_channel_configurable(map_radio_info_t *radio, bool channel_configurable);
+
 /* Update channel related parameters */
-void map_dm_radio_set_channel(map_radio_info_t *radio, uint8_t op_class, uint8_t channel, uint16_t bw, uint8_t tx_pwr);
+void map_dm_radio_set_channel(map_radio_info_t *radio, uint8_t op_class, uint8_t channel, uint8_t highest_bw_channel, uint16_t bw, uint8_t tx_pwr);
 
 /* Update channel selection data */
-void map_dm_radio_set_chan_sel(map_radio_info_t *radio, bool acs_enable, map_channel_set_t *acs_channels, uint8_t channel, uint16_t bw);
+void map_dm_radio_set_chan_sel(map_radio_info_t *radio, bool cloud_mgmt_enable, bool acs_enable,
+                               map_channel_set_t *acs_channels, uint8_t channel, uint16_t bw);
 
 /* Update ssid and bss type */
 void map_dm_bss_set_ssid(map_bss_info_t *bss, size_t ssid_len, uint8_t *ssid, int bss_type);
@@ -1179,9 +1467,49 @@ void map_dm_sta_steering_btm_report(map_sta_info_t *sta, uint8_t status_code, ma
 
 void map_dm_sta_steering_completed(map_ale_info_t *ale);
 
+/* Update bss ap_mld link */
+void map_dm_bss_set_ap_mld(map_bss_info_t *bss, map_ap_mld_info_t *ap_mld);
+
+/* Update MLD */
+typedef struct {
+    map_bss_info_t *bss;
+    uint8_t         link_id;
+} map_aff_ap_cfg_t;
+
+void map_dm_ap_mld_set(map_ap_mld_info_t *ap_mld, size_t ssid_len, uint8_t *ssid,
+                       bool str, bool nstr, bool emlsr, bool emlmr,
+                       map_aff_ap_cfg_t *aff_aps, size_t aff_ap_nr);
+
+void map_dm_bsta_mld_set(map_bsta_mld_info_t *bsta_mld, bool valid,
+                         mac_addr bsta_mld_mac, mac_addr ap_mld_mac,
+                         bool str, bool nstr, bool emlsr, bool emlmr,
+                         mac_addr *aff_bsta_macs, size_t aff_bsta_mac_nr);
+
 /*#######################################################################
 #                       DM NBAPI CALLBACKS AND FUNCTIONS                #
 ########################################################################*/
+#define MAX_OP_CLASS                48
+
+/* Steer WiFi backhaul parameters */
+typedef struct map_nb_steer_wifi_bh_param_s {
+    mac_addr        bsta_mac;
+    mac_addr        target_bssid;
+    uint32_t        timeout;
+    uint8_t         op_class;
+    uint8_t         channel;
+} map_nb_steer_wifi_bh_param_t;
+
+typedef int (*map_nb_steer_wifi_bh_cb)(map_ale_info_t *ale, map_nb_steer_wifi_bh_param_t *payload);
+
+typedef int (*map_nb_set_steering_policy_cb)(map_ale_info_t *ale);
+
+/* Reset reboot parameters */
+typedef struct map_nb_reset_reboot_param_s {
+    uint8_t         is_reset;
+    uint8_t         factory_reset;
+} map_nb_reset_reboot_param_t;
+
+typedef int (*map_nb_reset_reboot_cb)(map_ale_info_t *ale, map_nb_reset_reboot_param_t *payload);
 
 /* Channel scan parameters */
 typedef struct map_nb_ch_scan_param_s {
@@ -1194,7 +1522,14 @@ typedef struct map_nb_ch_scan_param_s {
     map_op_class_t  op_classes[MAX_OP_CLASS];
 } map_nb_ch_scan_param_t;
 
-typedef void (*map_nb_ch_scan_cb)(map_ale_info_t *ale, map_nb_ch_scan_param_t *payload);
+typedef int (*map_nb_ch_scan_cb)(map_ale_info_t *ale, map_nb_ch_scan_param_t *payload);
+
+/* Channel selection parameters */
+typedef struct map_nb_ch_selection_param_s {
+    mac_addr        radio_id;
+} map_nb_ch_selection_param_t;
+
+typedef int (*map_nb_ch_selection_cb)(map_ale_info_t *ale, map_nb_ch_selection_param_t *payload);
 
 /* Query beacon metrics parameters */
 typedef struct map_nb_bmquery_param_s {
@@ -1210,7 +1545,7 @@ typedef struct map_nb_bmquery_param_s {
     uint8_t         element_ids[255];
 } map_nb_bmquery_param_t;
 
-typedef void (*map_nb_sta_bmquery_cb)(map_ale_info_t *ale, map_nb_bmquery_param_t *payload);
+typedef int (*map_nb_sta_bmquery_cb)(map_ale_info_t *ale, map_nb_bmquery_param_t *payload);
 
 /* ClientSteer() parameters */
 
@@ -1275,18 +1610,23 @@ typedef struct map_nb_assoc_control_params_s {
     int       period;
 } map_nb_assoc_control_params_t;
 
-typedef void (*map_nb_sta_client_steer_cb)(map_ale_info_t *ale, map_nb_client_steer_params_t *payload);
+typedef int (*map_nb_sta_client_steer_cb)(map_ale_info_t *ale, map_nb_client_steer_params_t *payload);
 
-typedef void (*map_nb_mapsta_disassociate_cb)(map_ale_info_t *ale, map_nb_sta_disassociate_params_t *payload);
+typedef int (*map_nb_mapsta_disassociate_cb)(map_ale_info_t *ale, map_nb_sta_disassociate_params_t *payload);
 
 typedef int (*map_nb_unassoc_sta_link_metrics_query_cb)(map_ale_info_t *ale, map_nb_unassoc_sta_link_metrics_query_params_t *payload);
 
 typedef int (*map_nb_unassoc_sta_link_metrics_response_cb)(map_ale_info_t *ale, map_nb_unassoc_sta_link_metrics_response_t *payload);
 
 typedef void (*map_nb_assoc_control_cb)(map_ale_info_t *ale, map_nb_assoc_control_params_t *payload);
+
 /* Northbound API callbacks */
 typedef struct {
+    map_nb_steer_wifi_bh_cb                     steer_wifi_backhaul;
+    map_nb_set_steering_policy_cb               set_steering_policy;
+    map_nb_reset_reboot_cb                      reset_reboot;
     map_nb_ch_scan_cb                           channel_scan;
+    map_nb_ch_selection_cb                      channel_selection;
     map_nb_sta_bmquery_cb                       beacon_metrics_query;
     map_nb_sta_client_steer_cb                  client_steer;
     map_nb_mapsta_disassociate_cb               mapsta_disassociate;

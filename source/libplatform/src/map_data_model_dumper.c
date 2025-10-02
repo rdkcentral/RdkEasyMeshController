@@ -86,16 +86,15 @@ static void print_sta_link_metrics(map_sta_info_t *sta, size_t print_last_n, map
 
 static void print_sta_metrics( map_sta_info_t *sta, map_printf_cb_t print_cb)
 {
-    if (sta->traffic_stats) {
-        print_cb("     |    - TRAFFIC STATS :\n");
-        print_cb("     |      - Tx bytes      : %"PRIu64"\n", sta->traffic_stats->txbytes);
-        print_cb("     |      - Rx bytes      : %"PRIu64"\n", sta->traffic_stats->rxbytes);
-        print_cb("     |      - Tx pkts       : %d\n",        sta->traffic_stats->txpkts);
-        print_cb("     |      - Rx pkts       : %d\n",        sta->traffic_stats->rxpkts);
-        print_cb("     |      - Tx pkt errors : %d\n",        sta->traffic_stats->txpkterrors);
-        print_cb("     |      - Rx pkt errors : %d\n",        sta->traffic_stats->rxpkterrors);
-        print_cb("     |      - ReTx count    : %d\n",        sta->traffic_stats->retransmission_cnt);
-    }
+    print_cb("     |    - TRAFFIC STATS :\n");
+    print_cb("     |      - Tx bytes      : %"PRIu64"\n", sta->traffic_stats.tx_bytes);
+    print_cb("     |      - Rx bytes      : %"PRIu64"\n", sta->traffic_stats.rx_bytes);
+    print_cb("     |      - Tx pkts       : %d\n",        sta->traffic_stats.tx_packets);
+    print_cb("     |      - Rx pkts       : %d\n",        sta->traffic_stats.rx_packets);
+    print_cb("     |      - Tx pkt errors : %d\n",        sta->traffic_stats.tx_packet_errors);
+    print_cb("     |      - Rx pkt errors : %d\n",        sta->traffic_stats.rx_packet_errors);
+    print_cb("     |      - ReTx count    : %d\n",        sta->traffic_stats.retransmissions);
+
     print_sta_link_metrics(sta, 1, print_cb);
 }
 
@@ -148,12 +147,12 @@ static void print_ap_metrics(map_bss_info_t *bss, map_printf_cb_t print_cb)
         }
     }
     print_cb("       -----------------------------------------------\n");
-    print_cb("    -unicast bytes tx   : %"PRIu64"\n", bss->extended_metrics.ucast_bytes_tx);
-    print_cb("    -unicast bytes rx   : %"PRIu64"\n", bss->extended_metrics.ucast_bytes_rx);
-    print_cb("    -multicast bytes tx : %"PRIu64"\n", bss->extended_metrics.mcast_bytes_tx);
-    print_cb("    -multicast bytes rx : %"PRIu64"\n", bss->extended_metrics.mcast_bytes_rx);
-    print_cb("    -broadcast bytes tx : %"PRIu64"\n", bss->extended_metrics.bcast_bytes_tx);
-    print_cb("    -broadcast bytes rx : %"PRIu64"\n", bss->extended_metrics.bcast_bytes_rx);
+    print_cb("    -unicast bytes tx   : %"PRIu64"\n", bss->extended_metrics.tx_ucast_bytes);
+    print_cb("    -unicast bytes rx   : %"PRIu64"\n", bss->extended_metrics.rx_ucast_bytes);
+    print_cb("    -multicast bytes tx : %"PRIu64"\n", bss->extended_metrics.tx_mcast_bytes);
+    print_cb("    -multicast bytes rx : %"PRIu64"\n", bss->extended_metrics.rx_mcast_bytes);
+    print_cb("    -broadcast bytes tx : %"PRIu64"\n", bss->extended_metrics.tx_bcast_bytes);
+    print_cb("    -broadcast bytes rx : %"PRIu64"\n", bss->extended_metrics.rx_bcast_bytes);
 }
 
 static void print_bss_in_radio(map_radio_info_t *radio, map_printf_cb_t print_cb)
@@ -185,10 +184,23 @@ static void print_bss_in_radio(map_radio_info_t *radio, map_printf_cb_t print_cb
 
 static void print_op_class_channel_list(map_op_class_t *op_class, map_printf_cb_t print_cb)
 {
-    map_channel_set_t *s = &op_class->channels;
-    char buf[MAP_CS_BUF_LEN];
+    map_channel_set_t  ch_set;
+    bool               is_center_channel;
+    char               buf[MAP_CS_BUF_LEN];
 
-    print_cb("     -Channels : %s\n", map_cs_nr(s) > 0 ? map_cs_to_string(s, ',', buf, sizeof(buf)) : "all");
+    if (map_get_is_center_channel_from_op_class(op_class->op_class, &is_center_channel)) {
+        return;
+    }
+
+    if ((is_center_channel && map_get_center_channel_set_from_op_class(op_class->op_class, &ch_set)) ||
+        (!is_center_channel && map_get_channel_set_from_op_class(op_class->op_class, &ch_set))) {
+        return;
+    }
+
+    /* Unset non operable channels */
+    map_cs_and_not(&ch_set, &op_class->channels);
+
+    print_cb("     -Channels : %s\n", map_cs_to_string(&ch_set, ',', buf, sizeof(buf)));
 }
 
 static void print_curr_op_class_list(map_radio_info_t *radio, map_printf_cb_t print_cb)
@@ -263,8 +275,8 @@ static void print_op_restriction_in_radio(map_radio_info_t *radio, map_printf_cb
         print_cb("     -OP Class : %d\n", op_class->op_class);
 
         buf[0] = 0;
-        for (j = 0; j < op_class->channel_count && pos < MAP_CS_BUF_LEN; j++) {
-            pos += snprintf(buf + pos, MAP_CS_BUF_LEN - pos, "%d, ", op_class->channel_list[j].channel);
+        for (j = 0; j < op_class->channels_nr && pos < MAP_CS_BUF_LEN; j++) {
+            pos += snprintf(buf + pos, MAP_CS_BUF_LEN - pos, "%d, ", op_class->channels[j].channel);
         }
         print_cb("     -Channels : %s\n", buf);
     }
@@ -351,12 +363,13 @@ static void print_radios_in_agent(map_ale_info_t *ale, map_printf_cb_t print_cb)
 
         print_cb("  Radio Type     : %s\n", map_get_freq_band_str(radio->supported_freq));
 
-        print_cb("  Radio State    : %sCONFIGURED\n", is_radio_configured(radio->state) ? "" : "UN");
+        print_cb("  Radio State    : %sCONFIGURED[0x%04x]\n", is_radio_configured(radio->state) ? "" : "UN", radio->state);
 
         print_cb("  Radio OP Class : %d\n",radio->current_op_class);
         print_cb("  Radio OP Chan  : %d\n",radio->current_op_channel);
         print_cb("  Radio BW       : %d\n",radio->current_bw);
         print_cb("  Radio Tx Pwr   : %d\n",radio->current_tx_pwr);
+        print_cb("  Radio Auth Modes      : 0x%04x\n",radio->auth_modes_flag);
 
         print_curr_op_class_list(radio, print_cb);
         print_cap_op_class_list(radio, print_cb);
@@ -462,6 +475,107 @@ static void print_emex_eth_interfaces(map_ale_info_t *ale, map_printf_cb_t print
     print_cb("----------------------------------------------\n");
 }
 
+static char *mld_modes_to_buf(char *buf, size_t buf_len, map_mld_modes_t *m)
+{
+    int pos = snprintf(buf, buf_len, "%s%s%s%s",
+                       m->str   ? "STR "   : "",
+                       m->nstr  ? "NSTR "  : "",
+                       m->emlsr ? "EMLSR " : "",
+                       m->emlmr ? "EMLMR " : "");
+
+    if (pos > 0) {
+        buf[pos] = 0;
+    }
+
+    return buf;
+}
+
+static void print_mld(map_ale_info_t *ale, map_printf_cb_t print_cb, const char *indent, bool print_sep)
+{
+    map_ap_mld_info_t      *ap_mld;
+    map_bsta_mld_info_t    *bsta_mld = &ale->bsta_mld;
+    map_sta_mld_info_t     *sta_mld;
+    map_sta_info_t         *sta;
+    map_radio_info_t       *radio;
+    map_radio_wifi7_caps_t *wifi7_caps;
+    map_bss_info_t         *bss;
+    size_t                  count1 = 0;
+    map_mld_modes_t         supp_ap_mld_modes = {0};
+    map_mld_modes_t         supp_bsta_mld_modes = {0};
+    char                    mld_modes_buf[64];
+
+    /* Or all ap and bsta radio mld modes (normally they are all the same) */
+    map_dm_foreach_radio(ale, radio) {
+        if ((wifi7_caps = radio->wifi7_caps)) {
+            supp_ap_mld_modes.str     |= wifi7_caps->ap_mld_modes.str;
+            supp_ap_mld_modes.nstr    |= wifi7_caps->ap_mld_modes.nstr;
+            supp_ap_mld_modes.emlsr   |= wifi7_caps->ap_mld_modes.emlsr;
+            supp_ap_mld_modes.emlmr   |= wifi7_caps->ap_mld_modes.emlmr;
+
+            supp_bsta_mld_modes.str   |= wifi7_caps->bsta_mld_modes.str;
+            supp_bsta_mld_modes.nstr  |= wifi7_caps->bsta_mld_modes.nstr;
+            supp_bsta_mld_modes.emlsr |= wifi7_caps->bsta_mld_modes.emlsr;
+            supp_bsta_mld_modes.emlmr |= wifi7_caps->bsta_mld_modes.emlmr;
+        }
+    }
+
+    if (ale->ap_mld_nr > 0) {
+        print_cb("%sAP MLDs:\n", indent);
+
+        map_dm_foreach_ap_mld(ale, ap_mld) {
+            size_t count2 = 0;
+
+            print_cb("%s  MLD[%zu][%s]\n", indent, count1++, ap_mld->mac_str);
+            print_cb("%s    SSID      : %s\n", indent, ap_mld->ssid);
+            print_cb("%s    Supp modes: %s\n", indent, mld_modes_to_buf(mld_modes_buf, sizeof(mld_modes_buf), &supp_ap_mld_modes));
+            print_cb("%s    Enab modes: %s\n", indent, mld_modes_to_buf(mld_modes_buf, sizeof(mld_modes_buf), &ap_mld->enabled_mld_modes));
+            print_cb("%s    Aff APs   :\n", indent);
+            map_dm_foreach_aff_ap(ap_mld, bss) {
+                print_cb("%s      AP[%zu][%s]\n", indent, count2++, bss->bssid_str);
+                print_cb("%s        LinkID: %d\n", indent, bss->link_id);
+                print_cb("%s        Band  : %s\n", indent, map_get_freq_band_str(bss->radio->supported_freq));
+            }
+
+            if (ap_mld->sta_mld_nr > 0) {
+                size_t count3 = 0;
+
+                map_dm_foreach_sta_mld(ap_mld, sta_mld) {
+                    size_t count4 = 0;
+
+                    print_cb("%s    STA MLDs:\n", indent);
+                    print_cb("%s      STA[%zu][%s]\n", indent, count3++, sta_mld->mac_str);
+                    print_cb("%s      Supp modes: %s\n", indent, mld_modes_to_buf(mld_modes_buf, sizeof(mld_modes_buf), &sta_mld->supported_mld_modes));
+                    print_cb("%s      Enab modes: %s\n", indent, mld_modes_to_buf(mld_modes_buf, sizeof(mld_modes_buf), &sta_mld->enabled_mld_modes));
+                    print_cb("%s      Aff STAs  :\n", indent);
+                    map_dm_foreach_aff_sta(sta_mld, sta) {
+                        print_cb("%s        STA[%zu][%s]\n", indent, count4++, sta->mac_str);
+                        print_cb("%s          Band  : %s\n", indent, map_get_freq_band_str(sta->bss->radio->supported_freq));
+                    }
+                }
+            }
+
+            print_cb("\n");
+        }
+    }
+
+    if (bsta_mld->valid) {
+        size_t i;
+
+        print_cb("%sbSTA MLD[%s]:\n", indent, bsta_mld->mac_str);
+        print_cb("%s  AP MLD MAC: %s\n", indent, mac_string(bsta_mld->ap_mld_mac));
+        print_cb("%s  Supp modes: %s\n", indent, mld_modes_to_buf(mld_modes_buf, sizeof(mld_modes_buf), &supp_bsta_mld_modes));
+        print_cb("%s  Enab modes: %s\n", indent, mld_modes_to_buf(mld_modes_buf, sizeof(mld_modes_buf), &bsta_mld->enabled_mld_modes));
+        print_cb("%s  Aff bSTAs :\n", indent);
+        for (i = 0; i < bsta_mld->aff_bsta_mac_nr; i++) {
+            print_cb("%s    bSTA[%zu][%s]\n", indent, i, mac_string(bsta_mld->aff_bsta_macs[i]));
+        }
+    }
+
+    if (print_sep) {
+        print_cb("----------------------------------------------\n");
+    }
+}
+
 static void print_agent_info(map_ale_info_t *ale, map_printf_cb_t print_cb)
 {
     print_cb("***********************************************\n");
@@ -495,6 +609,8 @@ static void print_agent_info(map_ale_info_t *ale, map_printf_cb_t print_cb)
     print_eth_devices(ale, print_cb);
 
     print_emex_eth_interfaces(ale, print_cb);
+
+    print_mld(ale, print_cb, "", true);
 }
 
 static const char *convert_tunneled_type_to_string(uint8_t type)
@@ -590,5 +706,16 @@ void map_dm_dump_tunneled_messages(map_printf_cb_t print_cb, uint8_t *sta_mac, u
         break;
         default:
         break;
+    }
+}
+
+void map_dm_dump_mld(map_printf_cb_t print_cb)
+{
+    map_ale_info_t *ale;
+
+    map_dm_foreach_agent_ale(ale) {
+        print_cb("ALE[%s]\n", ale->al_mac_str);
+        print_mld(ale, print_cb, "  ", false);
+        print_cb("\n");
     }
 }

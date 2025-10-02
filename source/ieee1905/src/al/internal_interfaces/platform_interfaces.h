@@ -76,6 +76,8 @@
 
 #include "media_specific_blobs.h"  /* struct genericInterfaceType */
 
+#include "map_utils.h"
+
 /* Return a list of strings (each one representing an "interface name", such
 *  as "eth0", "eth1", etc...).
 *

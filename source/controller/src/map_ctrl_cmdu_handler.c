@@ -93,6 +93,17 @@ static void get_m1_attributes(map_ale_info_t *ale, uint8_t *m1, uint16_t m1_size
     map_dm_ale_set_device_info(ale, &d);
 }
 
+static void get_wsc_auth_modes(map_radio_info_t *radio, uint8_t *wsc, uint16_t wsc_len)
+{
+    uint16_t           wsc_attr_len     = 0;
+    uint8_t            *wsc_attr        = NULL;
+
+    /* Get regular supported auth modes */
+    if ((wsc_attr = map_get_wsc_attr(wsc, wsc_len, WSC_ATTR_AUTH_TYPE_FLAGS, &wsc_attr_len)) && wsc_attr_len == 2) {
+        _E2B(&wsc_attr, &radio->auth_modes_flag);
+    }
+}
+
 static void refresh_radio_data(map_ale_info_t *ale, map_radio_info_t *radio)
 {
     timer_id_t retry_id;
@@ -405,16 +416,21 @@ static int handle_1905_dev(i1905_cmdu_t *cmdu, bool topo_discovery)
 
 static int map_handle_topology_response_ale(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
-    i1905_device_information_tlv_t   *dev_info_tlv      = i1905_get_tlv_from_cmdu(TLV_TYPE_DEVICE_INFORMATION, cmdu); /* Mandatory */
-    map_ap_operational_bss_tlv_t     *op_bss_tlv        = i1905_get_tlv_from_cmdu(TLV_TYPE_AP_OPERATIONAL_BSS, cmdu); /* Optional  */
-    map_assoc_clients_tlv_t          *assoc_clients_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_ASSOCIATED_CLIENTS, cmdu); /* Optional  */
-    map_multiap_profile_tlv_t        *profile_tlv       = i1905_get_tlv_from_cmdu(TLV_TYPE_MULTIAP_PROFILE,    cmdu); /* Optional  */
-    i1905_neighbor_device_list_tlv_t            *neighbor_dev_tlv;
-    i1905_non_1905_neighbor_device_list_tlv_t   *non_1905_neighbor_dev_tlv;
+    i1905_device_information_tlv_t   *dev_info_tlv      = i1905_get_tlv_from_cmdu(TLV_TYPE_DEVICE_INFORMATION,             cmdu); /* Mandatory */
+    map_ap_operational_bss_tlv_t     *op_bss_tlv        = i1905_get_tlv_from_cmdu(TLV_TYPE_AP_OPERATIONAL_BSS,             cmdu); /* Optional  */
+    map_assoc_clients_tlv_t          *assoc_clients_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_ASSOCIATED_CLIENTS,             cmdu); /* Optional  */
+    map_multiap_profile_tlv_t        *profile_tlv       = i1905_get_tlv_from_cmdu(TLV_TYPE_MULTIAP_PROFILE,                cmdu); /* Optional  */
+    map_agent_ap_mld_conf_tlv_t      *ap_mld_conf_tlv   = i1905_get_tlv_from_cmdu(TLV_TYPE_AGENT_AP_MLD_CONFIGURATION,     cmdu); /* Optional  */
+    map_bsta_mld_conf_tlv_t          *bsta_mld_conf_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_BACKHAUL_STA_MLD_CONFIGURATION, cmdu); /* Optional  */
+    map_assoc_sta_mld_conf_tlv_t     *assoc_sta_mld_conf_tlv = NULL;
+    map_backhaul_sta_radio_cap_tlv_t *bhsta_radio_cap_tlv = NULL;
+    map_backhaul_sta_radio_cap_tlv_t *bhsta_radio_cap_tlvs[MAX_RADIO_PER_AGENT] = {NULL};
+    i1905_neighbor_device_list_tlv_t            *neighbor_dev_tlv = NULL;
+    i1905_non_1905_neighbor_device_list_tlv_t   *non_1905_neighbor_dev_tlv = NULL;
     i1905_neighbor_device_list_tlv_t            *neighbor_dev_tlvs[MAX_ALE_NEIGHBOR_COUNT] = {NULL};
     i1905_non_1905_neighbor_device_list_tlv_t   *non_1905_neighbor_dev_tlvs[MAX_ALE_NEIGHBOR_COUNT] = {NULL};
-    i1905_vendor_specific_tlv_t                 *vendor_tlv;
-    size_t                                       neighbor_dev_tlvs_nr = 0, non_1905_neighbor_dev_tlvs_nr = 0, tlv_idx;
+    i1905_vendor_specific_tlv_t                 *vendor_tlv = NULL;
+    size_t                                       neighbor_dev_tlvs_nr = 0, non_1905_neighbor_dev_tlvs_nr = 0, bhsta_radio_cap_tlvs_nr = 0, tlv_idx;
     bool                                         update_dm = false;
 
     if (!dev_info_tlv) {
@@ -432,6 +448,13 @@ static int map_handle_topology_response_ale(map_ale_info_t *ale, i1905_cmdu_t *c
     i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_NON_1905_NEIGHBOR_DEVICE_LIST, non_1905_neighbor_dev_tlv, cmdu, tlv_idx) {
         if (non_1905_neighbor_dev_tlvs_nr < MAX_ALE_NEIGHBOR_COUNT) {
             non_1905_neighbor_dev_tlvs[non_1905_neighbor_dev_tlvs_nr++] = non_1905_neighbor_dev_tlv;
+        }
+    }
+
+    /* Get all bhsta radio capability tlvs */
+    i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_BACKHAUL_STA_RADIO_CAPABILITIES, bhsta_radio_cap_tlv, cmdu, tlv_idx) {
+        if (bhsta_radio_cap_tlvs_nr < MAX_RADIO_PER_AGENT) {
+            bhsta_radio_cap_tlvs[bhsta_radio_cap_tlvs_nr++] = bhsta_radio_cap_tlv;
         }
     }
 
@@ -464,18 +487,47 @@ static int map_handle_topology_response_ale(map_ale_info_t *ale, i1905_cmdu_t *c
     /* Store non 1905 neighbors.  Must be done after parsing device information tlv */
     map_parse_non_1905_neighbor_device_list_tlv(ale, non_1905_neighbor_dev_tlvs, non_1905_neighbor_dev_tlvs_nr);
 
+    /* Parse MLD config TLVs */
+    if (ap_mld_conf_tlv) {
+        map_parse_agent_ap_mld_conf_tlv(ale, ap_mld_conf_tlv);
+    } else {
+        /* Parse "empty" one to remove all the ap_mld */
+        map_agent_ap_mld_conf_tlv_t dummy = {.ap_mld_nr = 0};
+        map_parse_agent_ap_mld_conf_tlv(ale, &dummy);
+    }
+
+    if (bsta_mld_conf_tlv) {
+        map_parse_bsta_mld_conf_tlv(ale, bsta_mld_conf_tlv);
+    } else {
+        /* Parse "empty" one to remove the bsta_mld */
+        map_bsta_mld_conf_tlv_t dummy = {.bsta_mld_mac_valid = 0};
+        map_parse_bsta_mld_conf_tlv(ale, &dummy);
+    }
+
     /* Parse and update the connected clients
+       - MLD clients are done first (this includes affiliated stas)
        - Assoc_clients_tlv is only mandatory when at least one client is connected
        - Before parsing, mark all stas.
        - After parsing, remove all sta that are still marked. Only remove sta that
          where connected for some time to avoid race between topology response
          and topology notification.
     */
+    map_dm_mark_sta_mlds(ale);
     map_dm_mark_stas(ale);
+
+    i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_ASSOCIATED_STA_MLD_CONFIGURATION, assoc_sta_mld_conf_tlv, cmdu, tlv_idx) {
+        map_parse_assoc_sta_mld_conf_tlv(ale, assoc_sta_mld_conf_tlv);
+    }
+
     if (assoc_clients_tlv) {
         map_parse_assoc_clients_tlv(ale, assoc_clients_tlv);
     }
     map_dm_remove_marked_stas(ale, 30 /* seconds */);
+    map_dm_remove_marked_sta_mlds(ale);
+
+    if (bhsta_radio_cap_tlvs_nr > 0) {
+        map_parse_backhaul_sta_radio_capability_tlv(ale, bhsta_radio_cap_tlvs, bhsta_radio_cap_tlvs_nr);
+    }
 
     /* Handle emex tlvs */
     map_emex_handle_cmdu_pre(ale, cmdu);
@@ -721,6 +773,9 @@ int map_handle_ap_autoconfig_search(i1905_cmdu_t *cmdu)
         if (topo_discovery_is_rcvd) {
             map_handle_topology_discovery_ale(ale, cmdu->interface_name, cmdu->cmdu_stream.src_mac_addr, mac_tlv_mac);
         }
+    } else {
+        /* if agent is already known, delete existing keys first before onboarding */
+        map_dm_remove_ale_key_info(ale);
     }
 
     if (profile_tlv) {
@@ -736,6 +791,27 @@ response:
     return map_send_autoconfig_response(cmdu, ale_is_agent);
 }
 
+/* 1905.1 6.3.8 (type 0x0008) */
+int map_handle_ap_autoconfig_response(i1905_cmdu_t *cmdu)
+{
+    map_supported_service_tlv_t *ss_tlv            = i1905_get_tlv_from_cmdu(TLV_TYPE_SUPPORTED_SERVICE, cmdu);
+    map_ale_info_t              *ale               = NULL;
+    bool                         ale_is_controller = false, ale_is_agent = false, ale_is_em_plus = false;
+
+    map_parse_ap_supported_service_tlv(NULL, ss_tlv, &ale_is_controller, &ale_is_agent, &ale_is_em_plus);
+
+    /* Check if it is an airties controller */
+    if (ale_is_controller && ale_is_em_plus) {
+    } else {
+        ale = map_dm_get_ale_from_src_mac(cmdu->cmdu_stream.src_mac_addr);
+        if (ale && ale_is_agent && ale->easymesh_plus) {
+            ale->easymesh_plus = false;
+        }
+    }
+
+    return 0;
+}
+
 /* 1905.1 6.3.9 (type 0x0009) */
 int map_handle_ap_autoconfig_wsc(i1905_cmdu_t *cmdu)
 {
@@ -743,10 +819,12 @@ int map_handle_ap_autoconfig_wsc(i1905_cmdu_t *cmdu)
     map_ap_radio_basic_cap_tlv_t *ap_basic_cap_tlv    = i1905_get_tlv_from_cmdu(TLV_TYPE_AP_RADIO_BASIC_CAPABILITIES, cmdu); /* Mandatory */
     map_profile2_ap_cap_tlv_t    *profile2_ap_cap_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_PROFILE2_AP_CAPABILITY,      cmdu); /* Optional  */
     /* TODO: map_ap_radio_advanced_cap_tlv_t *adv_cap_tlv_t =  i1905_get_tlv_from_cmdu(TLV_TYPE_AP_RADIO_ADVANCED_CAPABILITIES, cmdu);*/ /* Optional */
+    i1905_vendor_specific_tlv_t  *vendor_tlv;
     uint16_t                      mac_len;
     uint8_t                      *al_mac;
     map_ale_info_t               *ale;
     map_radio_info_t             *radio;
+    size_t                        idx;
 
     if (!wsc_tlv || !ap_basic_cap_tlv) {
         return -1; /* Not possble - checked during validate */
@@ -802,6 +880,15 @@ int map_handle_ap_autoconfig_wsc(i1905_cmdu_t *cmdu)
         return -1;
     }
 
+    /* Handle vendor specific TLVs */
+    i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_VENDOR_SPECIFIC, vendor_tlv, cmdu, idx) {
+        if (map_emex_is_valid_tlv(vendor_tlv)) {
+            map_emex_parse_tlv(ale, vendor_tlv);
+        }
+    }
+
+    get_wsc_auth_modes(radio, wsc_tlv->wsc_frame, wsc_tlv->wsc_frame_size);
+
     set_radio_state_M1_receive(&radio->state);
     map_recompute_radio_state_and_update_ale_state(ale);
 
@@ -850,8 +937,9 @@ int map_handle_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     map_radio_info_t *radio;
     uint8_t          *tlv;
     size_t            idx;
+    bool              do_config_renew = false;
 
-    /* Remove existing ht/vht/he/wifi6 capabilities... */
+    /* Remove existing ht/vht/he/wifi6/wifi7 capabilities... */
     map_dm_foreach_radio(ale, radio) {
         map_free_ht_vht_he_wifi6_caps(radio);
     }
@@ -870,6 +958,12 @@ int map_handle_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
             break;
             case TLV_TYPE_AP_WIFI6_CAPABILITIES:
                 map_parse_ap_wifi6_cap_tlv(ale, (map_ap_wifi6_cap_tlv_t *)tlv);
+            break;
+            case TLV_TYPE_WIFI7_AGENT_CAPABILITIES:
+                map_parse_wifi7_agent_capability_tlv(ale, (map_wifi7_agent_cap_tlv_t *)tlv, &do_config_renew);
+            break;
+            case TLV_TYPE_EHT_OPERATIONS:
+                map_parse_eht_operations_tlv(ale, (map_eht_operations_tlv_t *)tlv);
             break;
             default:
             break;
@@ -924,6 +1018,11 @@ int map_handle_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
         map_dm_radio_set_capabilities(radio);
     }
 
+    if (do_config_renew) {
+        log_ctrl_n("AP Capabilities changed. Do config renew");
+        map_send_autoconfig_renew_ucast(ale, IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA, true);
+    }
+
     return 0;
 }
 
@@ -943,9 +1042,8 @@ int map_handle_channel_preference_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu
     /* Remove existing preference for all radios */
     map_dm_foreach_radio(ale, radio) {
         SFREE(radio->pref_op_class_list.op_classes);
-        SFREE(radio->op_restriction_list.op_classes);
         radio->pref_op_class_list.op_classes_nr  = 0;
-        radio->op_restriction_list.op_classes_nr = 0;
+        map_dm_free_op_restriction_list(radio);
     }
 
     /* Mark channel preference report as received for all radios
@@ -979,6 +1077,9 @@ int map_handle_channel_preference_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu
                 map_parse_cac_status_report_tlv(ale, cac_status_tlv);
                 break;
             }
+            case TLV_TYPE_EHT_OPERATIONS:
+                map_parse_eht_operations_tlv(ale, (map_eht_operations_tlv_t *)tlv);
+            break;
             default:
             break;
         }
@@ -995,20 +1096,32 @@ int map_handle_channel_preference_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu
 /* MAP_R1 17.1.12 (type 0x8007) */
 int map_handle_channel_selection_response(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
-    map_channel_selection_response_tlv_t *tlv;
-    size_t                                idx;
+    uint8_t *tlv;
+    size_t   idx;
 
-    i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_CHANNEL_SELECTION_RESPONSE, tlv, cmdu, idx) {
-       if (tlv->channel_selection_response == MAP_CHAN_SEL_RESPONSE_ACCEPTED) {
-           log_ctrl_n("channel selection for radio[%s] completed", mac_string(tlv->radio_id));
-       } else {
-           log_ctrl_e("channel selection for radio[%s] failed. Reason[%d]",
-                      mac_string(tlv->radio_id), tlv->channel_selection_response);
+    i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
+        switch (*tlv) {
+            case TLV_TYPE_CHANNEL_SELECTION_RESPONSE: {
+                map_channel_selection_response_tlv_t *chan_sel_resp_tlv = (map_channel_selection_response_tlv_t *)tlv;
 
-           /* TODO: If reason == 3 (rejected by BH STA) the requests keep failing.
-                    Should add exp backoff or a maximum number of retries
-           */
-       }
+                if (chan_sel_resp_tlv->channel_selection_response == MAP_CHAN_SEL_RESPONSE_ACCEPTED) {
+                    log_ctrl_n("channel selection for radio[%s] completed", mac_string(chan_sel_resp_tlv->radio_id));
+                } else {
+                    log_ctrl_e("channel selection for radio[%s] failed. Reason[%d]",
+                                mac_string(chan_sel_resp_tlv->radio_id), chan_sel_resp_tlv->channel_selection_response);
+
+                    /* TODO: If reason == 3 (rejected by BH STA) the requests keep failing.
+                                Should add exp backoff or a maximum number of retries
+                    */
+                }
+                break;
+            }
+            case TLV_TYPE_EHT_OPERATIONS:
+                map_parse_eht_operations_tlv(ale, (map_eht_operations_tlv_t *)tlv);
+            break;
+            default:
+            break;
+        }
     }
 
     return 0;
@@ -1017,7 +1130,7 @@ int map_handle_channel_selection_response(UNUSED map_ale_info_t *ale, i1905_cmdu
 /* MAP_R1 17.1.13 (type 0x8008) */
 int map_handle_operating_channel_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
-    map_operating_channel_report_tlv_t *tlv;
+    uint8_t                            *tlv;
     map_radio_info_t                   *radio;
     size_t                              tlv_idx;
 
@@ -1027,55 +1140,70 @@ int map_handle_operating_channel_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
         return -1;
     }
 
-    i1905_foreach_tlv_type_in_cmdu(TLV_TYPE_OPERATING_CHANNEL_REPORT, tlv, cmdu, tlv_idx) {
-        if (tlv->op_classes_nr > 0 && NULL != (radio = map_dm_get_radio(ale, tlv->radio_id))) {
-            uint8_t idx = 0, min_bw_idx = 0, max_bw_idx = 0;
-            uint16_t bw, min_bw = 320, max_bw = 20;
+    i1905_foreach_tlv_in_cmdu(tlv, cmdu, tlv_idx) {
+        switch (*tlv) {
+            case TLV_TYPE_OPERATING_CHANNEL_REPORT: {
+                map_operating_channel_report_tlv_t *op_chan_report_tlv = (map_operating_channel_report_tlv_t *)tlv;
 
-            SFREE(radio->curr_op_class_list.op_classes);
-            if (!(radio->curr_op_class_list.op_classes = calloc(tlv->op_classes_nr, sizeof(map_op_class_t)))) {
-                log_ctrl_e("%s: memory allocation failed", __FUNCTION__);
-                radio->curr_op_class_list.op_classes_nr = 0;
-                return -1;
-            }
-            radio->curr_op_class_list.op_classes_nr = tlv->op_classes_nr;
+                if (op_chan_report_tlv->op_classes_nr > 0 && NULL != (radio = map_dm_get_radio(ale, op_chan_report_tlv->radio_id))) {
+                    uint8_t idx = 0, min_bw_idx = 0, max_bw_idx = 0;
+                    uint16_t bw, min_bw = 320, max_bw = 20;
 
-            for (idx = 0; idx < tlv->op_classes_nr; idx++) {
-                map_op_class_t *op_class = &radio->curr_op_class_list.op_classes[idx];
+                    SFREE(radio->curr_op_class_list.op_classes);
+                    radio->curr_op_class_list.op_classes_nr = 0;
 
-                /* One channel per operating class, transmit power is common */
-                op_class->op_class = tlv->op_classes[idx].op_class;
-                op_class->eirp     = tlv->transmit_power_eirp;
-                map_cs_set(&op_class->channels, tlv->op_classes[idx].channel);
-
-                if (!map_get_bw_from_op_class(tlv->op_classes[idx].op_class, &bw)) {
-                    if (bw < min_bw) {
-                        min_bw = bw;
-                        min_bw_idx = idx;
+                    if (!(radio->curr_op_class_list.op_classes = calloc(op_chan_report_tlv->op_classes_nr, sizeof(*radio->curr_op_class_list.op_classes)))) {
+                        log_ctrl_e("%s: memory allocation failed", __FUNCTION__);
+                        return -1;
                     }
-                    if (bw > max_bw) {
-                        max_bw = bw;
-                        max_bw_idx = idx;
+
+                    radio->curr_op_class_list.op_classes_nr = op_chan_report_tlv->op_classes_nr;
+
+                    for (idx = 0; idx < op_chan_report_tlv->op_classes_nr; idx++) {
+                        map_operating_channel_report_tlv_op_class_t *tlv_op_class = &op_chan_report_tlv->op_classes[idx];
+                        map_op_class_t                              *op_class     = &radio->curr_op_class_list.op_classes[idx];
+
+                        /* One channel per operating class, transmit power is common */
+                        op_class->op_class = tlv_op_class->op_class;
+                        op_class->eirp     = op_chan_report_tlv->transmit_power_eirp;
+                        map_cs_set(&op_class->channels, tlv_op_class->channel);
+
+                        if (!map_get_bw_from_op_class(op_chan_report_tlv->op_classes[idx].op_class, &bw)) {
+                            if (bw < min_bw) {
+                                min_bw = bw;
+                                min_bw_idx = idx;
+                            }
+                            if (bw > max_bw) {
+                                max_bw = bw;
+                                max_bw_idx = idx;
+                            }
+                        }
+                    }
+
+                    /* Update channel related parameters and current operating classes in DM
+                       - use op_class with the maximum bw to be able to get operating bw correctly
+                       - use op_class with the minimum bw to get control channel
+                    */
+                    map_dm_radio_set_channel(radio, op_chan_report_tlv->op_classes[max_bw_idx].op_class,
+                                            op_chan_report_tlv->op_classes[min_bw_idx].channel, op_chan_report_tlv->op_classes[max_bw_idx].channel,
+                                            max_bw, op_chan_report_tlv->transmit_power_eirp);
+
+                    log_ctrl_n("updated channel/bw for radio[%s] op_class[%d] channel[%d] highest_bw_channel[%d] bw[%d] from %s",
+                            mac_string(radio->radio_id), radio->current_op_class, radio->current_op_channel, radio->highest_bw_channel,
+                            max_bw, i1905_tlv_type_to_string(op_chan_report_tlv->tlv_type));
+
+                    if (is_radio_operating_chan_report_received(radio->state) == 0 ) {
+                        set_radio_state_oper_chan_report_received(&radio->state);
+                        map_recompute_radio_state_and_update_ale_state(radio->ale);
                     }
                 }
+                break;
             }
-
-            /* Update channel related parameters and current operating classes in DM
-               - use op_class with the maximum bw to be able to get operating bw correctly
-               - use op_class with the minimum bw to get control channel
-            */
-            map_dm_radio_set_channel(radio, tlv->op_classes[max_bw_idx].op_class,
-                                     tlv->op_classes[min_bw_idx].channel,
-                                     max_bw, tlv->transmit_power_eirp);
-
-            log_ctrl_n("updated channel/bw for radio[%s] op_class[%d] channel[%d] bw[%d] from %s",
-                       mac_string(radio->radio_id), radio->current_op_class, radio->current_op_channel, max_bw,
-                       i1905_tlv_type_to_string(tlv->tlv_type));
-
-            if (is_radio_operating_chan_report_received(radio->state) == 0 ) {
-                set_radio_state_oper_chan_report_received(&radio->state);
-                map_recompute_radio_state_and_update_ale_state(radio->ale);
-            }
+            case TLV_TYPE_EHT_OPERATIONS:
+                map_parse_eht_operations_tlv(ale, (map_eht_operations_tlv_t *)tlv);
+            break;
+            default:
+            break;
         }
     }
 
@@ -1087,15 +1215,12 @@ int map_handle_client_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
     map_client_info_tlv_t       *client_info_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_CLIENT_INFO,              cmdu); /* Mandatory */
     map_client_cap_report_tlv_t *cap_report_tlv  = i1905_get_tlv_from_cmdu(TLV_TYPE_CLIENT_CAPABILITY_REPORT, cmdu); /* Mandatory */
-    map_sta_info_t              *sta;
+    map_sta_mld_info_t          *sta_mld = NULL;
+    map_sta_info_t              *sta = NULL;
+    int                          ret = 0;
 
     if (!client_info_tlv || !cap_report_tlv) {
         return -1; /* Not possble - checked during validate */
-    }
-
-    if (!(sta = map_dm_get_sta_from_ale(ale, client_info_tlv->sta_mac))) {
-        log_ctrl_e("handle[%s]: sta[%s] not found", i1905_cmdu_type_to_string(cmdu->message_type), mac_string(client_info_tlv->sta_mac));
-        return 0;
     }
 
     if (cap_report_tlv->result_code == MAP_CLIENT_CAP_FAILURE) {
@@ -1103,7 +1228,22 @@ int map_handle_client_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
         return 0;
     }
 
-    return parse_update_client_capability(sta, cap_report_tlv->assoc_frame_body_len, cap_report_tlv->assoc_frame_body);
+    /* First search for mld sta then for regular STA */
+    if (!map_dm_ale_has_mld(ale) || !(sta_mld = map_dm_get_sta_mld_from_ale(ale, client_info_tlv->sta_mac))) {
+        if (!(sta = map_dm_get_sta_from_ale(ale, client_info_tlv->sta_mac))) {
+            log_ctrl_e("handle[%s]: sta[%s] not found", i1905_cmdu_type_to_string(cmdu->message_type), mac_string(client_info_tlv->sta_mac));
+            return 0;
+        }
+    }
+
+    /* For sta_mld we need to parse the result for every affiliated STA */
+    if (sta_mld) {
+        ret = parse_update_mld_client_capability(sta_mld, cap_report_tlv->assoc_frame_body_len, cap_report_tlv->assoc_frame_body);
+    } else {
+        ret = parse_update_client_capability(sta, cap_report_tlv->assoc_frame_body_len, cap_report_tlv->assoc_frame_body);
+    }
+
+    return ret;
 }
 
 /* MAP_R1 17.1.17 (type 0x800C) */
@@ -1144,16 +1284,19 @@ int map_handle_ap_metrics_response(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
             case TLV_TYPE_ASSOCIATED_STA_EXTENDED_LINK_METRICS:
                 map_parse_assoc_sta_ext_link_metrics_tlv(ale, (map_assoc_sta_ext_link_metrics_tlv_t *)tlv);
             break;
+            case TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT:
+                map_parse_assoc_wifi6_sta_status_tlv(ale, (map_assoc_wifi6_sta_status_tlv_t *)tlv);
+            break;
+            case TLV_TYPE_AFFILIATED_STA_METRICS:
+                map_parse_aff_sta_metrics_tlv(ale, (map_aff_sta_metrics_tlv_t *)tlv);
+            break;
             case TLV_TYPE_VENDOR_SPECIFIC: {
                 i1905_vendor_specific_tlv_t *vs_tlv = (i1905_vendor_specific_tlv_t *)tlv;
                 if (map_emex_is_valid_tlv(vs_tlv)) {
                     map_emex_parse_tlv(ale, vs_tlv);
                 }
-                break;
             }
-            case TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT:
-                map_parse_assoc_wifi6_sta_status_tlv(ale, (map_assoc_wifi6_sta_status_tlv_t *)tlv);
-                break;
+            break;
             default:
             break;
         }
@@ -1557,6 +1700,9 @@ int map_handle_client_disassoc_stats(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
         return -1; /* Not possble - checked during validate */
     }
 
+    /* TODO: Report event before lookup up sta as it might already have
+       been removed by topology notification... */
+
     if(!(sta = map_dm_get_sta_from_ale(ale, stats_tlv->sta_mac))) {
         log_ctrl_e("%s: sta[%s] not found", __FUNCTION__, mac_string(stats_tlv->sta_mac));
         return -1;
@@ -1611,17 +1757,17 @@ int map_handle_failed_connection(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
         return -1; /* Not possible - checked during validate */
     }
 
-    log_ctrl_d("--------------------------");
-    log_ctrl_d("client has failed connection attempt.");
-    log_ctrl_d("status code:    0x%02x", status_tlv->status_code);
+    log_ctrl_n("--------------------------");
+    log_ctrl_n("client has failed connection attempt.");
+    log_ctrl_n("status code:    0x%02x", status_tlv->status_code);
     if (reason_tlv) {
-        log_ctrl_d("reason code: 0x%02x", reason_tlv->reason_code);
+        log_ctrl_n("reason code: 0x%02x", reason_tlv->reason_code);
     }
-    log_ctrl_d("sta mac:    %s", mac_string(sta_mac_tlv->sta_mac));
+    log_ctrl_n("sta mac:    %s", mac_string(sta_mac_tlv->sta_mac));
     if (bssid_tlv) {
-        log_ctrl_d("bssid:      %s", mac_string(bssid_tlv->bssid));
+        log_ctrl_n("bssid:      %s", mac_string(bssid_tlv->bssid));
     }
-    log_ctrl_d("--------------------------");
+    log_ctrl_n("--------------------------");
 
     map_dm_create_failconn(sta_mac_tlv->sta_mac, bssid_tlv ? bssid_tlv->bssid : NULL,
         status_tlv->status_code, reason_tlv ? reason_tlv->reason_code : 0);
@@ -1676,6 +1822,39 @@ int map_handle_chirp_notification(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
     return map_parse_dpp_chirp_value_tlv(ale, chirp_tlv);
 }
 
+/* MAP_R3 17.1.53 (type 0x802c) */
+int map_handle_bss_configuration_request(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    map_multiap_profile_tlv_t           *profile_tlv        = i1905_get_tlv_from_cmdu(TLV_TYPE_MULTIAP_PROFILE, cmdu);                 /* Mandatory */
+    map_supported_service_tlv_t         *service_tlv        = i1905_get_tlv_from_cmdu(TLV_TYPE_SUPPORTED_SERVICE, cmdu);               /* Mandatory */
+    map_ap_radio_basic_cap_tlv_t        *radio_basic_tlv    = i1905_get_tlv_from_cmdu(TLV_TYPE_AP_RADIO_BASIC_CAPABILITIES, cmdu);     /* Mandatory */
+    //map_backhaul_sta_radio_cap_tlv_t    *backhaul_sta_tlv   = i1905_get_tlv_from_cmdu(TLV_TYPE_BACKHAUL_STA_RADIO_CAPABILITIES, cmdu); /* Optional */
+    map_profile2_ap_cap_tlv_t           *profile2_ap_tlv    = i1905_get_tlv_from_cmdu(TLV_TYPE_PROFILE2_AP_CAPABILITY, cmdu);          /* Mandatory */
+    map_ap_radio_advanced_cap_tlv_t     *radio_advanced_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_AP_RADIO_ADVANCED_CAPABILITIES, cmdu);  /* Mandatory */
+    map_bss_configuration_request_tlv_t *bss_config_tlv     = i1905_get_tlv_from_cmdu(TLV_TYPE_BSS_CONFIGURATION_REQUEST, cmdu);       /* Mandatory */
+    //map_eht_operations_tlv_t            *eht_operations_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_EHT_OPERATIONS, cmdu);                  /* Optional */
+
+    if (!profile_tlv || !service_tlv || !radio_basic_tlv || !profile2_ap_tlv || !radio_advanced_tlv || !bss_config_tlv) {
+        return -1;
+    }
+
+    return map_parse_bss_configuration_request_tlv(ale, bss_config_tlv);
+}
+
+/* MAP_R3 17.1.55 (type 0x802e) */
+int map_handle_bss_configuration_result(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    map_bss_configuration_report_tlv_t *bss_cfg_report_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_BSS_CONFIGURATION_REPORT, cmdu); /* Mandatory */
+
+    if (!bss_cfg_report_tlv) {
+        return -1;
+    }
+
+    map_parse_bss_configuration_report_tlv(ale, bss_cfg_report_tlv);
+
+    return map_send_agent_list_message(ale, MID_NA);
+}
+
 /* MAP_R3 17.1.56 (type 0x802a) */
 int map_handle_direct_encap_dpp(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 {
@@ -1688,3 +1867,41 @@ int map_handle_direct_encap_dpp(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 
     return map_parse_dpp_message_tlv(ale, dpp_message_tlv);
 }
+
+/*#######################################################################
+#                       MAP R6 CMDU HANDLERS                            #
+########################################################################*/
+
+/* MAP_R6 17.1.62 (type 0x8043) */
+int map_handle_early_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    return map_handle_ap_capability_report(ale, cmdu);
+}
+
+/* MAP_R6 17.1.67 (type 0x8049) */
+int map_handle_available_spectrum_inquiry(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    //map_channel_preference_tlv_t      *channel_preference_tlv      = i1905_get_tlv_from_cmdu(TLV_TYPE_CHANNEL_PREFERENCE,  cmdu); /* Optional */
+    map_available_spec_inq_req_tlv_t  *available_spec_inq_req_tlv  = i1905_get_tlv_from_cmdu(TLV_TYPE_AVAILABLE_SPECTRUM_INQUIRY_REQUEST,  cmdu); /* Mandatory */
+    map_available_spec_inq_resp_tlv_t *available_spec_inq_resp_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_AVAILABLE_SPECTRUM_INQUIRY_RESPONSE, cmdu); /* Mandatory */
+
+    if (!available_spec_inq_req_tlv) {
+        log_ctrl_e("Cannot get a valid Available Spectrum Inquiry Request TLV!");
+        return -1;
+    }
+
+    if (!available_spec_inq_resp_tlv) {
+        log_ctrl_e("Cannot get a valid Available Spectrum Inquiry Response TLV!");
+        return -1;
+    }
+
+    /* Send 1905 Ack  */
+    if (map_send_ack(ale, cmdu)) {
+        log_ctrl_e("%s: map_send_ack failed", __FUNCTION__);
+        return -1;
+    }
+
+    return 0;
+}
+
+

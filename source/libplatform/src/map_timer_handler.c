@@ -34,6 +34,7 @@ typedef struct timer_cb_data_s {
     acu_evloop_timer_t  *evloop_timer;
     timer_cb_t           cb;
     void                *args;
+    uint32_t            frequency_ms;
 } timer_cb_data_t;
 
 /*#######################################################################
@@ -56,7 +57,11 @@ static void timer_callback(void *userdata)
 {
     timer_cb_data_t *timer_data = userdata;
 
-    if (timer_data->cb(timer_data->timer_id, timer_data->args)) {
+    /* Remove timer if
+     * it removed itself from callback or
+     * it is a non-periodical timer(frequency = 0)
+    */
+    if (timer_data->cb(timer_data->timer_id, timer_data->args) || timer_data->frequency_ms == 0) {
         /* Timer might have removed itself from callback */
         if (remove_object(g_registered_callbacks, timer_data)) {
             log_lib_d("removed unregistered timer [%s] from list", timer_data->timer_id);
@@ -129,8 +134,60 @@ int map_timer_register_callback(uint32_t    frequency_sec,
         map_strlcpy(timer_data->timer_id, timer_id, sizeof(timer_data->timer_id));
         timer_data->cb   = cb;
         timer_data->args = args;
+        timer_data->frequency_ms = SEC_TO_MSEC(frequency_sec);
 
         timer_data->evloop_timer = acu_evloop_timer_add(SEC_TO_MSEC(frequency_sec), SEC_TO_MSEC(frequency_sec), timer_callback, timer_data);
+        if (timer_data->evloop_timer == NULL) {
+            log_lib_e("failed to add timer");
+            free_timer_data(timer_data);
+            ERROR_EXIT(status)
+        }
+
+        if (push_object(g_registered_callbacks, (void*)timer_data) == -1) {
+            log_lib_e("failed to register timer callback");
+            free_timer_data(timer_data);
+            ERROR_EXIT(status)
+        }
+
+    } while (0);
+
+    return status;
+}
+
+int map_timer_register_callback_ms(uint32_t    frequency_ms,
+                                   const char *timer_id,
+                                   void       *args,
+                                   timer_cb_t  cb)
+{
+    int status = 0;
+    timer_cb_data_t *timer_data = NULL;
+
+    do {
+        if (cb == NULL || timer_id == NULL) {
+            ERROR_EXIT(status)
+        }
+
+        size_t str_len = strlen(timer_id);
+        if (str_len >= MAX_TIMER_ID_STRING_LENGTH) {
+            ERROR_EXIT(status)
+        }
+
+        /* If there is already a timer registered with the same ID return error */
+        if (map_is_timer_registered(timer_id)) {
+            ERROR_EXIT(status)
+        }
+
+        timer_data = calloc(1,sizeof(timer_cb_data_t));
+        if (timer_data == NULL) {
+            ERROR_EXIT(status)
+        }
+
+        map_strlcpy(timer_data->timer_id, timer_id, sizeof(timer_data->timer_id));
+        timer_data->cb   = cb;
+        timer_data->args = args;
+        timer_data->frequency_ms = frequency_ms;
+
+        timer_data->evloop_timer = acu_evloop_timer_add(frequency_ms, frequency_ms, timer_callback, timer_data);
         if (timer_data->evloop_timer == NULL) {
             log_lib_e("failed to add timer");
             free_timer_data(timer_data);
@@ -227,6 +284,9 @@ int map_timer_change_callback(const char *timer_id, uint32_t frequency_sec, void
 
         if (!(timer_data = find_object(g_registered_callbacks, (void*)timer_id, compare_timer_node))) {
             log_lib_e("timer [%s] isn't registered yet", timer_id);
+            ERROR_EXIT(status)
+        } else if (timer_data->frequency_ms == 0) {
+            log_lib_e("timer [%s] isn't periodical", timer_id);
             ERROR_EXIT(status)
         } else {
             acu_evloop_timer_change_period(timer_data->evloop_timer, SEC_TO_MSEC(frequency_sec));

@@ -24,7 +24,19 @@
 
 #include "map_common_defines.h"
 
+typedef struct map_1905_sec_key_info_s {
+    uint8_t ptk[MAX_PTK_LEN];
+    size_t  ptk_len;
+    uint8_t gtk[MAX_GTK_LEN];
+    size_t  gtk_len;
+    uint8_t encr_tx_counter[ENCRYPTION_TX_COUNTER_LEN];
+    uint8_t encr_rx_counter[ENCRYPTION_TX_COUNTER_LEN];
+    uint8_t integrity_tx_counter[INTEGRITY_TX_COUNTER_LEN];
+    uint8_t integrity_rx_counter[INTEGRITY_TX_COUNTER_LEN];
+} map_1905_sec_key_info_t;
+
 typedef void (*i1905_interface_cb_t)(const char *ifname, bool added);
+typedef int  (*i1905_key_info_cb_t)(uint8_t *al_mac, map_1905_sec_key_info_t *key_info);
 
 /*******************************************************************************
 *  The 1905 standard originally only recognized a limited set of interface
@@ -132,6 +144,7 @@ typedef struct interfaceInfo {
     #define INTERFACE_TYPE_IEEE_802_11AD_60_GHZ            (0x0106)
     #define INTERFACE_TYPE_IEEE_802_11AF                   (0x0107)
     #define INTERFACE_TYPE_IEEE_802_11AX                   (0x0108) /* MAP R2 extension. One value all bands */
+    #define INTERFACE_TYPE_IEEE_802_11BE                   (0x0109) /* MAP R6 extension. One value all bands */
     #define INTERFACE_TYPE_IEEE_1901_WAVELET               (0x0200)
     #define INTERFACE_TYPE_IEEE_1901_FFT                   (0x0201)
     #define INTERFACE_TYPE_MOCA_V1_1                       (0x0300)
@@ -198,6 +211,8 @@ typedef struct interfaceInfo {
             #define IEEE80211_AUTH_MODE_WPA2    (0x0010)
             #define IEEE80211_AUTH_MODE_WPA2PSK (0x0020)
             #define IEEE80211_AUTH_MODE_SAE     (0x0040)
+            #define IEEE80211_AUTH_MODE_DPP     (0x0080)
+            #define IEEE80211_AUTH_MODE_SAE_24  (0x0100) /* SAE with AKM24 */
 
 
             uint16_t authentication_mode;
@@ -210,6 +225,7 @@ typedef struct interfaceInfo {
             #define IEEE80211_ENCRYPTION_MODE_NONE (0x0001)
             #define IEEE80211_ENCRYPTION_MODE_TKIP (0x0004)
             #define IEEE80211_ENCRYPTION_MODE_AES  (0x0008)
+            #define IEEE80211_ENCRYPTION_MODE_GCMP256   (0x0010)
             uint16_t encryption_mode;
                                      /* For APs: list of supported modes that
                                      *  clients can use (OR'ed list of flags)
@@ -418,27 +434,23 @@ static inline char *convert_interface_type_to_string(uint16_t iface_type)
 {
     switch (iface_type) {
         case INTERFACE_TYPE_IEEE_802_3U_FAST_ETHERNET:
-        case INTERFACE_TYPE_IEEE_802_3AB_GIGABIT_ETHERNET:
-            return "ETHERNET";
-        case INTERFACE_TYPE_IEEE_802_11B_2_4_GHZ:
-        case INTERFACE_TYPE_IEEE_802_11G_2_4_GHZ:
-        case INTERFACE_TYPE_IEEE_802_11N_2_4_GHZ:
-            return "2_4_GHZ_WIRELESS";
-        case INTERFACE_TYPE_IEEE_802_11N_5_GHZ:
-        case INTERFACE_TYPE_IEEE_802_11A_5_GHZ:
-        case INTERFACE_TYPE_IEEE_802_11AC_5_GHZ:
-            return "5_GHZ_WIRELESS";
-        case INTERFACE_TYPE_IEEE_802_11AD_60_GHZ:
-            return "60_GHZ_WIRELESS";
-        case INTERFACE_TYPE_IEEE_802_11AX:
-            return "WIRELESS";
+        case INTERFACE_TYPE_IEEE_802_3AB_GIGABIT_ETHERNET: return "ETHERNET";
+
+        case INTERFACE_TYPE_IEEE_802_11B_2_4_GHZ:          return "802.11B 2.4GHz";
+        case INTERFACE_TYPE_IEEE_802_11G_2_4_GHZ:          return "802.11G 2.4GHz";
+        case INTERFACE_TYPE_IEEE_802_11N_2_4_GHZ:          return "802.11N 2.4GHz";
+        case INTERFACE_TYPE_IEEE_802_11A_5_GHZ:            return "802.11A 5GHz";
+        case INTERFACE_TYPE_IEEE_802_11N_5_GHZ:            return "802.11N 5GHz";
+        case INTERFACE_TYPE_IEEE_802_11AC_5_GHZ:           return "802.11AC 5GHz";
+        case INTERFACE_TYPE_IEEE_802_11AD_60_GHZ:          return "802.11AD 60GHz";
+        case INTERFACE_TYPE_IEEE_802_11AX:                 return "802.11AX";
+        case INTERFACE_TYPE_IEEE_802_11BE:                 return "802.11BE";
+
         case INTERFACE_TYPE_IEEE_1901_WAVELET:
         case INTERFACE_TYPE_IEEE_1901_FFT:
         case INTERFACE_TYPE_MOCA_V1_1:
         case INTERFACE_TYPE_UNKNOWN:
-            return "UNKNOWN";
-        default:
-            return "UNKNOWN";
+        default:                                           return "UNKNOWN";
     }
 }
 

@@ -108,3 +108,40 @@ uint16_t getNextMid(void)
 
     return mid;
 }
+
+/**
+ * @brief increment_counter_48 increments a 48-bit counter
+ * @param array counter
+ * @return void
+ * @note counter is incremented in place
+*/
+void increment_counter_48(uint8_t *array) {
+    int i = 5; /* 6 - 1 */
+    while (i >= 0) {
+        if (array[i] == UINT8_MAX) {
+            array[i] = 0;
+            i--;
+        } else {
+            array[i]++;
+            break;
+        }
+    }
+}
+
+/**
+ * @brief compare_counter_48 compares two 48-bit counters
+ * @param array1 first counter
+ * @param array2 second counter
+ * @return 1 if array1 > array2, -1 if array1 < array2, 0 if array1 == array2
+ */
+int compare_counter_48(const uint8_t *array1, const uint8_t *array2) {
+    int i;
+    for (i = 0; i < 6; i++) {
+        if (array1[i] > array2[i]) {
+            return 1;
+        } else if (array1[i] < array2[i]) {
+            return -1;
+        }
+    }
+    return 0;
+}

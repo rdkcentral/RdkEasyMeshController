@@ -41,4 +41,8 @@ int map_agent_handle_channel_selection(map_ale_info_t *ale, map_radio_info_t *ra
 
 int map_agent_cancel_channel_selection(map_ale_info_t *ale);
 
+int map_agent_start_delayed_channel_selection(map_radio_info_t *radio, uint32_t delay_sec);
+
+int map_agent_cancel_delayed_channel_selection(map_radio_info_t *radio);
+
 #endif /* MAP_CTRL_POST_ONBOARDING_HANDLER_H_ */

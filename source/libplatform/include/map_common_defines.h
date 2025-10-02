@@ -29,7 +29,6 @@
 #define MAP_DEFAULT_AP_CAPABILITY_QUERY_INTERVAL    60
 #define MAP_DEFAULT_DEAD_AGENT_DETECTION_INTERVAL   30
 #define MAP_DEFAULT_LLDP_BRIDGE_DISCOVERY_INTERVAL  3
-#define MAP_DEFAULT_UCI_MGMT_IPC_REPORT_INTERVAL    5
 #define MAP_DEFAULT_CHANNEL_SELECTION_ENABLED       1
 #define MAP_DEFAULT_MULTIAP_PROFILE                 2
 /****************************************************/
@@ -49,11 +48,10 @@
 #define MAX_BSS_PER_AGENT           MAX_RADIO_PER_AGENT * MAX_BSS_PER_RADIO
 #define MAX_STATION_PER_BSS         128
 #define MAX_STATION_PER_AGENT       (MAX_RADIO_PER_AGENT * MAX_STATION_PER_BSS) /* Should be per bss but that is ridicoulous */
+#define MAX_MLD_PER_AGENT           MAX_BSS_PER_RADIO
+#define MAX_MLD_AFF_APSTA           MAX_RADIO_PER_AGENT
 
 #define MAX_INACTIVE_STA            128
-
-#define MAX_OP_CLASS                48
-#define MAX_CHANNEL_PER_OP_CLASS    59
 
 #define MAX_TRAFFIC_SEP_SSID        8
 #define MAX_ACCESS_CATEGORY         4
@@ -109,9 +107,11 @@
 #define MAP_ASSOC_STA_TRAFFIC_STA_INCLUSION_POLICY  (1<<7)
 
 /* Use below keys prepended with ALE MAC address of the agent */
-#define ONBOARDING_STATUS_TIMER_ID  "ONBOARDING-STATUS-TIMER"
-#define ETH_DEVICE_TIMER_ID         "ETH-DEVICE-TIMER"
-#define BLOCKLIST_AGE_TIMER_ID      "BLOCKLIST-AGE-TIMER"
+#define ONBOARDING_STATUS_TIMER_ID          "ONBOARDING-STATUS-TIMER"
+#define ETH_DEVICE_TIMER_ID                 "ETH-DEVICE-TIMER"
+#define BLOCKLIST_AGE_TIMER_ID              "BLOCKLIST-AGE-TIMER"
+#define DELAYED_CHAN_SELECT_REQ_TIMER_ID    "DEL-CHAN-SEL_REQ-TIMER"
+#define STEER_WIFIBH_TIMER_ID               "STEER-WIFIBH-TIMER"
 
 #define AP_CAPS_QUERY_RETRY_ID      "AP-CAPS-QUERY"
 #define BHSTA_CAP_QUERY_RETRY_ID    "BHSTA-CAP-QUERY"
@@ -119,6 +119,7 @@
 #define CHAN_SELECT_REQ_RETRY_ID    "CHAN-SEL_REQ"
 #define TOPOLOGY_QUERY_RETRY_ID     "TOPOLOGY-QUERY"
 #define ASSOC_CONTROL_RETRY_ID      "ASSOC-CONTROL"
+#define VENDOR_REBOOT_REQ_RETRY_ID  "VENDOR-REBOOT-REQUEST"
 
 /* Use below keys prepended with RADIO MAC address */
 #define POLICY_CONFIG_RETRY_ID      "POLICY-CONFIG"
@@ -145,14 +146,21 @@ enum {
 
 #define MAP_ASSOC_TS_DELTA            65536 /* Max assoc time in Associated Clients TLV */
 
+#ifndef SHA256_MAC_LEN
+#define SHA256_MAC_LEN 32
+#endif
+
+#define MAX_PTK_LEN 32
+#define MAX_GTK_LEN 32
 #define ENCRYPTION_TX_COUNTER_LEN 6
+#define INTEGRITY_TX_COUNTER_LEN  6
 
 /* TODO: also defines in 1905_tlvs.h */
 #ifndef IEEE80211_FREQUENCY_BAND_2_4_GHZ
   #define IEEE80211_FREQUENCY_BAND_2_4_GHZ 0x00
   #define IEEE80211_FREQUENCY_BAND_5_GHZ   0x01
   #define IEEE80211_FREQUENCY_BAND_60_GHZ  0x02
-  #define IEEE80211_FREQUENCY_BAND_6_GHZ   0x04
+  #define IEEE80211_FREQUENCY_BAND_6_GHZ   0x03
   #define IEEE80211_FREQUENCY_BAND_UNKNOWN 0xFF
 #endif
 
@@ -165,7 +173,7 @@ enum {
 
 #define MAX_NUM_TID 16     /* Number of possible TID values */
 
-enum map_m2_bss_freq_band {
+enum map_m2_freq_band {
     MAP_M2_BSS_RADIO2G  = 0x10,
     MAP_M2_BSS_RADIO5GU = 0x20,
     MAP_M2_BSS_RADIO5GL = 0x40,
@@ -174,7 +182,17 @@ enum map_m2_bss_freq_band {
 
 #define MAP_FREQ_BAND_2G    MAP_M2_BSS_RADIO2G
 #define MAP_FREQ_BAND_5G    (MAP_M2_BSS_RADIO5GL | MAP_M2_BSS_RADIO5GU)
-#define MAP_FREQ_BANDS_ALL  (MAP_FREQ_BAND_2G | MAP_FREQ_BAND_5G)
+#define MAP_FREQ_BANDS_ALL  (MAP_FREQ_BAND_2G | MAP_FREQ_BAND_5G | MAP_M2_BSS_RADIO6G)
+
+enum map_m2_radio_standard {
+    MAP_M2_RADIO_80211A    = 0x8000,
+    MAP_M2_RADIO_80211B    = 0x4000,
+    MAP_M2_RADIO_80211G    = 0x2000,
+    MAP_M2_RADIO_80211N    = 0x1000,
+    MAP_M2_RADIO_80211AC   = 0x0800,
+    MAP_M2_RADIO_80211AX   = 0x0400,
+    MAP_M2_RADIO_80211BE   = 0x0200,
+};
 
 enum ieee80211_btm_status {
     IEEE80211_BTM_STATUS_UNKNOWN = -1,

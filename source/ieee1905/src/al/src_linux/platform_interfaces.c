@@ -378,7 +378,8 @@ i1905_interface_info_t *PLATFORM_GET_1905_INTERFACE_INFO(char *interface_name)
         INTERFACE_TYPE_IEEE_802_11AC_5_GHZ  == m->interface_type ||
         INTERFACE_TYPE_IEEE_802_11AD_60_GHZ == m->interface_type ||
         INTERFACE_TYPE_IEEE_802_11AF        == m->interface_type ||
-        INTERFACE_TYPE_IEEE_802_11AX        == m->interface_type)
+        INTERFACE_TYPE_IEEE_802_11AX        == m->interface_type ||
+        INTERFACE_TYPE_IEEE_802_11BE        == m->interface_type)
     {
         log_i1905_t("    ieee80211 data");
         log_i1905_t("      bssid                       : %02x:%02x:%02x:%02x:%02x:%02x", m->interface_type_data.ieee80211.bssid[0], m->interface_type_data.ieee80211.bssid[1], m->interface_type_data.ieee80211.bssid[2], m->interface_type_data.ieee80211.bssid[3], m->interface_type_data.ieee80211.bssid[4], m->interface_type_data.ieee80211.bssid[5]);

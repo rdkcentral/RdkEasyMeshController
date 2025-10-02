@@ -316,12 +316,14 @@ static uint8_t* parse_device_information_tlv(uint8_t *packet_stream, uint16_t le
             (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == ret->local_interfaces[i].media_type) ||
             (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == ret->local_interfaces[i].media_type) ||
             (MEDIA_TYPE_IEEE_802_11AF        == ret->local_interfaces[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11AX        == ret->local_interfaces[i].media_type))
+            (MEDIA_TYPE_IEEE_802_11AX        == ret->local_interfaces[i].media_type) ||
+            (MEDIA_TYPE_IEEE_802_11BE        == ret->local_interfaces[i].media_type))
         {
             uint8_t aux;
-            /* For 11AX, EM R2 standard says size should be 0 but some agents do provide data -> accept both */
+            /* For 11AX and 11BE, EM R2 standard says size should be 0 but some agents do provide data -> accept both */
             bool    ok =  (10 == ret->local_interfaces[i].media_specific_data_size) ||
-                         (( 0 == ret->local_interfaces[i].media_specific_data_size) && (MEDIA_TYPE_IEEE_802_11AX == ret->local_interfaces[i].media_type));
+                          (( 0 == ret->local_interfaces[i].media_specific_data_size) &&
+                           (MEDIA_TYPE_IEEE_802_11AX == ret->local_interfaces[i].media_type || MEDIA_TYPE_IEEE_802_11BE == ret->local_interfaces[i].media_type));
 
             if (!ok) {
                 /* Malformed packet */
@@ -391,6 +393,9 @@ static uint8_t* forge_device_information_tlv(void *memory_structure, uint16_t *l
         _I2B(&m->local_interfaces[i].media_type,               &p);
         _I1B(&m->local_interfaces[i].media_specific_data_size, &p);
 
+        /* Note: for 11AX and 11BE the standard does not require to add media specific info
+           -> add only when set
+        */
         if ((MEDIA_TYPE_IEEE_802_11B_2_4_GHZ == m->local_interfaces[i].media_type) ||
             (MEDIA_TYPE_IEEE_802_11G_2_4_GHZ == m->local_interfaces[i].media_type) ||
             (MEDIA_TYPE_IEEE_802_11A_5_GHZ   == m->local_interfaces[i].media_type) ||
@@ -399,7 +404,8 @@ static uint8_t* forge_device_information_tlv(void *memory_structure, uint16_t *l
             (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == m->local_interfaces[i].media_type) ||
             (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == m->local_interfaces[i].media_type) ||
             (MEDIA_TYPE_IEEE_802_11AF        == m->local_interfaces[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11AX        ==  m->local_interfaces[i].media_type))
+            (MEDIA_TYPE_IEEE_802_11AX        == m->local_interfaces[i].media_type && m->local_interfaces[i].media_specific_data_size > 0) ||
+            (MEDIA_TYPE_IEEE_802_11BE        == m->local_interfaces[i].media_type && m->local_interfaces[i].media_specific_data_size > 0))
         {
             uint8_t aux;
 
@@ -1091,6 +1097,7 @@ static uint8_t* forge_autoconfig_freq_band_tlv(void *memory_structure, uint16_t 
 
     if ((m->freq_band != IEEE80211_FREQUENCY_BAND_2_4_GHZ) &&
         (m->freq_band != IEEE80211_FREQUENCY_BAND_5_GHZ)   &&
+        (m->freq_band != IEEE80211_FREQUENCY_BAND_6_GHZ)   &&
         (m->freq_band != IEEE80211_FREQUENCY_BAND_60_GHZ)) {
         /* Malformed structure */
         free(ret);
@@ -1181,7 +1188,7 @@ static uint8_t* forge_supported_freq_band_tlv(void *memory_structure, uint16_t *
 
     if ((m->freq_band != IEEE80211_FREQUENCY_BAND_2_4_GHZ) &&
         (m->freq_band != IEEE80211_FREQUENCY_BAND_5_GHZ)   &&
-        /* (m->freq_band != IEEE80211_FREQUENCY_BAND_6_GHZ)   &&  TODO: add when it is defined in the standard */
+        (m->freq_band != IEEE80211_FREQUENCY_BAND_6_GHZ)   &&
         (m->freq_band != IEEE80211_FREQUENCY_BAND_60_GHZ)) {
         /* Malformed structure */
         free(ret);
@@ -1296,7 +1303,8 @@ static uint8_t* parse_push_button_event_notification_tlv(uint8_t *packet_stream,
                 (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == ret->media_types[i].media_type) ||
                 (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == ret->media_types[i].media_type) ||
                 (MEDIA_TYPE_IEEE_802_11AF        == ret->media_types[i].media_type) ||
-                (MEDIA_TYPE_IEEE_802_11AX        == ret->media_types[i].media_type))
+                (MEDIA_TYPE_IEEE_802_11AX        == ret->media_types[i].media_type) ||
+                (MEDIA_TYPE_IEEE_802_11BE        == ret->media_types[i].media_type))
             {
             uint8_t aux;
 
@@ -1363,7 +1371,8 @@ static uint8_t* forge_push_button_event_notification_tlv(void *memory_structure,
             (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == m->media_types[i].media_type) ||
             (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == m->media_types[i].media_type) ||
             (MEDIA_TYPE_IEEE_802_11AF        == m->media_types[i].media_type) ||
-            (MEDIA_TYPE_IEEE_802_11AX        ==  m->media_types[i].media_type))
+            (MEDIA_TYPE_IEEE_802_11AX        == m->media_types[i].media_type) ||
+            (MEDIA_TYPE_IEEE_802_11BE        == m->media_types[i].media_type))
         {
             uint8_t aux;
 
@@ -2487,6 +2496,8 @@ static void register_tlvs()
     map_r1_register_tlvs();
     map_r2_register_tlvs();
     map_r3_register_tlvs();
+    map_r4_register_tlvs();
+    map_r6_register_tlvs();
 
     tlvs_registered = true;
 }
@@ -2519,12 +2530,6 @@ uint8_t *parse_1905_TLV_from_packet(uint8_t *packet_stream, uint16_t bytes_left)
     bytes_left -= TLV_HDR_SIZE;
     if (len > bytes_left) {
         log_i1905_e("malformed packet TLV truncated: size[%d] bytes_left[%d]", len, bytes_left);
-        return NULL;
-    }
-
-    /* FRV: For EMR3 this check needs to be removed */
-    if (len > MAX_TLV_PAYLOAD_SIZE) {
-        log_i1905_e("malformed packet TLV size is too big size = %d\n", len);
         return NULL;
     }
 
@@ -2573,6 +2578,16 @@ void free_1905_TLV_structure(uint8_t *memory_structure)
     free(memory_structure);
 }
 
+void free_1905_TLV_structure2(uint8_t *memory_structure)
+{
+    register_tlvs();
+
+    if (NULL == memory_structure) {
+        return;
+    }
+
+    g_tlv_table[*memory_structure].free_cb(memory_structure);
+}
 
 uint8_t compare_1905_TLV_structures(uint8_t *memory_structure_1, uint8_t *memory_structure_2)
 {
@@ -2657,7 +2672,8 @@ uint8_t compare_1905_TLV_structures(uint8_t *memory_structure_1, uint8_t *memory
                     (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == p1->local_interfaces[i].media_type) ||
                     (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == p1->local_interfaces[i].media_type) ||
                     (MEDIA_TYPE_IEEE_802_11AF        == p1->local_interfaces[i].media_type) ||
-                    (MEDIA_TYPE_IEEE_802_11AX        ==  p1->local_interfaces[i].media_type)) {
+                    (MEDIA_TYPE_IEEE_802_11AX        == p1->local_interfaces[i].media_type) ||
+                    (MEDIA_TYPE_IEEE_802_11BE        == p1->local_interfaces[i].media_type)) {
                     if (maccmp(p1->local_interfaces[i].media_specific_data.ieee80211.network_membership, p2->local_interfaces[i].media_specific_data.ieee80211.network_membership) !=0      ||
                         p1->local_interfaces[i].media_specific_data.ieee80211.role                                !=  p2->local_interfaces[i].media_specific_data.ieee80211.role            ||
                         p1->local_interfaces[i].media_specific_data.ieee80211.ap_channel_band                     !=  p2->local_interfaces[i].media_specific_data.ieee80211.ap_channel_band ||
@@ -2887,7 +2903,8 @@ uint8_t compare_1905_TLV_structures(uint8_t *memory_structure_1, uint8_t *memory
                     (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == p1->media_types[i].media_type) ||
                     (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == p1->media_types[i].media_type) ||
                     (MEDIA_TYPE_IEEE_802_11AF        == p1->media_types[i].media_type) ||
-                    (MEDIA_TYPE_IEEE_802_11AX        ==  p1->media_types[i].media_type)) {
+                    (MEDIA_TYPE_IEEE_802_11AX        == p1->media_types[i].media_type) ||
+                    (MEDIA_TYPE_IEEE_802_11BE        == p1->media_types[i].media_type)) {
                     if (maccmp(p1->media_types[i].media_specific_data.ieee80211.network_membership, p2->media_types[i].media_specific_data.ieee80211.network_membership) !=0                          ||
                         p1->media_types[i].media_specific_data.ieee80211.role                                != p2->media_types[i].media_specific_data.ieee80211.role                                 ||
                         p1->media_types[i].media_specific_data.ieee80211.ap_channel_band                     != p2->media_types[i].media_specific_data.ieee80211.ap_channel_band                      ||
@@ -3250,7 +3267,8 @@ void visit_1905_TLV_structure(uint8_t *memory_structure, void (*callback)(void (
                     (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == p->local_interfaces[i].media_type) ||
                     (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == p->local_interfaces[i].media_type) ||
                     (MEDIA_TYPE_IEEE_802_11AF        == p->local_interfaces[i].media_type) ||
-                    (MEDIA_TYPE_IEEE_802_11AX        == p->local_interfaces[i].media_type)) {
+                    (MEDIA_TYPE_IEEE_802_11AX        == p->local_interfaces[i].media_type) ||
+                    (MEDIA_TYPE_IEEE_802_11BE        == p->local_interfaces[i].media_type)) {
                     callback(write_function, new_prefix, sizeof(p->local_interfaces[i].media_specific_data.ieee80211.network_membership),                  "network_membership",                   "0x%02x",   p->local_interfaces[i].media_specific_data.ieee80211.network_membership);
                     callback(write_function, new_prefix, sizeof(p->local_interfaces[i].media_specific_data.ieee80211.role),                                "role",                                 "%d",      &p->local_interfaces[i].media_specific_data.ieee80211.role);
                     callback(write_function, new_prefix, sizeof(p->local_interfaces[i].media_specific_data.ieee80211.ap_channel_band),                     "ap_channel_band",                      "%d",      &p->local_interfaces[i].media_specific_data.ieee80211.ap_channel_band);
@@ -3440,7 +3458,8 @@ void visit_1905_TLV_structure(uint8_t *memory_structure, void (*callback)(void (
                     (MEDIA_TYPE_IEEE_802_11AC_5_GHZ  == p->media_types[i].media_type) ||
                     (MEDIA_TYPE_IEEE_802_11AD_60_GHZ == p->media_types[i].media_type) ||
                     (MEDIA_TYPE_IEEE_802_11AF        == p->media_types[i].media_type) ||
-                    (MEDIA_TYPE_IEEE_802_11AX        == p->media_types[i].media_type)) {
+                    (MEDIA_TYPE_IEEE_802_11AX        == p->media_types[i].media_type) ||
+                    (MEDIA_TYPE_IEEE_802_11BE        == p->media_types[i].media_type)) {
                     callback(write_function, new_prefix, sizeof(p->media_types[i].media_specific_data.ieee80211.network_membership),                  "network_membership",                   "0x%02x",   p->media_types[i].media_specific_data.ieee80211.network_membership);
                     callback(write_function, new_prefix, sizeof(p->media_types[i].media_specific_data.ieee80211.role),                                "role",                                 "%d",      &p->media_types[i].media_specific_data.ieee80211.role);
                     callback(write_function, new_prefix, sizeof(p->media_types[i].media_specific_data.ieee80211.ap_channel_band),                     "ap_channel_band",                      "%d",      &p->media_types[i].media_specific_data.ieee80211.ap_channel_band);

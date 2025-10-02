@@ -79,12 +79,13 @@
 #include <string.h>
 #include <inttypes.h>
 #include <errno.h>
-#include <sys/fcntl.h>
+#include <dirent.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <net/ethernet.h>
 #include <net/if.h>
 #include <arpa/inet.h>
+#include <net/ethernet.h>
 #include <linux/if_packet.h>
 #include <linux/rtnetlink.h>
 #include <linux/version.h>
@@ -105,23 +106,18 @@
 /*#######################################################################
 #                       DEFINES                                         #
 ########################################################################*/
+/* SOL_NETLINK is not defined on older toolchains - see libmnl.h */
+#ifndef SOL_NETLINK
+#pragma message "SOL_NETLINK NOT DEFINED"
+#define SOL_NETLINK               270
+#endif
+
+#define NETLINK_RCVBUF_SIZE       (1024 * 1024)
+
 #define PACKET_SOCKET_TYPE_1905   1
 #define PACKET_SOCKET_TYPE_LLDP   2
 
 #define TS_ENABLED_VLAN_PATTERN() (TS_ENABLED() && (strlen(map_cfg_get()->primary_vlan_pattern)>0))
-
-#define xstr(s) str(s)
-#define str(s) #s
-
-#define ARP_CACHE       "/proc/net/arp"
-#define ARP_STRING_LEN  1023
-#define ARP_BUFFER_LEN  (ARP_STRING_LEN + 1)
-
-#define ARP_LINE_FORMAT "%" xstr(ARP_STRING_LEN) "s %*s %*s " \
-                        "%" xstr(ARP_STRING_LEN) "s %*s " \
-                        "%" xstr(ARP_STRING_LEN) "s"
-
-#define ZERO_MAC        "00:00:00:00:00:00"
 
 /*#######################################################################
 #                       TYPEDEFS                                        #
@@ -146,10 +142,15 @@ typedef struct interface_s {
     i1905_interface_info_t if_info;
 } interface_t;
 
-typedef struct netlink_req_s {
-	struct nlmsghdr hdr;
-	struct rtgenmsg gen;
-} netlink_req_t;
+typedef struct gateway_info_s {
+    mac_addr    mac;
+    char        ip[128];
+    char        ifname[IFNAMSIZ];      /* Real(physical) interface that connected to gateway */
+    char        sock_ifname[IFNAMSIZ]; /* It will be used to bind sockets.
+                                        * It doesn't point real(physical) interface if there is a bridge on the system.
+                                        */
+    int         ifa_family;            /* Address family. AF_INET, AF_INET6, .. */
+} gateway_info_t;
 
 /*#######################################################################
 #                       GLOBALS                                         #
@@ -164,12 +165,10 @@ static int                   g_send_ioctl_fd = -1;
 static int                   g_netlink_fd = -1;
 static acu_evloop_fd_t      *g_netlink_evloop_fd;
 
-static acu_evloop_timer_t   *g_rt_query_timer      = NULL;
-
-/* Gateway mac. a.k.a DHCP server mac address*/
-static mac_addr              g_gateway_mac = {0};
+static gateway_info_t        g_gateway;
 
 static i1905_interface_cb_t  g_interface_cb;
+static i1905_key_info_cb_t   g_key_info_cb;
 
 /*#######################################################################
 #                       SOCKET LIST                                     #
@@ -317,7 +316,7 @@ static int packet_socket_create(const char *if_name, int if_index, int type)
         mr.mr_alen    = ETH_ALEN;
         memcpy(mr.mr_address, mcast_mac, ETH_ALEN);
         if (setsockopt(fd, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &mr, sizeof(mr)) < 0) {
-            log_i1905_e("setsockopt failed (%s)", strerror(errno));
+            log_i1905_e("setsockopt PACKET_ADD_MEMBERSHIP failed (%s)", strerror(errno));
             break;
         }
 
@@ -676,109 +675,7 @@ static void interfaces_fini(void)
         close(g_send_ioctl_fd);
     }
 }
-/*#######################################################################
-#                       ROUTE                                           #
-########################################################################*/
-static int route_get_arp_entry (char *ip, size_t ip_len, char *mac, int mac_len)
-{
-    FILE *arp_table;
 
-    char header[ARP_BUFFER_LEN];
-    char ip_addr[ARP_BUFFER_LEN];
-    char hw_addr[ARP_BUFFER_LEN];
-    char device[ARP_BUFFER_LEN];
-
-    arp_table = NULL;
-
-    if (ip == NULL) {
-        goto bail;
-    }
-    if (mac == NULL) {
-        goto bail;
-    }
-
-    arp_table = fopen(ARP_CACHE, "r");
-    if (arp_table == NULL) {
-        goto bail;
-    }
-
-    if (!fgets(header, sizeof(header), arp_table)) {
-        goto bail;
-    }
-
-    while (fscanf(arp_table, ARP_LINE_FORMAT, ip_addr, hw_addr, device) == 3) {
-        if (strcasecmp(ip_addr, ip) == 0 && strlen(ip_addr) == ip_len) {
-            if (strncasecmp(hw_addr, ZERO_MAC, mac_len) != 0) {
-                int ret = snprintf(mac, mac_len, "%s", hw_addr);
-                if (ret >= mac_len) {
-                    log_i1905_e("mac too long [%d]", ret);
-                    goto bail;
-                }
-                fclose(arp_table);
-                return 0;
-            }
-        }
-    }
-
-bail:
-    if (arp_table != NULL) {
-        fclose(arp_table);
-    }
-    return -1;
-}
-
-static void periodic_nl_route_query_cb(void *userdata)
-{
-    (void) userdata;
-
-    struct sockaddr_nl kernel;
-    struct msghdr rtnl_msg;
-    struct iovec io;
-    netlink_req_t req;
-
-    memset(&rtnl_msg, 0, sizeof(rtnl_msg));
-    memset(&kernel, 0, sizeof(kernel));
-    memset(&req, 0, sizeof(req));
-
-    kernel.nl_family = AF_NETLINK;
-    kernel.nl_groups = 0;
-
-    req.hdr.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtgenmsg));
-    req.hdr.nlmsg_type = RTM_GETROUTE;
-    req.hdr.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
-    req.hdr.nlmsg_seq = 1;
-    req.hdr.nlmsg_pid = getpid();
-    req.gen.rtgen_family = AF_INET;
-
-    io.iov_base = &req;
-    io.iov_len = req.hdr.nlmsg_len;
-    rtnl_msg.msg_iov = &io;
-    rtnl_msg.msg_iovlen = 1;
-    rtnl_msg.msg_name = &kernel;
-    rtnl_msg.msg_namelen = sizeof(kernel);
-
-    if (sendmsg(g_netlink_fd, (struct msghdr *) &rtnl_msg, 0) < 0) {
-        log_i1905_e("sendmsg() failed:");
-    }
-
-}
-
-static int route_init()
-{
-    g_rt_query_timer = acu_evloop_timer_add(0, 10000, periodic_nl_route_query_cb, NULL);
-    if (NULL == g_rt_query_timer) {
-        return -1;
-    }
-
-    return 0;
-}
-
-static void route_fini()
-{
-    if (g_rt_query_timer) {
-        acu_evloop_timer_delete(g_rt_query_timer);
-    }
-}
 /*#######################################################################
 #                       NETLINK                                         #
 ########################################################################*/
@@ -878,40 +775,6 @@ static void netlink_event_dellink(struct nlmsghdr *h, size_t len)
     interface_removed_event(if_name);
 }
 
-static void netlink_event_newroute(struct nlmsghdr *h, size_t len)
-{
-    int rc = 0;
-    struct rtmsg *rtmsg;
-    struct rtattr *rtattr[__RTA_MAX];
-    char gw_ip[32] = {0};
-    char gw_mac_str[32];
-
-    if (len < sizeof(*rtmsg)) {
-        return;
-    }
-
-    if (NULL == (rtmsg = NLMSG_DATA(h))) {
-        log_i1905_e("netlink: header contains no data");
-        return;
-    }
-
-    parse_rtattr_flags(rtattr, RTA_MAX, RTM_RTA(rtmsg), RTM_PAYLOAD(h), 0);
-
-    if (rtattr[RTA_GATEWAY]) {
-        inet_ntop(AF_INET, RTA_DATA(rtattr[RTA_GATEWAY]), gw_ip, sizeof(gw_ip));
-        if(strlen(gw_ip) > 0) {
-            rc = route_get_arp_entry(gw_ip, strlen(gw_ip), gw_mac_str, sizeof(gw_mac_str));
-            if (!rc) {
-                log_i1905_d("gateway: default ip: %s mac: %s", gw_ip, gw_mac_str);
-                mac_from_string(gw_mac_str, g_gateway_mac);
-            } else {
-                log_i1905_e("can not get mac entry for %s", gw_ip);
-            }
-        }
-    }
-
-}
-
 static void netlink_socket_cb(int fd, UNUSED void *userdata)
 {
     char             buf[8192];
@@ -921,7 +784,7 @@ static void netlink_socket_cb(int fd, UNUSED void *userdata)
     left = recv(fd, buf, sizeof(buf), MSG_DONTWAIT);
     if (left < 0) {
         if (errno != EINTR && errno != EAGAIN) {
-            log_i1905_e("netlink: recv failed");
+            log_i1905_e("netlink: recv failed[%d - %s]", errno, strerror(errno));
         }
         return;
     }
@@ -945,8 +808,6 @@ static void netlink_socket_cb(int fd, UNUSED void *userdata)
             case RTM_DELLINK:
                 netlink_event_dellink(h, plen);
             break;
-            case RTM_NEWROUTE:
-                netlink_event_newroute(h, plen);
             break;
             default:
             break;
@@ -966,6 +827,8 @@ static int netlink_init(void)
 {
     struct sockaddr_nl local;
     int                fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    int                val;
+
     if (fd < 0) {
         log_i1905_e("could not create netlink socket");
         return -1;
@@ -980,9 +843,33 @@ static int netlink_init(void)
         return -1;
     }
 
+    /* Force receive buffer size to a big value and disable reporting of ENOBUFS.
+       NOTE:
+       - To be completely correct: when ENOBUFS is received, we should:
+         - close and reopen netlink socket
+         - read all interfaces to check for missed events
+       - By setting NETLINK_NO_ENOBUFS event reception keeps working
+         but we don't know if an event was missed
+    */
+
+    val = NETLINK_RCVBUF_SIZE;
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, &val, sizeof(val)) < 0) {
+        log_i1905_e("could not set netlink receive buffer size (%s)", strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    val = 1;
+    if (setsockopt(fd, SOL_NETLINK, NETLINK_NO_ENOBUFS, &val, sizeof(val)) < 0) {
+        log_i1905_e("could not set NETLINK_NO_ENOBUFS");
+        close(fd);
+        return -1;
+    }
+
     g_netlink_evloop_fd = acu_evloop_fd_add(fd, netlink_socket_cb, NULL);
     if (NULL == g_netlink_evloop_fd) {
         log_i1905_e("failed register netlink socket");
+        close(fd);
         return -1;
     }
 
@@ -1014,9 +901,10 @@ void PLATFORM_OS_DUMP_INTERFACES(map_printf_cb_t print_cb)
     print_cb("Interfaces:\n");
     list_for_each_entry(interface, &g_interface_list, list) {
         acu_mac_to_string(interface->if_info.mac_address, mac_str);
-        print_cb("  ifname[%s] ifidx[%d] mac[%s] state[%d] vlan[%d]\n",
+        print_cb("  ifname[%s] ifidx[%d] mac[%s] state[%d] type[%s] vlan[%d]\n",
                  interface->if_name, interface->if_info.interface_index, mac_str,
                  interface->if_info.power_state == INTERFACE_POWER_STATE_ON ? 1 : 0,
+                 convert_interface_type_to_string(interface->if_info.interface_type),
                  interface->is_vlan ? 1 : 0);
     }
 
@@ -1083,6 +971,46 @@ void PLATFORM_OS_GET_1905_INTERFACE_INFO(char *if_name, i1905_interface_info_t *
     }
 }
 
+int PLATFORM_OS_GET_1905_INTERFACE_MAC(char *if_name, mac_addr mac)
+{
+    interface_t *interface = interface_get(if_name);
+
+    if (interface) {
+        maccpy(mac, interface->if_info.mac_address);
+    }
+
+    return interface ? 0 : -1;
+}
+
+void PLATFORM_OS_SET_1905_INTERFACE_TYPE(char *if_name, uint16_t type)
+{
+    interface_t *interface = interface_get(if_name);
+
+    if (interface) {
+        interface->if_info.interface_type = type;
+    }
+}
+
+void PLATFORM_OS_SET_1905_INTERFACE_80211_MEDIA_SPECIFIC_INFO(char *if_name, mac_addr network_membership,
+                                                              uint8_t role, uint8_t ap_channel_band,
+                                                              uint8_t ap_channel_center_freq_1,
+                                                              uint8_t ap_channel_center_freq_2)
+{
+    interface_t *interface = interface_get(if_name);
+
+    if (interface) {
+        i1905_interface_info_t *if_info = &interface->if_info;
+
+        if (INTERFACE_TYPE_GROUP_GET(if_info->interface_type) == INTERFACE_TYPE_GROUP_WLAN) {
+            maccpy(if_info->interface_type_data.ieee80211.bssid, network_membership);
+            if_info->interface_type_data.ieee80211.role                                = role;
+            if_info->interface_type_data.ieee80211.ap_channel_band                     = ap_channel_band;
+            if_info->interface_type_data.ieee80211.ap_channel_center_frequency_index_1 = ap_channel_center_freq_1;
+            if_info->interface_type_data.ieee80211.ap_channel_center_frequency_index_2 = ap_channel_center_freq_2;
+        }
+    }
+}
+
 bool PLATFORM_OS_IS_INTERFACE_UP(char *if_name)
 {
     interface_t *interface = interface_get(if_name);
@@ -1126,23 +1054,20 @@ bool PLATFORM_OS_LOG_LEVEL_TRACE(void)
 
 mac_addr* PLATFORM_OS_GET_GATEWAY_MAC(void)
 {
-    return &g_gateway_mac;
+    return &g_gateway.mac;
 }
 
-uint8_t PLATFORM_OS_INIT(i1905_interface_cb_t interface_cb, i1905_packet_cb_t packet_cb)
+uint8_t PLATFORM_OS_INIT(i1905_interface_cb_t interface_cb, i1905_packet_cb_t packet_cb, i1905_key_info_cb_t key_info_cb)
 {
     g_interface_cb = interface_cb;
     g_packet_cb = packet_cb;
+    g_key_info_cb = key_info_cb;
 
     if (netlink_init()) {
         return 0;
     }
 
     if (interfaces_init()) {
-        return 0;
-    }
-
-    if (route_init()) {
         return 0;
     }
 
@@ -1153,5 +1078,14 @@ void PLATFORM_OS_FINI(void)
 {
     netlink_fini();
     interfaces_fini();
-    route_fini();
 }
+
+int PLATFORM_OS_GET_KEY_INFO(uint8_t *al_mac, map_1905_sec_key_info_t *key_info)
+{
+    if (g_key_info_cb) {
+        return g_key_info_cb(al_mac, key_info);
+    }
+
+    return -1;
+}
+

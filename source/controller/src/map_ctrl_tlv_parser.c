@@ -118,7 +118,7 @@ static bool get_bss_type(map_bss_info_t *bss, int *type)
 
 static int update_radio_bsss(map_radio_info_t *radio, map_ap_operational_bss_tlv_radio_t *tlv_radio)
 {
-    bool radio_configured = false;
+    bool matching_bss_found = false;
     int  bss_type;
     uint8_t i;
 
@@ -147,16 +147,19 @@ static int update_radio_bsss(map_radio_info_t *radio, map_ap_operational_bss_tlv
 
         /* get bss configured and type */
         bss_type = 0;
-        radio_configured |= get_bss_type(bss, &bss_type);
+        matching_bss_found |= get_bss_type(bss, &bss_type);
 
         map_dm_bss_set_ssid(bss, tlv_bss->ssid_len, tlv_bss->ssid, bss_type);
     }
 
     /* Set the radio state to CONFIGURED on below case to handle controller re-boot after onboarding.
        => If at least one BSS is matching the configuration
+       => If teardown sent to radio and no bss reported(as expected)
     */
-    if (radio_configured) {
-        if (!is_radio_configured(radio->state)) {
+
+    if (!is_radio_configured(radio->state)) {
+        if((matching_bss_found) ||
+           (tlv_radio->bsss_nr == 0 && is_radio_teardown_sent(radio->state))) {
             set_radio_state_configured(&radio->state);
             map_recompute_radio_state_and_update_ale_state(radio->ale);
         }
@@ -244,7 +247,7 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
         /* Set op_class and channel in dm (keep current tx_pwr) */
         map_dm_radio_set_channel(radio,
                                  current_op_class > 0 ? current_op_class : map_get_op_class(channel, bw, supported_freq),
-                                 channel, bw, radio->current_tx_pwr);
+                                 channel, 0, bw, radio->current_tx_pwr);
 
         log_ctrl_i("updated channel/bw for radio[%s] op_class[%d] channel[%d] bw[%d] from %s",
                    mac_string(radio->radio_id), radio->current_op_class, radio->current_op_channel, bw,
@@ -252,8 +255,43 @@ static void update_radio_channel_from_iface(map_ale_info_t *ale, map_local_iface
     }
 }
 
+static void update_i1905_interfaces(map_ale_info_t *ale)
+{
+    char    **interfaces;
+    uint8_t   interfaces_nr, i, j;
+    mac_addr  mac;
+
+    if (!(interfaces = i1905_get_list_of_interfaces(&interfaces_nr))) {
+        return;
+    }
+
+    for (i = 0; i < interfaces_nr; i++) {
+        if (i1905_get_interface_mac(interfaces[i], mac) == 0) {
+            /* Find MAC in local interfaces */
+            for (j = 0; j < ale->local_iface_count; j++) {
+                map_local_iface_t *iface = &ale->local_iface_list[j];
+
+                if (!maccmp(iface->mac_address, mac)) {
+                    /* Update info in i1905 layer */
+                    i1905_set_interface_type(interfaces[i], iface->media_type);
+
+                    if (INTERFACE_TYPE_GROUP_GET(iface->media_type) == INTERFACE_TYPE_GROUP_WLAN && iface->ieee80211_valid) {
+                        i1905_set_interface_80211_media_specific_info(interfaces[i], iface->ieee80211_network_membership,
+                                                                      iface->ieee80211_role, iface->ieee80211_ap_channel_band,
+                                                                      iface->ieee80211_ap_channel_center_freq_1,
+                                                                      iface->ieee80211_ap_channel_center_freq_2);
+                    }
+                }
+            }
+        }
+    }
+
+    i1905_free_list_of_interfaces(interfaces, interfaces_nr);
+}
+
 static int update_radio_op_classes(map_radio_info_t *radio, map_ap_radio_basic_cap_tlv_t *tlv)
 {
+    bool fill_disallowed = false;
     int i;
 
     if (radio->cap_op_class_list.op_classes) {
@@ -265,6 +303,16 @@ static int update_radio_op_classes(map_radio_info_t *radio, map_ap_radio_basic_c
         return -1;
     }
 
+    if (radio->disallowed_op_class_list.op_classes_nr == 0) {
+        if (!(radio->disallowed_op_class_list.op_classes = calloc(tlv->op_classes_nr, sizeof(map_op_class_t)))) {
+            radio->disallowed_op_class_list.op_classes_nr = 0;
+            return -1;
+        }
+
+        radio->disallowed_op_class_list.op_classes_nr = tlv->op_classes_nr;
+        fill_disallowed = true;
+    }
+
     radio->cap_op_class_list.op_classes_nr = tlv->op_classes_nr;
 
     for (i = 0; i<tlv->op_classes_nr; i++) {
@@ -273,6 +321,11 @@ static int update_radio_op_classes(map_radio_info_t *radio, map_ap_radio_basic_c
         op_class->op_class = tlv->op_classes[i].op_class;
         op_class->eirp     = tlv->op_classes[i].eirp;
         map_cs_copy(&op_class->channels, &tlv->op_classes[i].channels);
+
+        if (fill_disallowed) {
+            op_class = &radio->disallowed_op_class_list.op_classes[i];
+            op_class->op_class = tlv->op_classes[i].op_class;
+        }
     }
 
     /* Update allowed channels based on config and cap_op_class_list */
@@ -284,31 +337,18 @@ static int update_radio_op_classes(map_radio_info_t *radio, map_ap_radio_basic_c
     return 0;
 }
 
-static void update_radio_channel_configurable(map_ale_info_t *bhsta_ale, map_backhaul_sta_iface_t *bhsta_iface)
-{
-    map_radio_info_t *bhsta_radio = map_dm_get_radio(bhsta_ale, bhsta_iface->radio_id);
-
-    if (bhsta_radio) {
-        bhsta_radio->channel_configurable = !bhsta_iface->active;
-        map_dm_radio_set_capabilities(bhsta_radio);
-    }
-}
-
 static map_sta_info_t *handle_sta_connect(map_bss_info_t *bss, mac_addr mac, uint16_t assoc_time)
 {
-    map_ale_info_t           *bhsta_ale;
-    map_backhaul_sta_iface_t *bhsta_iface = map_find_bhsta_iface_gbl(mac, &bhsta_ale);
-    map_sta_info_t           *sta;
-    bool                      do_cap_query = false;
+    map_sta_info_t *sta;
 
     /* Currently a sta can only be linked to one BSS -> move if it already existed */
-    if (!(sta = map_dm_get_sta_gbl(mac))) {
+    if (!(sta = map_dm_get_sta_from_ale(bss->radio->ale, mac))) {
         if (!(sta = map_dm_create_sta(bss, mac))) {
             log_ctrl_e("failed creating sta[%s]", mac_string(mac));
             return NULL;
         }
+
         sta->assoc_ts = map_dm_get_sta_assoc_ts(assoc_time);
-        do_cap_query  = true;
 
         /* If there is a BTM steering request for this station and
            there was no BTM response yet finalize the steering
@@ -322,59 +362,11 @@ static map_sta_info_t *handle_sta_connect(map_bss_info_t *bss, mac_addr mac, uin
             log_ctrl_i("sta[%s] moved from bss[%s] to bss[%s]", sta->mac_str, sta->bss->bssid_str, bss->bssid_str);
 
             sta->assoc_ts = map_dm_get_sta_assoc_ts(assoc_time);
-            do_cap_query  = true;
             map_dm_update_sta_bss(bss, sta);
         }
     }
 
-    /* For connected bh_sta: change active state of backhaul sta iface */
-    if (bhsta_iface) {
-        bhsta_iface->active = true;
-        update_radio_channel_configurable(bhsta_ale, bhsta_iface);
-    }
-
-    if (do_cap_query) {
-        /* Do new client capability query */
-        timer_id_t retry_id;
-
-        map_dm_get_sta_timer_id(retry_id, sta, CLIENT_CAPS_QUERY_RETRY_ID);
-        if (!map_is_timer_registered(retry_id)) {
-            if (map_register_retry(retry_id, 15, 20, sta, NULL, map_send_client_capability_query)) {
-                log_ctrl_e("failed Registering retry timer[%s]", retry_id);
-            }
-        }
-    }
-
     return sta;
-}
-
-static void handle_sta_disconnect(map_bss_info_t *bss, mac_addr mac)
-{
-    map_sta_info_t *sta = map_dm_get_sta(bss, mac); /* will only find sta when it was really connected to this bss */
-
-    if (sta) {
-        map_ale_info_t           *bhsta_ale;
-        map_backhaul_sta_iface_t *bhsta_iface = map_find_bhsta_iface_gbl(mac, &bhsta_ale);
-
-        log_ctrl_d("%s: sta[%s] has left bss[%s]", __FUNCTION__, sta->mac_str, bss->bssid_str);
-
-        map_dm_create_disassoc(sta);
-
-        /* For disconnected bh_sta:
-           - change active state of backhaul sta iface
-        */
-        if (bhsta_iface) {
-            log_ctrl_i("backhaul sta[%s] band[%s] disconnected from bss[%s]", sta->mac_str,
-                       map_get_freq_band_str(bss->radio->supported_freq), bss->bssid_str);
-
-            bhsta_iface->active = false;
-            update_radio_channel_configurable(bhsta_ale, bhsta_iface);
-        }
-
-        map_dm_remove_sta(sta);
-    } else {
-        log_ctrl_d("%s: sta[%s] was not connected to bss[%s]", __FUNCTION__, mac_string(mac), bss->bssid_str);
-    }
 }
 
 static int compare_expired_scan_result(void* obj_old, void* obj_new)
@@ -439,8 +431,8 @@ int map_parse_device_information_tlv(map_ale_info_t *ale, i1905_device_informati
                     update_radio_channel_from_iface(ale, iface);
                 }
             } else {
-                /* Allowed if media type was INTERFACE_TYPE_IEEE_802_11AX */
-                if (iface->media_type != INTERFACE_TYPE_IEEE_802_11AX) {
+                /* Allowed if media type was INTERFACE_TYPE_IEEE_802_11AX or INTERFACE_TYPE_IEEE_802_11BE */
+                if (!(iface->media_type == INTERFACE_TYPE_IEEE_802_11AX || iface->media_type == INTERFACE_TYPE_IEEE_802_11BE)) {
                     log_ctrl_e("dev info for ale[%s] has wlan interface with unexpected media_specific_data_size[%d]",
                                ale->al_mac_str, tlv_iface->media_specific_data_size);
                 }
@@ -449,6 +441,11 @@ int map_parse_device_information_tlv(map_ale_info_t *ale, i1905_device_informati
     }
 
     ale->local_iface_count = tlv->local_interfaces_nr;
+
+    if (ale->is_local && ale->is_local_colocated) {
+        /* Update our interfaces with data from colocated local agent */
+        update_i1905_interfaces(ale);
+    }
 
     return 0;
 }
@@ -677,11 +674,26 @@ int map_parse_assoc_clients_tlv(map_ale_info_t *ale, map_assoc_clients_tlv_t* tl
 {
     size_t i, j;
 
+    /* For MLO:
+       - tlv->bssid can be a regular BSSID or an AP MLD MAC
+       - tlv->sta_mac can be a regular MAC or an STA MLD MAC
+
+       At this point, MLD stations should already have been added in the DM so we need
+       to ignore those.
+    */
+
     for (i = 0; i < tlv->bsss_nr; i++) {
         map_assoc_clients_tlv_bss_t *tlv_bss = &tlv->bsss[i];
-        map_bss_info_t              *bss     = map_dm_get_bss_from_ale(ale, tlv_bss->bssid);
+        map_bss_info_t              *bss;
 
-        if (!bss) {
+        if (!(bss = map_dm_get_bss_from_ale(ale, tlv_bss->bssid))) {
+            /* Only print error when this is no ap_mld either */
+            if (map_dm_ale_has_mld(ale)) {
+                if (map_dm_get_ap_mld(ale, tlv_bss->bssid)) {
+                    continue;
+                }
+            }
+
             log_ctrl_e("%s: unknown bss[%s]", __FUNCTION__, mac_string(tlv_bss->bssid));
             continue;
         }
@@ -689,6 +701,12 @@ int map_parse_assoc_clients_tlv(map_ale_info_t *ale, map_assoc_clients_tlv_t* tl
         for (j = 0; j < tlv_bss->stas_nr; j++) {
             map_assoc_clients_tlv_sta_t *tlv_sta = &tlv_bss->stas[j];
             map_sta_info_t              *sta;
+
+            if (map_dm_ale_has_mld(ale)) {
+                if (map_dm_get_sta_mld_from_ale(ale, tlv_sta->mac)) {
+                    continue;
+                }
+            }
 
             if ((sta = handle_sta_connect(bss, tlv_sta->mac, tlv_sta->assoc_time))) {
                 /* Unmark so sta is not removed */
@@ -907,7 +925,7 @@ int map_parse_channel_preference_tlv(map_ale_info_t *ale, map_channel_preference
 int map_parse_radio_operation_restriction_tlv(map_ale_info_t *ale, map_radio_operation_restriction_tlv_t *tlv)
 {
     map_radio_info_t *radio = map_dm_get_radio(ale, tlv->radio_id);
-    int               i, j;
+    uint8_t           i, j;
 
     if (!radio) {
         log_ctrl_e("%s: radio[%s] not found", __FUNCTION__, mac_string(tlv->radio_id));
@@ -915,8 +933,7 @@ int map_parse_radio_operation_restriction_tlv(map_ale_info_t *ale, map_radio_ope
     }
 
     /* Remove old list */
-    SFREE(radio->op_restriction_list.op_classes);
-    radio->op_restriction_list.op_classes_nr = 0;
+    map_dm_free_op_restriction_list(radio);
 
     if (tlv->op_classes_nr == 0) {
         return 0;
@@ -927,25 +944,29 @@ int map_parse_radio_operation_restriction_tlv(map_ale_info_t *ale, map_radio_ope
         return -1;
     }
 
+    radio->op_restriction_list.op_classes_nr = tlv->op_classes_nr;
+
     for (i = 0; i < tlv->op_classes_nr; i++) {
         map_radio_operation_restriction_tlv_op_class_t *tlv_op_class = &tlv->op_classes[i];
         map_op_restriction_t                           *op_class     = &radio->op_restriction_list.op_classes[i];
 
-        if (tlv_op_class->channels_nr > MAX_CHANNEL_PER_OP_CLASS) {
-            log_ctrl_w("%s: too many channels[%d] in op_class for radio[%s]", __FUNCTION__,
-                       tlv_op_class->channels_nr, mac_string(tlv->radio_id));
-        }
+        op_class->op_class = tlv_op_class->op_class;
+        op_class->channels_nr = 0;
 
-        op_class->op_class      = tlv_op_class->op_class ;
-        op_class->channel_count = min(tlv_op_class->channels_nr, MAX_CHANNEL_PER_OP_CLASS);
+        if (tlv_op_class->channels_nr > 0) {
+            if (!(op_class->channels = calloc(tlv_op_class->channels_nr, sizeof(*op_class->channels)))) {
+                map_dm_free_op_restriction_list(radio);
+                return -1;
+            }
 
-        for (j = 0; j < op_class->channel_count; j++) {
-            op_class->channel_list[j].channel          = tlv_op_class->channels[j].channel;
-            op_class->channel_list[j].freq_restriction = tlv_op_class->channels[j].freq_restriction;
+            op_class->channels_nr = tlv_op_class->channels_nr;
+
+            for (j = 0; j < op_class->channels_nr; j++) {
+                op_class->channels[j].channel          = tlv_op_class->channels[j].channel;
+                op_class->channels[j].freq_restriction = tlv_op_class->channels[j].freq_restriction;
+            }
         }
     }
-
-    radio->op_restriction_list.op_classes_nr = tlv->op_classes_nr;
 
     return 0;
 }
@@ -953,17 +974,44 @@ int map_parse_radio_operation_restriction_tlv(map_ale_info_t *ale, map_radio_ope
 /* MAP_R1 17.2.20 */
 int map_parse_client_assoc_event_tlv(map_ale_info_t *ale, map_client_assoc_event_tlv_t *tlv)
 {
-    map_bss_info_t *bss = map_dm_get_bss_from_ale(ale, tlv->bssid);
+    /* tlv->bssid can be both ap_mld and bss */
+    map_ap_mld_info_t  *ap_mld = map_dm_ale_has_mld(ale) ? map_dm_get_ap_mld(ale, tlv->bssid) : NULL;
+    map_bss_info_t     *bss    = map_dm_get_bss_from_ale(ale, tlv->bssid);
+    map_sta_mld_info_t *sta_mld;
+    map_sta_info_t     *sta;
 
-    if (!bss) {
+    if (!ap_mld && !bss) {
         log_ctrl_e("%s: unknown bss[%s]", __FUNCTION__, mac_string(tlv->bssid));
         return -1;
     }
 
-    if (tlv->association_event == MAP_CLIENT_ASSOC_EVENT_DISCONNECTED) {
-        handle_sta_disconnect(bss, tlv->sta_mac);
+    /* Handle connect/disconnect seperatly */
+    if (tlv->association_event == MAP_CLIENT_ASSOC_EVENT_CONNECTED) {
+        /* For MLO:
+           - tlv->bssid can be a regular BSSID or an AP MLD MAC
+           - tlv->sta_mac can be a regular MAC or an STA MLD MAC
+
+           Because the BSSID and the AP MLD MAC can be the same at this point we cannot
+           know if this is a regular or MLD station
+
+           -> wait for topology response to resolve
+        */
+
+        if (ap_mld) {
+            /* Regular or MLD STA -> need more information */
+            map_send_topology_query(ale, MID_NA);
+            /* map_dm_sta_steering_finalize(sta); TODO:??? */
+            /* map_dm_create_assoc(sta); TODO:??? */
+        } else if (bss) {
+            handle_sta_connect(bss, tlv->sta_mac, 0);
+        }
     } else {
-        handle_sta_connect(bss, tlv->sta_mac, 0);
+        if (ap_mld && (sta_mld = map_dm_get_sta_mld(ap_mld, tlv->sta_mac))) {
+            map_dm_remove_sta_mld(sta_mld);
+        } else if (bss && (sta = map_dm_get_sta(bss, tlv->sta_mac))) {
+            map_dm_create_disassoc(sta);
+            map_dm_remove_sta(sta);
+        }
     }
 
     return 0;
@@ -990,7 +1038,7 @@ int map_parse_assoc_sta_link_metrics_tlv(map_ale_info_t *ale, map_assoc_sta_link
                 link_metrics->age             = tlv_bss->report_time_interval;
                 link_metrics->dl_mac_datarate = tlv_bss->downlink_data_rate;
                 link_metrics->ul_mac_datarate = tlv_bss->uplink_data_rate;
-                link_metrics->rssi            = tlv_bss->uplink_rssi;
+                link_metrics->rssi            = RCPI_TO_RSSI(tlv_bss->uplink_rcpi);
                 map_update_assoc_sta_link_metrics(sta, link_metrics);
             }
         } else {
@@ -1009,29 +1057,31 @@ int map_parse_assoc_sta_link_metrics_tlv(map_ale_info_t *ale, map_assoc_sta_link
 /* MAP_R1 17.2.35 */
 int map_parse_assoc_sta_traffic_stats_tlv(map_ale_info_t *ale, map_assoc_sta_traffic_stats_tlv_t* tlv)
 {
-    map_sta_info_t *sta               = map_dm_get_sta_from_ale(ale, tlv->sta_mac);
-    uint8_t         byte_counter_unit = ale->map_profile >= MAP_PROFILE_2 ?
-                                        ale->agent_capability.byte_counter_unit : MAP_BYTE_COUNTER_UNIT_BYTES;
-    uint64_t        txbytes           = map_convert_mapunits_to_bytes(tlv->txbytes, byte_counter_unit);
-    uint64_t        rxbytes           = map_convert_mapunits_to_bytes(tlv->rxbytes, byte_counter_unit);
+    map_sta_mld_info_t      *sta_mld;
+    map_sta_info_t          *sta;
+    map_sta_traffic_stats_t *traffic_stats;
+    uint8_t                  byte_counter_unit = ale->map_profile >= MAP_PROFILE_2 ?
+                                                 ale->agent_capability.byte_counter_unit : MAP_BYTE_COUNTER_UNIT_BYTES;
+    uint64_t                 tx_bytes          = map_convert_mapunits_to_bytes(tlv->tx_bytes, byte_counter_unit);
+    uint64_t                 rx_bytes          = map_convert_mapunits_to_bytes(tlv->rx_bytes, byte_counter_unit);
 
-    if (!sta) {
+    /* tlv->sta_mac can be a STA_MLD or a STA */
+    if (map_dm_ale_has_mld(ale) && (sta_mld = map_dm_get_sta_mld_from_ale(ale, tlv->sta_mac))) {
+        traffic_stats = &sta_mld->traffic_stats;
+    } else if ((sta = map_dm_get_sta_from_ale(ale, tlv->sta_mac))) {
+        traffic_stats = &sta->traffic_stats;
+    } else {
         log_ctrl_e("%s: sta[%s] not found", __FUNCTION__, mac_string(tlv->sta_mac));
         return -1;
     }
 
-    if (!sta->traffic_stats && !(sta->traffic_stats = calloc(1, sizeof(*sta->traffic_stats)))) {
-        log_ctrl_e("%s: calloc failed", __FUNCTION__);
-        return -1;
-    }
-
-    sta->traffic_stats->txbytes            = txbytes;
-    sta->traffic_stats->rxbytes            = rxbytes;
-    sta->traffic_stats->txpkts             = tlv->txpkts;
-    sta->traffic_stats->rxpkts             = tlv->rxpkts;
-    sta->traffic_stats->txpkterrors        = tlv->txpkterrors;
-    sta->traffic_stats->rxpkterrors        = tlv->rxpkterrors;
-    sta->traffic_stats->retransmission_cnt = tlv->retransmission_cnt;
+    traffic_stats->tx_bytes         = tx_bytes;
+    traffic_stats->rx_bytes         = rx_bytes;
+    traffic_stats->tx_packets       = tlv->tx_packets;
+    traffic_stats->rx_packets       = tlv->rx_packets;
+    traffic_stats->tx_packet_errors = tlv->tx_packet_errors;
+    traffic_stats->rx_packet_errors = tlv->rx_packet_errors;
+    traffic_stats->retransmissions  = tlv->retransmissions;
 
     return 0;
 }
@@ -1357,6 +1407,7 @@ int map_parse_cac_status_report_tlv(map_ale_info_t *ale, map_cac_status_report_t
     }
 
     ale->cac_status_report.valid = true;
+
     map_dm_ale_set_cac_status(ale);
 
     return 0;
@@ -1486,7 +1537,8 @@ int map_parse_cac_cap_tlv(map_ale_info_t *ale, map_cac_cap_tlv_t* tlv)
 /* MAP_R2 17.2.47 */
 int map_parse_multiap_profile_tlv(map_ale_info_t *ale, map_multiap_profile_tlv_t* tlv)
 {
-    ale->map_profile = (tlv->map_profile == 2) ? MAP_PROFILE_2 : MAP_PROFILE_1;
+    /* If multiap profile tlv exists and set to 1, we assume that relevant agent supports release 4 or higher */
+    ale->map_profile = (tlv->map_profile == 1) ? MAP_PROFILE_4P : tlv->map_profile;
 
     return 0;
 }
@@ -1569,12 +1621,12 @@ int map_parse_ap_ext_metrics_response_tlv(map_ale_info_t *ale, map_ap_ext_metric
     }
 
     bss->extended_metrics.valid          = true;
-    bss->extended_metrics.ucast_bytes_tx = map_convert_mapunits_to_bytes(tlv->ucast_bytes_tx, byte_counter_unit);
-    bss->extended_metrics.ucast_bytes_rx = map_convert_mapunits_to_bytes(tlv->ucast_bytes_rx, byte_counter_unit);
-    bss->extended_metrics.mcast_bytes_tx = map_convert_mapunits_to_bytes(tlv->mcast_bytes_tx, byte_counter_unit);
-    bss->extended_metrics.mcast_bytes_rx = map_convert_mapunits_to_bytes(tlv->mcast_bytes_rx, byte_counter_unit);
-    bss->extended_metrics.bcast_bytes_tx = map_convert_mapunits_to_bytes(tlv->bcast_bytes_tx, byte_counter_unit);
-    bss->extended_metrics.bcast_bytes_rx = map_convert_mapunits_to_bytes(tlv->bcast_bytes_rx, byte_counter_unit);
+    bss->extended_metrics.tx_ucast_bytes = map_convert_mapunits_to_bytes(tlv->tx_ucast_bytes, byte_counter_unit);
+    bss->extended_metrics.rx_ucast_bytes = map_convert_mapunits_to_bytes(tlv->rx_ucast_bytes, byte_counter_unit);
+    bss->extended_metrics.tx_mcast_bytes = map_convert_mapunits_to_bytes(tlv->tx_mcast_bytes, byte_counter_unit);
+    bss->extended_metrics.rx_mcast_bytes = map_convert_mapunits_to_bytes(tlv->rx_mcast_bytes, byte_counter_unit);
+    bss->extended_metrics.tx_bcast_bytes = map_convert_mapunits_to_bytes(tlv->tx_bcast_bytes, byte_counter_unit);
+    bss->extended_metrics.rx_bcast_bytes = map_convert_mapunits_to_bytes(tlv->rx_bcast_bytes, byte_counter_unit);
 
     return 0;
 }
@@ -1643,15 +1695,19 @@ int map_parse_backhaul_sta_radio_capability_tlv(map_ale_info_t *ale, map_backhau
     ale->backhaul_sta_iface_count = tlvs_nr;
 
     for (i = 0; i < tlvs_nr; i++) {
-        map_backhaul_sta_radio_cap_tlv_t    *tlv          = tlvs[i];
-        map_backhaul_sta_iface_t            *bhsta_iface  = &ale->backhaul_sta_iface_list[i];
+        map_backhaul_sta_radio_cap_tlv_t *tlv          = tlvs[i];
+        map_backhaul_sta_iface_t         *bhsta_iface  = &ale->backhaul_sta_iface_list[i];
+        map_radio_info_t                 *bhsta_radio;
 
         maccpy(bhsta_iface->radio_id, tlv->radio_id);
         if (tlv->bsta_mac_present) {
             maccpy(bhsta_iface->mac_address, tlv->bsta_mac);
             /* Check if it is connected(active) */
             bhsta_iface->active = !!map_dm_get_sta_gbl(bhsta_iface->mac_address);
-            update_radio_channel_configurable(ale, bhsta_iface);
+
+            if ((bhsta_radio = map_dm_get_radio(ale, bhsta_iface->radio_id))) {
+                map_dm_radio_set_channel_configurable(bhsta_radio, !bhsta_iface->active);
+            }
         }
     }
 
@@ -1698,19 +1754,70 @@ int map_parse_ap_wifi6_cap_tlv(map_ale_info_t *ale, map_ap_wifi6_cap_tlv_t *tlv)
 /* MAP_R3 17.2.73 */
 int map_parse_assoc_wifi6_sta_status_tlv(map_ale_info_t *ale, map_assoc_wifi6_sta_status_tlv_t *tlv)
 {
-    map_sta_info_t *sta               = map_dm_get_sta_from_ale(ale, tlv->sta_mac);
+    map_sta_mld_info_t       *sta_mld;
+    map_sta_info_t           *sta = map_dm_get_sta_from_ale(ale, tlv->sta_mac);
+    map_wifi6_sta_tid_info_t *tid_info;
     uint8_t i;
 
-    if (!sta) {
+    /* tlv->sta_mac can be a STA_MLD or a STA */
+    if (map_dm_ale_has_mld(ale) && (sta_mld = map_dm_get_sta_mld_from_ale(ale, tlv->sta_mac))) {
+        tid_info = &sta_mld->wifi6_sta_tid_info;
+    } else if ((sta = map_dm_get_sta_from_ale(ale, tlv->sta_mac))) {
+        tid_info = &sta->wifi6_sta_tid_info;
+    } else {
         log_ctrl_e("%s: sta[%s] not found", __FUNCTION__, mac_string(tlv->sta_mac));
         return -1;
     }
 
-    sta->wifi6_sta_tid_info.TID_nr = tlv->TID_nr;
+    tid_info->TID_nr = tlv->TID_nr;
 
-    for (i=0; i < sta->wifi6_sta_tid_info.TID_nr; i++) {
-        sta->wifi6_sta_tid_info.TID[i] = tlv->TID[i];
-        sta->wifi6_sta_tid_info.queue_size[i] = tlv->queue_size[i];
+    for (i = 0; i < tid_info->TID_nr; i++) {
+        tid_info->TID[i] = tlv->TID[i];
+        tid_info->queue_size[i] = tlv->queue_size[i];
+    }
+
+    return 0;
+}
+
+/* MAP_R3 17.2.75 */
+int map_parse_bss_configuration_report_tlv(map_ale_info_t *ale, map_bss_configuration_report_tlv_t *tlv)
+{
+    int i, j;
+
+    if (tlv->radios_nr > MAX_RADIO_PER_AGENT) {
+        log_ctrl_e("invalid radio number[%d] for ale[%s]", tlv->radios_nr, ale->al_mac_str);
+        return -1;
+    }
+
+    for (i = 0; i < tlv->radios_nr; i++) {
+        map_bss_configuration_radio_t *tlv_radio = &tlv->radios[i];
+        if (tlv_radio->bss_nr > MAX_BSS_PER_RADIO) {
+            log_ctrl_e("invalid bss number[%d] for radio[%s]", tlv_radio->bss_nr, mac_string(tlv_radio->ruid));
+            return -1;
+        }
+
+        map_radio_info_t *radio = map_dm_get_radio(ale, tlv_radio->ruid);
+        if (!radio) {
+            log_ctrl_w("radio[%s] not found", mac_string(tlv_radio->ruid));
+            continue;
+        }
+
+        for (j = 0; j < tlv_radio->bss_nr; j++) {
+            map_bss_configuration_bss_t *tlv_bss = &tlv_radio->bss[j];
+
+            map_bss_info_t *bss = map_dm_get_bss(radio, tlv_bss->bssid);
+            if (!bss) {
+                log_ctrl_w("bss [%s] not found", mac_string(tlv_bss->bssid));
+                continue;
+            }
+
+            bss->flags.backhaul_bss = tlv_bss->backhaul_bss;
+            bss->flags.fronthaul_bss = tlv_bss->fronthaul_bss;
+            bss->flags.r1_disallowed_status = tlv_bss->r1_disallowed_status;
+            bss->flags.r2_disallowed_status = tlv_bss->r2_disallowed_status;
+            bss->flags.multiple_bssid = tlv_bss->multiple_bssid;
+            bss->flags.transmitted_bssid = tlv_bss->transmitted_bssid;
+        }
     }
 
     return 0;
@@ -1783,6 +1890,25 @@ int map_parse_dpp_chirp_value_tlv(map_ale_info_t *ale, map_dpp_chirp_value_tlv_t
     return ret;
 }
 
+/* MAP_R3 17.2.84 */
+int map_parse_bss_configuration_request_tlv(map_ale_info_t *ale, map_bss_configuration_request_tlv_t *tlv)
+{
+    int ret = -1;
+
+    if (tlv->obj_len && tlv->obj) {
+        free(ale->dpp_info.bss_config_req.obj);
+        ale->dpp_info.bss_config_req.obj_len = tlv->obj_len;
+        ale->dpp_info.bss_config_req.obj = calloc(tlv->obj_len, sizeof(uint8_t));
+        if (ale->dpp_info.bss_config_req.obj == NULL) {
+            return ret;
+        }
+        memcpy(ale->dpp_info.bss_config_req.obj, tlv->obj, tlv->obj_len);
+        ret = 0;
+    }
+
+    return ret;
+}
+
 /* MAP_R3 17.2.86 */
 int map_parse_dpp_message_tlv(map_ale_info_t *ale, map_dpp_message_tlv_t *tlv)
 {
@@ -1823,6 +1949,456 @@ int map_parse_device_inventory_tlv(map_ale_info_t *ale, map_device_inventory_tlv
         radio->vendor[tlv->radios[i].vendor_len] = 0;
     }
     ale->inventory_exists = true;
+
+    return 0;
+}
+
+/*#######################################################################
+#                       MAP R6 TLV HANDLERS                             #
+########################################################################*/
+/* MAP_R6 17.2.95 */
+int map_parse_wifi7_agent_capability_tlv(map_ale_info_t *ale, map_wifi7_agent_cap_tlv_t *tlv, bool *ret_changed)
+{
+    int i, j;
+    bool changed = false;
+
+    log_ctrl_t("WI-FI 7 CAPABILITIES:");
+    log_ctrl_t("*****************************");
+    ale->agent_capability.max_mlds = tlv->max_mlds;
+    ale->agent_capability.ap_max_links = tlv->ap_max_links;
+    ale->agent_capability.bsta_max_links = tlv->bsta_max_links;
+    ale->agent_capability.tid_to_link_map_cap = tlv->tid_to_link_map_cap;
+
+    log_ctrl_t("ALE[%s]", ale->al_mac_str);
+    log_ctrl_t(" max_mlds: %d, ap_max_links: %d, bsta_max_links: %d, tid_to_link_map: %d", ale->agent_capability.max_mlds,
+                ale->agent_capability.ap_max_links, ale->agent_capability.bsta_max_links, ale->agent_capability.tid_to_link_map_cap);
+
+    for (i = 0; i < tlv->radios_nr; i++) {
+        map_radio_info_t        *radio          = map_dm_get_radio(ale, tlv->radios[i].ruid);
+        map_radio_wifi7_caps_t  *tlv_wifi7_caps = &tlv->radios[i].cap;
+        map_radio_wifi7_caps_t  *wifi7_caps;
+
+        if (!radio) {
+            log_ctrl_e("%s: radio[%s] not found", __FUNCTION__, mac_string(tlv->radios[i].ruid));
+            continue;
+        }
+
+        log_ctrl_t(" Radio[%s]", mac_string(radio->radio_id));
+
+        /* TODO: Remove it when EHT operations TLV implemented by agent.
+        * Until that time this is the most deterministic eht capability indicator.
+        */
+        if (!radio->eht_caps && !(radio->eht_caps = calloc(1, sizeof(*radio->eht_caps)))) {
+            log_ctrl_e("%s: calloc failed", __FUNCTION__);
+            return -1;
+        }
+
+        /* Check if wifi7 capabilities are changed */
+        if (radio->wifi7_caps) {
+            if (memcmp(&radio->wifi7_caps->ap_mld_modes, &tlv_wifi7_caps->ap_mld_modes, sizeof(map_mld_modes_t)) ||
+                memcmp(&radio->wifi7_caps->bsta_mld_modes, &tlv_wifi7_caps->bsta_mld_modes, sizeof(map_mld_modes_t)) ||
+                radio->wifi7_caps->ap_str_records_nr != tlv_wifi7_caps->ap_str_records_nr ||
+                radio->wifi7_caps->ap_nstr_records_nr != tlv_wifi7_caps->ap_nstr_records_nr ||
+                radio->wifi7_caps->ap_emlsr_records_nr != tlv_wifi7_caps->ap_emlsr_records_nr ||
+                radio->wifi7_caps->ap_emlmr_records_nr != tlv_wifi7_caps->ap_emlmr_records_nr) {
+                changed = true;
+            }
+
+            map_free_wifi7_caps(radio);
+
+        } else if (is_radio_M2_sent(radio->state)) {
+            changed = true;
+        }
+
+        if (!radio->wifi7_caps && !(radio->wifi7_caps = calloc(1, sizeof(*radio->wifi7_caps)))) {
+            log_ctrl_e("%s: calloc failed", __FUNCTION__);
+            return -1;
+        }
+
+        wifi7_caps = radio->wifi7_caps;
+        wifi7_caps->ap_mld_modes   = tlv_wifi7_caps->ap_mld_modes;
+        wifi7_caps->bsta_mld_modes = tlv_wifi7_caps->bsta_mld_modes;
+
+        log_ctrl_t("  ap_str_support: %s, ap_nstr_support: %s, ap_emlsr_support: %s, ap_emlmr_support: %s",
+                    wifi7_caps->ap_mld_modes.str ? "true" : "false", wifi7_caps->ap_mld_modes.nstr ? "true" : "false",
+                    wifi7_caps->ap_mld_modes.emlsr ? "true" : "false", wifi7_caps->ap_mld_modes.emlmr ? "true" : "false");
+        log_ctrl_t("  bsta_str_support: %s, bsta_nstr_support: %s, bsta_emlsr_support: %s, bsta_emlmr_support: %s",
+                    wifi7_caps->bsta_mld_modes.str ? "true" : "false", wifi7_caps->bsta_mld_modes.nstr ? "true" : "false",
+                    wifi7_caps->bsta_mld_modes.emlsr ? "true" : "false", wifi7_caps->bsta_mld_modes.emlmr ? "true" : "false");
+
+        wifi7_caps->ap_str_records_nr = tlv_wifi7_caps->ap_str_records_nr;
+        log_ctrl_t("  ap_str_records_nr:     %d",  wifi7_caps->ap_str_records_nr);
+        if (wifi7_caps->ap_str_records_nr > 0) {
+            wifi7_caps->ap_str_records = calloc(wifi7_caps->ap_str_records_nr, sizeof(*wifi7_caps->ap_str_records));
+            for (j=0; j < wifi7_caps->ap_str_records_nr; j++) {
+                maccpy(wifi7_caps->ap_str_records[j].ruid, tlv_wifi7_caps->ap_str_records[j].ruid);
+                wifi7_caps->ap_str_records[j].freq_separation = tlv_wifi7_caps->ap_str_records[j].freq_separation;
+                log_ctrl_t("   ap_str_record[%d] ruid[%s] freq_separation[%d] ",
+                            j, mac_string(wifi7_caps->ap_str_records[j].ruid), wifi7_caps->ap_str_records[j].freq_separation);
+            }
+        }
+
+        wifi7_caps->ap_nstr_records_nr = tlv_wifi7_caps->ap_nstr_records_nr;
+        log_ctrl_t("  ap_nstr_records_nr:    %d",  wifi7_caps->ap_nstr_records_nr);
+        if (wifi7_caps->ap_nstr_records_nr > 0) {
+            wifi7_caps->ap_nstr_records = calloc(wifi7_caps->ap_nstr_records_nr, sizeof(*wifi7_caps->ap_nstr_records));
+            for (j=0; j < wifi7_caps->ap_nstr_records_nr; j++) {
+                maccpy(wifi7_caps->ap_nstr_records[j].ruid, tlv_wifi7_caps->ap_nstr_records[j].ruid);
+                wifi7_caps->ap_nstr_records[j].freq_separation = tlv_wifi7_caps->ap_nstr_records[j].freq_separation;
+                log_ctrl_t("   ap_nstr_record[%d] ruid[%s] freq_separation[%d] ",
+                            j, mac_string(wifi7_caps->ap_nstr_records[j].ruid), wifi7_caps->ap_nstr_records[j].freq_separation);
+            }
+        }
+
+        wifi7_caps->ap_emlsr_records_nr = tlv_wifi7_caps->ap_emlsr_records_nr;
+        log_ctrl_t("  ap_emlsr_records_nr:   %d",  wifi7_caps->ap_emlsr_records_nr);
+        if (wifi7_caps->ap_emlsr_records_nr > 0) {
+            wifi7_caps->ap_emlsr_records = calloc(wifi7_caps->ap_emlsr_records_nr, sizeof(*wifi7_caps->ap_emlsr_records));
+            for (j=0; j < wifi7_caps->ap_emlsr_records_nr; j++) {
+                maccpy(wifi7_caps->ap_emlsr_records[j].ruid, tlv_wifi7_caps->ap_emlsr_records[j].ruid);
+                wifi7_caps->ap_emlsr_records[j].freq_separation = tlv_wifi7_caps->ap_emlsr_records[j].freq_separation;
+                log_ctrl_t("   ap_emlsr_record[%d] ruid[%s] freq_separation[%d] ",
+                            j, mac_string(wifi7_caps->ap_emlsr_records[j].ruid), wifi7_caps->ap_emlsr_records[j].freq_separation);
+            }
+        }
+
+        wifi7_caps->ap_emlmr_records_nr = tlv_wifi7_caps->ap_emlmr_records_nr;
+        log_ctrl_t("  ap_emlmr_records_nr:   %d",  wifi7_caps->ap_emlmr_records_nr);
+        if (wifi7_caps->ap_emlmr_records_nr > 0) {
+            wifi7_caps->ap_emlmr_records = calloc(wifi7_caps->ap_emlmr_records_nr, sizeof(*wifi7_caps->ap_emlmr_records));
+            for (j=0; j < wifi7_caps->ap_emlmr_records_nr; j++) {
+                maccpy(wifi7_caps->ap_emlmr_records[j].ruid, tlv_wifi7_caps->ap_emlmr_records[j].ruid);
+                wifi7_caps->ap_emlmr_records[j].freq_separation = tlv_wifi7_caps->ap_emlmr_records[j].freq_separation;
+                log_ctrl_t("   ap_emlmr_record[%d] ruid[%s] freq_separation[%d] ",
+                            j, mac_string(wifi7_caps->ap_emlmr_records[j].ruid), wifi7_caps->ap_emlmr_records[j].freq_separation);
+            }
+        }
+
+        wifi7_caps->bsta_str_records_nr = tlv_wifi7_caps->bsta_str_records_nr;
+        log_ctrl_t("  bsta_str_records_nr:   %d",  wifi7_caps->bsta_str_records_nr);
+        if (wifi7_caps->bsta_str_records_nr > 0) {
+            wifi7_caps->bsta_str_records = calloc(wifi7_caps->bsta_str_records_nr, sizeof(*wifi7_caps->bsta_str_records));
+            for (j=0; j < wifi7_caps->bsta_str_records_nr; j++) {
+                maccpy(wifi7_caps->bsta_str_records[j].ruid, tlv_wifi7_caps->bsta_str_records[j].ruid);
+                wifi7_caps->bsta_str_records[j].freq_separation = tlv_wifi7_caps->bsta_str_records[j].freq_separation;
+                log_ctrl_t("   bsta_str_record[%d] ruid[%s] freq_separation[%d] ",
+                            j, mac_string(wifi7_caps->bsta_str_records[j].ruid), wifi7_caps->bsta_str_records[j].freq_separation);
+            }
+        }
+
+        wifi7_caps->bsta_nstr_records_nr = tlv_wifi7_caps->bsta_nstr_records_nr;
+        log_ctrl_t("  bsta_nstr_records_nr:  %d",  wifi7_caps->bsta_nstr_records_nr);
+        if (wifi7_caps->bsta_nstr_records_nr > 0) {
+            wifi7_caps->bsta_nstr_records = calloc(wifi7_caps->bsta_nstr_records_nr, sizeof(*wifi7_caps->bsta_nstr_records));
+            for (j=0; j < wifi7_caps->bsta_nstr_records_nr; j++) {
+                maccpy(wifi7_caps->bsta_nstr_records[j].ruid, tlv_wifi7_caps->bsta_nstr_records[j].ruid);
+                wifi7_caps->bsta_nstr_records[j].freq_separation = tlv_wifi7_caps->bsta_nstr_records[j].freq_separation;
+                log_ctrl_t("   bsta_nstr_record[%d] ruid[%s] freq_separation[%d] ",
+                            j, mac_string(wifi7_caps->bsta_nstr_records[j].ruid), wifi7_caps->bsta_nstr_records[j].freq_separation);
+            }
+        }
+
+        wifi7_caps->bsta_emlsr_records_nr = tlv_wifi7_caps->bsta_emlsr_records_nr;
+        log_ctrl_t("  bsta_emlsr_records_nr: %d",  wifi7_caps->bsta_emlsr_records_nr);
+        if (wifi7_caps->bsta_emlsr_records_nr > 0) {
+            wifi7_caps->bsta_emlsr_records = calloc(wifi7_caps->bsta_emlsr_records_nr, sizeof(*wifi7_caps->bsta_emlsr_records));
+            for (j=0; j < wifi7_caps->bsta_emlsr_records_nr; j++) {
+                maccpy(wifi7_caps->bsta_emlsr_records[j].ruid, tlv_wifi7_caps->bsta_emlsr_records[j].ruid);
+                wifi7_caps->bsta_emlsr_records[j].freq_separation = tlv_wifi7_caps->bsta_emlsr_records[j].freq_separation;
+                log_ctrl_t("   bsta_emlsr_record[%d] ruid[%s] freq_separation[%d] ",
+                            j, mac_string(wifi7_caps->bsta_emlsr_records[j].ruid), wifi7_caps->bsta_emlsr_records[j].freq_separation);
+            }
+        }
+
+        wifi7_caps->bsta_emlmr_records_nr = tlv_wifi7_caps->bsta_emlmr_records_nr;
+        log_ctrl_t("  bsta_emlmr_records_nr: %d",  wifi7_caps->bsta_emlmr_records_nr);
+        if (wifi7_caps->bsta_emlmr_records_nr > 0) {
+            wifi7_caps->bsta_emlmr_records = calloc(wifi7_caps->bsta_emlmr_records_nr, sizeof(*wifi7_caps->bsta_emlmr_records));
+            for (j=0; j < wifi7_caps->bsta_emlmr_records_nr; j++) {
+                maccpy(wifi7_caps->bsta_emlmr_records[j].ruid, tlv_wifi7_caps->bsta_emlmr_records[j].ruid);
+                wifi7_caps->bsta_emlmr_records[j].freq_separation = tlv_wifi7_caps->bsta_emlmr_records[j].freq_separation;
+                log_ctrl_t("   bsta_emlmr_record[%d] ruid[%s] freq_separation[%d] ",
+                            j, mac_string(wifi7_caps->bsta_emlmr_records[j].ruid), wifi7_caps->bsta_emlmr_records[j].freq_separation);
+            }
+        }
+    }
+    log_ctrl_t("*****************************");
+
+    if (ret_changed) {
+        *ret_changed = changed;
+    }
+
+    return 0;
+}
+
+/* MAP_R6 17.2.96 */
+int map_parse_agent_ap_mld_conf_tlv(map_ale_info_t *ale, map_agent_ap_mld_conf_tlv_t *tlv)
+{
+    map_ap_mld_info_t                  *mld, *next;
+    map_agent_ap_mld_conf_tlv_ap_mld_t *tlv_mld;
+    mac_addr_str                        mac_str;
+    int                                 i, j;
+
+    /* First remove no longer present ap_mld */
+    map_dm_foreach_ap_mld_safe(ale, mld, next) {
+        bool found = false;
+
+        for (i = 0; i < tlv->ap_mld_nr; i++) {
+            tlv_mld = &tlv->ap_mlds[i];
+
+            if (tlv_mld->ap_mld_mac_valid && !maccmp(mld->mac, tlv_mld->ap_mld_mac)) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            log_ctrl_i("Removing AP MLD[%s] from ALE[%s]", mld->mac_str, ale->al_mac_str);
+            map_dm_remove_ap_mld(mld);
+        }
+    }
+
+    for (i = 0; i < tlv->ap_mld_nr; i++) {
+        tlv_mld = &tlv->ap_mlds[i];
+
+        if (!tlv_mld->ap_mld_mac_valid) {
+            log_ctrl_e("AP MLD from ale[%s] has ap_mld_mac_valid set to false -> ignore", ale->al_mac_str);
+            continue;
+        }
+
+        if (!(mld = map_dm_get_ap_mld(ale, tlv_mld->ap_mld_mac))) {
+            mac_to_string(tlv_mld->ap_mld_mac, mac_str);
+
+            log_ctrl_i("Creating AP MLD[%s] on ALE[%s]", mac_str, ale->al_mac_str);
+            if (!(mld = map_dm_create_ap_mld(ale, tlv_mld->ap_mld_mac))) {
+                log_ctrl_i("Could not create AP MLD[%s] on ALE[%s]", mac_str, ale->al_mac_str);
+                continue;
+            }
+        }
+
+        /* Get affiliated BSS */
+        /* TODO: detect if BSS is part more than one MLD?? */
+        map_aff_ap_cfg_t aff_aps[MAX_MLD_AFF_APSTA];
+        size_t           aff_ap_nr = 0;
+
+        for (j = 0; j < tlv_mld->aff_ap_nr && aff_ap_nr < MAX_MLD_AFF_APSTA; j++) {
+            map_agent_ap_mld_conf_tlv_aff_ap_t *tlv_aff_ap = &tlv_mld->aff_aps[j];
+            map_radio_info_t *radio;
+            map_bss_info_t *bss;
+
+            if (!(radio = map_dm_get_radio(ale, tlv_aff_ap->radio_id))) {
+                mac_to_string(tlv_aff_ap->radio_id, mac_str);
+                log_ctrl_e("Could not find affiliated AP radio[%s] on ALE[%s]", mac_str, ale->al_mac_str);
+                continue;
+            }
+
+            if (!(bss = map_dm_get_bss(radio, tlv_aff_ap->aff_ap_mac))) {
+                 mac_to_string(tlv_aff_ap->aff_ap_mac, mac_str);
+                 log_ctrl_e("Could not find affiliated AP[%s] on radio[%s] on ALE[%s]", mac_str, radio->radio_id_str, ale->al_mac_str);
+                 continue;
+            }
+            aff_aps[aff_ap_nr].bss     = bss;
+            aff_aps[aff_ap_nr].link_id = tlv_aff_ap->link_id_valid ? tlv_aff_ap->link_id : 255;
+            aff_ap_nr++;
+        }
+
+        /* Update parameters */
+        map_dm_ap_mld_set(mld, tlv_mld->ssid_len, tlv_mld->ssid,
+                          tlv_mld->str, tlv_mld->nstr, tlv_mld->emlsr, tlv_mld->emlmr,
+                          aff_aps, aff_ap_nr);
+    }
+
+    return 0;
+}
+
+/* MAP_R6 17.2.97 */
+int map_parse_bsta_mld_conf_tlv(map_ale_info_t *ale, map_bsta_mld_conf_tlv_t *tlv)
+{
+    int i;
+
+    if (!tlv->bsta_mld_mac_valid) {
+        map_dm_bsta_mld_set(&ale->bsta_mld, false, NULL, NULL, false, false, false, false, NULL, 0);
+    } else {
+        mac_addr aff_sta_macs[MAX_MLD_AFF_APSTA];
+        size_t   aff_sta_mac_nr = 0;
+
+        for (i = 0; i < tlv->aff_bsta_nr && aff_sta_mac_nr < MAX_MLD_AFF_APSTA; i++) {
+            map_bsta_mld_conf_tlv_aff_bsta_t *tlv_aff_bsta = &tlv->aff_bstas[i];
+
+            if (tlv_aff_bsta->aff_bsta_mac_valid) {
+                maccpy(aff_sta_macs[aff_sta_mac_nr], tlv_aff_bsta->aff_bsta_mac);
+                aff_sta_mac_nr++;
+            }
+        }
+
+        /* Sort array in case order would change... */
+        acu_sort_mac_array(aff_sta_macs, aff_sta_mac_nr);
+
+        map_dm_bsta_mld_set(&ale->bsta_mld, true, tlv->bsta_mld_mac, tlv->ap_mld_mac,
+                            tlv->str, tlv->nstr, tlv->emlsr, tlv->emlmr,
+                            aff_sta_macs, aff_sta_mac_nr);
+    }
+
+    return 0;
+}
+
+/* MAP_R6 17.2.97 */
+int map_parse_assoc_sta_mld_conf_tlv(map_ale_info_t *ale, map_assoc_sta_mld_conf_tlv_t *tlv)
+{
+    map_ap_mld_info_t  *ap_mld;
+    map_sta_mld_info_t *sta_mld;
+    map_bss_info_t     *bss;
+    map_sta_info_t     *sta;
+    mac_addr_str        sta_mld_mac_str;
+    mac_addr_str        ap_mld_mac_str;
+    size_t              i;
+
+    mac_to_string(tlv->sta_mld_mac, sta_mld_mac_str);
+    mac_to_string(tlv->ap_mld_mac, ap_mld_mac_str);
+
+    /* Is the AP_MLD known? */
+    if (!(ap_mld = map_dm_get_ap_mld(ale, tlv->ap_mld_mac))) {
+        log_ctrl_e("ALE[%s]: could not find AP_MLD[%s]", ale->al_mac_str, ap_mld_mac_str);
+        return -1;
+    }
+
+    /* Is this STA connected (to this or another ap_mld) */
+    if ((sta_mld = map_dm_get_sta_mld_from_ale(ale, tlv->sta_mld_mac))) {
+        if (sta_mld->ap_mld != ap_mld) {
+            /* This would mean a roam from e.g home to guest and is not that likely
+               -> Just remove and re-create
+            */
+            log_ctrl_i("ALE[%s]: removing STA_MLD[%s] part of the wrong AP_MLD[%s <-> %s]",
+                       ale->al_mac_str, sta_mld_mac_str, ap_mld_mac_str, sta_mld->ap_mld ? sta_mld->ap_mld->mac_str : "-");
+            map_dm_remove_sta_mld(sta_mld);
+            sta_mld = NULL;
+        }
+    }
+
+    /* Create if needed */
+    if (!sta_mld) {
+        log_ctrl_i("ALE[%s]: creating STA_MLD[%s] on AP_MLD[%s]", ale->al_mac_str, sta_mld_mac_str, ap_mld_mac_str);
+        if (!(sta_mld = map_dm_create_sta_mld(ap_mld, tlv->sta_mld_mac))) {
+            log_ctrl_e("ALE[%s]: could not create STA_MLD[%s] on AP_MLD[%s]", ale->al_mac_str, sta_mld_mac_str, ap_mld_mac_str);
+            return -1;
+        }
+    }
+
+    /* Update */
+    sta_mld->enabled_mld_modes.str   = tlv->str;
+    sta_mld->enabled_mld_modes.nstr  = tlv->nstr;
+    sta_mld->enabled_mld_modes.emlsr = tlv->emlsr;
+    sta_mld->enabled_mld_modes.emlmr = tlv->emlmr;
+
+    /* Create/update affiliated stas
+       NOTE: No longer "referenced" STA will be deleted automatically as they remain "marked"
+    */
+    for (i = 0; i < tlv->aff_sta_nr; i++) {
+        map_assoc_sta_mld_conf_tlv_aff_sta_t *tlv_aff_sta = &tlv->aff_stas[i];
+        mac_addr_str                          aff_sta_mac_str;
+        mac_addr_str                          bssid_str;
+
+        mac_to_string(tlv_aff_sta->aff_sta_mac, aff_sta_mac_str);
+        mac_to_string(tlv_aff_sta->bssid, bssid_str);
+
+        if (!(bss = map_dm_get_bss_from_ale(ale, tlv_aff_sta->bssid))) {
+            mac_to_string(tlv_aff_sta->bssid, bssid_str);
+            log_ctrl_e("ALE[%s]: could not find BSSID[%s] to add AFF_STA[%s]", ale->al_mac_str, bssid_str, aff_sta_mac_str);
+            continue;
+        }
+
+        /* Can we assume that affiliated sta never roam?
+           For now - just delete mismatching STAs
+        */
+        if ((sta = map_dm_get_sta_from_ale(ale, tlv_aff_sta->aff_sta_mac))) {
+            if (sta->sta_mld != sta_mld) {
+                log_ctrl_i("ALE[%s]: removing AFF_STA[%s] part of the wrong STA_MLD[%s <-> %s]",
+                           ale->al_mac_str, aff_sta_mac_str, sta_mld_mac_str, sta->sta_mld ? sta->sta_mld->mac_str : "-");
+                map_dm_remove_sta(sta);
+                sta = NULL;
+            } else if (sta->bss != bss) {
+                log_ctrl_i("ALE[%s]: removing AFF_STA[%s] part of the wrong BSS[%s <-> %s]",
+                           ale->al_mac_str, aff_sta_mac_str, bssid_str, sta->bss->bssid_str);
+                map_dm_remove_sta(sta);
+                sta = NULL;
+            }
+        }
+
+        if (!sta) {
+            log_ctrl_i("ALE[%s]: creating AFF_STA[%s] on STA_MLD[%s] and BSSID[%s]", ale->al_mac_str, aff_sta_mac_str, sta_mld_mac_str, bssid_str);
+            if (!(sta = map_dm_create_aff_sta(bss, sta_mld, tlv_aff_sta->aff_sta_mac))) {
+                log_ctrl_e("could not create AFF_STA[%s] on BSSID[%s] ALE[%s]", aff_sta_mac_str, bssid_str, ale->al_mac_str);
+                continue;
+            }
+        }
+
+        map_dm_unmark_sta(sta);
+    }
+
+    map_dm_unmark_sta_mld(sta_mld);
+
+    return 0;
+}
+
+/* MAP_R6 17.2.100 */
+int map_parse_aff_sta_metrics_tlv(map_ale_info_t *ale, map_aff_sta_metrics_tlv_t *tlv)
+{
+    map_sta_info_t *sta;
+    uint8_t         byte_counter_unit = ale->map_profile >= MAP_PROFILE_2 ?
+                                        ale->agent_capability.byte_counter_unit : MAP_BYTE_COUNTER_UNIT_BYTES;
+    uint64_t        tx_bytes          = map_convert_mapunits_to_bytes(tlv->tx_bytes, byte_counter_unit);
+    uint64_t        rx_bytes          = map_convert_mapunits_to_bytes(tlv->rx_bytes, byte_counter_unit);
+
+    if (!(sta = map_dm_get_sta_from_ale(ale, tlv->sta_mac))) {
+        log_ctrl_e("%s: sta[%s] not found", __FUNCTION__, mac_string(tlv->sta_mac));
+        return -1;
+    }
+
+    sta->traffic_stats.tx_bytes         = tx_bytes;
+    sta->traffic_stats.rx_bytes         = rx_bytes;
+    sta->traffic_stats.tx_packets       = tlv->tx_packets;
+    sta->traffic_stats.rx_packets       = tlv->rx_packets;
+    sta->traffic_stats.tx_packet_errors = tlv->tx_packet_errors;
+    sta->traffic_stats.rx_packet_errors = 0; /* Not available */
+    sta->traffic_stats.retransmissions  = 0; /* Not available */
+
+    return 0;
+}
+
+/* MAP_R6 17.2.103 */
+int map_parse_eht_operations_tlv(map_ale_info_t *ale, map_eht_operations_tlv_t *tlv)
+{
+    int i, j;
+
+    if (tlv->radios_nr == 0 || tlv->radios_nr > MAX_RADIO_PER_AGENT) {
+        return -1;
+    }
+
+    for (i = 0; i < tlv->radios_nr; i++) {
+        map_radio_info_t *radio = map_dm_get_radio(ale, tlv->radios[i].ruid);
+        if (!radio) {
+            log_ctrl_e("%s: radio[%s] not found", __FUNCTION__, mac_string(tlv->radios[i].ruid));
+            continue;
+        }
+
+        if (!radio->eht_caps && !(radio->eht_caps = calloc(1, sizeof(*radio->eht_caps)))) {
+            log_ctrl_e("%s: calloc failed", __FUNCTION__);
+            return -1;
+        }
+
+        if (tlv->radios[i].bsss_nr == 0 || tlv->radios[i].bsss_nr > MAX_BSS_PER_AGENT) {
+            return -1;
+        }
+
+        for (j = 0; j < tlv->radios[i].bsss_nr; j++) {
+            map_bss_info_t *bss = map_dm_get_bss(radio, tlv->radios[i].bsss[j].bssid);
+            if (!bss) {
+                log_ctrl_e("%s: bss[%s] not found", __FUNCTION__, mac_string(tlv->radios[i].bsss[j].bssid));
+                continue;
+            }
+            bss->eht_ops = tlv->radios[i].bsss[j].eht_ops;
+        }
+    }
 
     return 0;
 }

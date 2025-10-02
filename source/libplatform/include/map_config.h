@@ -27,6 +27,7 @@
 #define WFA_CERT()                  (map_cfg_get()->wfa_cert)
 #define WFA_CERT_R1_COMPATIBLE()    (map_cfg_get()->wfa_cert_r1_compatible)
 #define MONITOR_MODE()              (!map_cfg_get()->is_master)
+#define MLD_ENABLED()               (map_cfg_get()->controller_cfg.mld_enabled)
 
 typedef enum bandlock_5g_e {
     MAP_BANDLOCK_5G_DISABLED,
@@ -47,16 +48,16 @@ typedef void (*map_cfg_radio_channel_cb_t)(int ale_idx, int radio_idx, int chann
 typedef void (*map_cfg_radio_bandwidth_cb_t)(int ale_idx, int radio_idx, int bw);
 
 typedef struct {
-    map_cfg_enable_cb_t                      enable_cb;
-    map_cfg_master_state_cb_t                master_state_cb;
-    map_cfg_update_cb_t                      update_cb;
-    map_cfg_profile_update_cb_t              profile_update_cb;
-    map_cfg_backhaul_profile_update_cb_t     backhaul_profile_update_cb;
-    map_cfg_allowed_channel_list_update_cb_t allowed_channel_list_update_cb;
-    map_cfg_allowed_bandwidth_update_cb_t    allowed_bandwidth_update_cb;
-    map_cfg_bandlock_5g_cb_t                 bandlock_5g_update_cb;
-    map_cfg_radio_channel_cb_t               radio_channel_cb;
-    map_cfg_radio_bandwidth_cb_t             radio_bandwidth_cb;
+    map_cfg_enable_cb_t                          enable_cb;
+    map_cfg_master_state_cb_t                    master_state_cb;
+    map_cfg_update_cb_t                          update_cb;
+    map_cfg_profile_update_cb_t                  profile_update_cb;
+    map_cfg_backhaul_profile_update_cb_t         backhaul_profile_update_cb;
+    map_cfg_allowed_channel_list_update_cb_t     allowed_channel_list_update_cb;
+    map_cfg_allowed_bandwidth_update_cb_t        allowed_bandwidth_update_cb;
+    map_cfg_bandlock_5g_cb_t                     bandlock_5g_update_cb;
+    map_cfg_radio_channel_cb_t                   radio_channel_cb;
+    map_cfg_radio_bandwidth_cb_t                 radio_bandwidth_cb;
 } map_cfg_cbs_t;
 
 typedef enum {
@@ -92,6 +93,7 @@ typedef struct map_profile_cfg_s {
     uint8_t                 extender;
     int                     vlan_id;  /* -1: untagged */
     bool                    hide;
+    int                     mld_id;  /* -1: non mld */
 } map_profile_cfg_t;
 
 typedef struct map_chan_sel_cfg_s {
@@ -106,6 +108,8 @@ typedef struct map_chan_sel_cfg_s {
     uint16_t          allowed_bandwidth_6g;
     bool              allowed_channel_6g_psc;
     bandlock_5g_t     bandlock_5g;
+    bool              align_multiap;
+    uint32_t          align_multiap_backoff_time;
 } map_chan_sel_cfg_t;
 
 typedef struct map_controller_cfg_s {
@@ -120,6 +124,7 @@ typedef struct map_controller_cfg_s {
     uint8_t             local_agent_al_mac[MAC_ADDR_LEN];
 
     uint8_t             map_profile;
+    bool                mld_enabled;
     unsigned int        lldp_interval;
     unsigned int        topology_discovery_interval;
     unsigned int        topology_query_interval;

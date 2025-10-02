@@ -84,7 +84,121 @@
 #                       TLV HANDLERS                                    #
 ########################################################################*/
 /*#######################################################################
-# Encrypted Payload TLV associated structures   ("Section 17.2.69")     #
+# 1905 Layer Security Capability TLV ("Section 17.2.67")                #
+########################################################################*/
+TLV_FREE_FUNCTION(1905_security_cap) {}
+
+static uint8_t* parse_1905_security_cap_tlv(uint8_t *packet_stream, uint16_t len)
+{
+    map_1905_security_cap_tlv_t *ret;
+    uint8_t *p = packet_stream;
+
+    PARSE_CHECK_EXP_LEN(3);
+
+    PARSE_CALLOC_RET
+
+    ret->tlv_type = TLV_TYPE_1905_LAYER_SECURITY_CAPABILITY;
+
+    _E1B(&p, &ret->onboarding_protocol);
+    _E1B(&p, &ret->mic_algorithm);
+    _E1B(&p, &ret->encryption_algorithm);
+
+    PARSE_CHECK_INTEGRITY(1905_security_cap)
+    PARSE_RETURN
+}
+
+static uint8_t* forge_1905_security_cap_tlv(void *memory_structure, uint16_t *len)
+{
+    map_1905_security_cap_tlv_t *m = memory_structure;
+    uint16_t  tlv_length = 3;
+    uint8_t  *ret, *p;
+
+    FORGE_MALLOC_RET
+
+    _I1B(&m->tlv_type,              &p);
+    _I2B(&tlv_length,               &p);
+
+    _I1B(&m->onboarding_protocol,   &p);
+    _I1B(&m->mic_algorithm,         &p);
+    _I1B(&m->encryption_algorithm,  &p);
+
+    FORGE_RETURN
+}
+
+/*#######################################################################
+# MIC TLV ("Section 17.2.68")                                           #
+########################################################################*/
+TLV_FREE_FUNCTION(mic)
+{
+    SFREE(m->mic);
+}
+
+static uint8_t *parse_mic_tlv(uint8_t *packet_stream, uint16_t len)
+{
+    map_mic_tlv_t *ret;
+    uint8_t *p = packet_stream;
+    uint8_t byte;
+
+    PARSE_CHECK_MIN_LEN(1 + INTEGRITY_TX_COUNTER_LEN + ETHER_ADDR_LEN + 2 + 32); /* 32 is SHA256 MAC Length */
+
+    PARSE_CALLOC_RET
+
+    ret->tlv_type = TLV_TYPE_MIC;
+
+    /**
+     * bits 7-6: 1905 GTK Key Id
+     * bits 5-4: MIC Version
+     * bits 3-0: Reserved
+     */
+    _E1B(&p, &byte);
+    ret->gtk_key_id  = (byte & (BIT_MASK_7 | BIT_MASK_6)) >> BIT_SHIFT_6;
+    ret->mic_version = (byte & (BIT_MASK_5 | BIT_MASK_4)) >> BIT_SHIFT_4;
+    ret->reserved    =  byte & (BIT_MASK_3 | BIT_MASK_2 | BIT_MASK_1 | BIT_MASK_0);
+
+    _EnB(&p, ret->integrity_tx_counter, INTEGRITY_TX_COUNTER_LEN);
+    _EnB(&p, ret->src_al_mac, ETHER_ADDR_LEN);
+    _E2B(&p, &ret->mic_len);
+
+    if (ret->mic_len > 0) {
+        ret->mic = calloc(1, (ret->mic_len * sizeof(uint8_t)));
+        if (NULL == ret->mic) {
+            free(ret);
+            return NULL;
+        }
+        _EnB(&p, ret->mic, ret->mic_len);
+    }
+
+    PARSE_CHECK_INTEGRITY(mic)
+    PARSE_RETURN
+}
+
+static uint8_t *forge_mic_tlv(void *memory_structure, uint16_t *len)
+{
+    map_mic_tlv_t *m = (map_mic_tlv_t *)memory_structure;
+    uint8_t *ret, *p, byte;
+
+    uint16_t tlv_length = 1 + INTEGRITY_TX_COUNTER_LEN + ETHER_ADDR_LEN + 2 + m->mic_len;
+
+    FORGE_MALLOC_RET
+
+    _I1B(&m->tlv_type,        &p);
+    _I2B(&tlv_length,         &p);
+
+    byte = ((m->gtk_key_id << BIT_SHIFT_6)  |
+            (m->mic_version << BIT_SHIFT_4) |
+             m->reserved);
+    _I1B(&byte, &p);
+
+    _InB(m->integrity_tx_counter, &p, INTEGRITY_TX_COUNTER_LEN);
+    _InB(m->src_al_mac,           &p, ETHER_ADDR_LEN);
+    _I2B(&m->mic_len,             &p);
+    _InB(m->mic,                  &p, m->mic_len);
+
+    FORGE_RETURN
+}
+
+/*#######################################################################
+# Encrypted Payload TLV ("Section 17.2.69")                             #
 ########################################################################*/
 TLV_FREE_FUNCTION(encrypted_payload) {
     SFREE(m->siv_output);
@@ -147,7 +261,7 @@ static uint8_t *forge_encrypted_payload_tlv(void *memory_structure, uint16_t *le
 }
 
 /*#######################################################################
-# AP Wi-Fi 6 Capabilities associated structures ("Section 17.2.72")     #
+# AP Wi-Fi 6 Capabilities TLV ("Section 17.2.72")                       #
 ########################################################################*/
 TLV_FREE_FUNCTION(ap_wifi6_cap) {}
 
@@ -355,6 +469,152 @@ static uint8_t* forge_bssid_tlv(void *memory_structure, uint16_t *len)
     _I1B(&m->tlv_type, &p);
     _I2B(&tlv_length,  &p);
     _InB(&m->bssid,    &p, 6);
+
+    FORGE_RETURN
+}
+
+/*#######################################################################
+# BSS Configuration Report TLV ("Section 17.2.75")                      #
+########################################################################*/
+TLV_FREE_FUNCTION(bss_configuration_report) {}
+
+static uint8_t *parse_bss_configuration_report_tlv(uint8_t *packet_stream, uint16_t len)
+{
+    map_bss_configuration_report_tlv_t *ret;
+    uint8_t *p = packet_stream;
+    uint8_t byte;
+    int i, j;
+
+    PARSE_CHECK_MIN_LEN(1);
+
+    PARSE_CALLOC_RET
+
+    ret->tlv_type = TLV_TYPE_BSS_CONFIGURATION_REPORT;
+
+    _E1B(&p, &ret->radios_nr);
+    PARSE_LIMIT(ret->radios_nr, MAX_RADIO_PER_AGENT);
+    for (i = 0; i < ret->radios_nr; i++) {
+        _EnB(&p, ret->radios[i].ruid, ETHER_ADDR_LEN);
+        _E1B(&p, &ret->radios[i].bss_nr);
+
+        PARSE_LIMIT(ret->radios[i].bss_nr, MAX_BSS_PER_RADIO);
+        for (j = 0; j < ret->radios[i].bss_nr; j++) {
+            _EnB(&p, ret->radios[i].bss[j].bssid, ETHER_ADDR_LEN);
+            _E1B(&p, &byte);
+            ret->radios[i].bss[j].backhaul_bss         = (byte & BIT_MASK_7) ? SET_BIT : RESET_BIT;
+            ret->radios[i].bss[j].fronthaul_bss        = (byte & BIT_MASK_6) ? SET_BIT : RESET_BIT;
+            ret->radios[i].bss[j].r1_disallowed_status = (byte & BIT_MASK_5) ? SET_BIT : RESET_BIT;
+            ret->radios[i].bss[j].r2_disallowed_status = (byte & BIT_MASK_4) ? SET_BIT : RESET_BIT;
+            ret->radios[i].bss[j].multiple_bssid       = (byte & BIT_MASK_3) ? SET_BIT : RESET_BIT;
+            ret->radios[i].bss[j].transmitted_bssid    = (byte & BIT_MASK_2) ? SET_BIT : RESET_BIT;
+            ret->radios[i].bss[j].reserved1            =  byte & (BIT_MASK_1 | BIT_MASK_0);
+            _E1B(&p, &ret->radios[i].bss[j].reserved2);
+            _E1B(&p, &ret->radios[i].bss[j].ssid_len);
+            PARSE_LIMIT(ret->radios[i].bss[j].ssid_len, MAX_SSID_LEN);
+            _EnB(&p, ret->radios[i].bss[j].ssid, ret->radios[i].bss[j].ssid_len);
+        }
+    }
+
+    PARSE_CHECK_INTEGRITY(bss_configuration_report)
+    PARSE_RETURN
+}
+
+static uint8_t *forge_bss_configuration_report_tlv(void *memory_structure, uint16_t *len)
+{
+    uint16_t tlv_length = 1;
+    uint8_t *ret, *p;
+    map_bss_configuration_report_tlv_t *m = memory_structure;
+    int i, j;
+
+    if (m->radios_nr > 0 ) {
+        for (i = 0; i < m->radios_nr; i++) {
+            tlv_length += ETHER_ADDR_LEN;
+            if (m->radios[i].bss_nr > 0) {
+                tlv_length += 1;
+                for (j = 0; j < m->radios[i].bss_nr; j++) {
+                    tlv_length += ETHER_ADDR_LEN + 1 + 1 + 1 + m->radios[i].bss[j].ssid_len;
+                }
+            }
+        }
+    }
+
+    FORGE_MALLOC_RET
+
+    _I1B(&m->tlv_type, &p);
+    _I2B(&tlv_length,  &p);
+    _I1B(&m->radios_nr, &p);
+    for (i = 0; i < m->radios_nr; i++) {
+        _InB(m->radios[i].ruid, &p, ETHER_ADDR_LEN);
+        _I1B(&m->radios[i].bss_nr, &p);
+        for (j = 0; j < m->radios[i].bss_nr; j++) {
+            _InB(m->radios[i].bss[j].bssid, &p, ETHER_ADDR_LEN);
+
+            uint8_t byte = ((m->radios[i].bss[j].backhaul_bss << BIT_SHIFT_7) |
+                            (m->radios[i].bss[j].fronthaul_bss << BIT_SHIFT_6) |
+                            (m->radios[i].bss[j].r1_disallowed_status << BIT_SHIFT_5) |
+                            (m->radios[i].bss[j].r2_disallowed_status << BIT_SHIFT_4) |
+                            (m->radios[i].bss[j].multiple_bssid << BIT_SHIFT_3) |
+                            (m->radios[i].bss[j].transmitted_bssid << BIT_SHIFT_2) |
+                             m->radios[i].bss[j].reserved1);
+            _I1B(&byte, &p);
+            _I1B(&m->radios[i].bss[j].reserved2, &p);
+            _I1B(&m->radios[i].bss[j].ssid_len, &p);
+            _InB(m->radios[i].bss[j].ssid, &p, m->radios[i].bss[j].ssid_len);
+        }
+    }
+
+    FORGE_RETURN
+}
+
+/*#######################################################################
+# Agent List TLV ("Section 17.2.77")                                    #
+########################################################################*/
+TLV_FREE_FUNCTION(agent_list) {}
+
+static uint8_t *parse_agent_list_tlv(uint8_t *packet_stream, uint16_t len)
+{
+    map_agent_list_tlv_t *ret;
+    uint8_t *p = packet_stream;
+    int i;
+
+    PARSE_CHECK_MIN_LEN(1);
+
+    PARSE_CALLOC_RET
+
+    ret->tlv_type = TLV_TYPE_AGENT_LIST;
+
+    _E1B(&p, &ret->agent_nr);
+    for (i = 0; i < ret->agent_nr; i++) {
+        _EnB(&p, ret->entries[i].al_mac, ETHER_ADDR_LEN);
+        _E1B(&p, &ret->entries[i].map_profile);
+        _E1B(&p, &ret->entries[i].security);
+    }
+
+    PARSE_CHECK_INTEGRITY(agent_list)
+    PARSE_RETURN
+}
+
+static uint8_t *forge_agent_list_tlv(void *memory_structure, uint16_t *len)
+{
+    uint16_t tlv_length = 1;
+    uint8_t *ret, *p;
+    map_agent_list_tlv_t *m = memory_structure;
+    int i;
+
+    if (m->agent_nr > 0 ) {
+        tlv_length += m->agent_nr * (ETHER_ADDR_LEN + 1 + 1);
+    }
+
+    FORGE_MALLOC_RET
+
+    _I1B(&m->tlv_type, &p);
+    _I2B(&tlv_length,  &p);
+    _I1B(&m->agent_nr, &p);
+    for (i = 0; i < m->agent_nr; i++) {
+        _InB(m->entries[i].al_mac, &p, ETHER_ADDR_LEN);
+        _I1B(&m->entries[i].map_profile, &p);
+        _I1B(&m->entries[i].security, &p);
+    }
 
     FORGE_RETURN
 }
@@ -594,6 +854,48 @@ static uint8_t* forge_1905_encap_eapol_tlv(void *memory_structure, uint16_t *len
 }
 
 /*#######################################################################
+# BSS Configuration Request TLV ("Section 17.2.84")                     #
+########################################################################*/
+TLV_FREE_FUNCTION(bss_configuration_request) {}
+
+static uint8_t* parse_bss_configuration_request_tlv(uint8_t *packet_stream, uint16_t len)
+{
+    map_bss_configuration_request_tlv_t *ret;
+    uint8_t *p = packet_stream;
+
+    PARSE_CHECK_MIN_LEN(1)
+
+    /* Allocate struct and frame_body */
+    ret = calloc(1, sizeof(*ret) + len);
+    if (NULL == ret) {
+        return NULL;
+    }
+
+    ret->tlv_type  = TLV_TYPE_BSS_CONFIGURATION_REQUEST;
+    ret->obj_len = len;
+    ret->obj     = (uint8_t *)(ret + 1);
+    _EnB(&p, ret->obj, ret->obj_len);
+
+    PARSE_CHECK_INTEGRITY(bss_configuration_request)
+    PARSE_RETURN
+}
+
+static uint8_t* forge_bss_configuration_request_tlv(void *memory_structure, uint16_t *len)
+{
+    map_bss_configuration_request_tlv_t *m = memory_structure;
+    uint16_t tlv_length = m->obj_len;
+    uint8_t  *ret, *p;
+
+    FORGE_MALLOC_RET
+
+    _I1B(&m->tlv_type, &p);
+    _I2B(&tlv_length,  &p);
+    _InB(m->obj, &p, m->obj_len);
+
+    FORGE_RETURN
+}
+
+/*#######################################################################
 # DPP Message TLV ("Section 17.2.86")                                   #
 ########################################################################*/
 TLV_FREE_FUNCTION(dpp_message) {}
@@ -753,18 +1055,112 @@ static uint8_t* forge_device_inventory_tlv(void *memory_structure, uint16_t *len
 }
 
 /*#######################################################################
+# AKM Suite Capabilities TLV ("Section 17.2.78")                        #
+########################################################################*/
+TLV_FREE_FUNCTION(akm_suite_cap) {
+    SFREE(m->bh_akm_suites);
+    SFREE(m->fh_akm_suites);
+}
+
+static uint8_t* parse_akm_suite_cap_tlv(uint8_t *packet_stream, uint16_t len)
+{
+    map_akm_suite_cap_tlv_t *ret;
+    uint8_t *p = packet_stream, i;
+
+    /* Min TLV len: bh_akm_suites_nr (1) + fh_akm_suites_nr (1) */
+    PARSE_CHECK_MIN_LEN(2)
+
+    PARSE_CALLOC_RET
+
+    ret->tlv_type = TLV_TYPE_AKM_SUITE_CAPABILITIES;
+
+    _E1B(&p, &ret->bh_akm_suites_nr);
+    if (ret->bh_akm_suites_nr > 0) {
+        ret->bh_akm_suites = calloc(ret->bh_akm_suites_nr, sizeof(*ret->bh_akm_suites));
+        if (ret->bh_akm_suites == NULL) {
+            PARSE_FREE_RET_RETURN(akm_suite_cap)
+        }
+
+        for (i = 0; i < ret->bh_akm_suites_nr; i++) {
+            _E1B(&p, &ret->bh_akm_suites[i].oui[0]);
+            _E1B(&p, &ret->bh_akm_suites[i].oui[1]);
+            _E1B(&p, &ret->bh_akm_suites[i].oui[2]);
+            _E1B(&p, &ret->bh_akm_suites[i].akm_suite_type);
+        }
+    }
+
+    _E1B(&p, &ret->fh_akm_suites_nr);
+    if (ret->fh_akm_suites_nr > 0) {
+        ret->fh_akm_suites = calloc(ret->fh_akm_suites_nr, sizeof(*ret->fh_akm_suites));
+        if (ret->fh_akm_suites == NULL) {
+            PARSE_FREE_RET_RETURN(akm_suite_cap)
+        }
+
+        for (i = 0; i < ret->fh_akm_suites_nr; i++) {
+            _E1B(&p, &ret->fh_akm_suites[i].oui[0]);
+            _E1B(&p, &ret->fh_akm_suites[i].oui[1]);
+            _E1B(&p, &ret->fh_akm_suites[i].oui[2]);
+            _E1B(&p, &ret->fh_akm_suites[i].akm_suite_type);
+        }
+    }
+
+    PARSE_CHECK_INTEGRITY(akm_suite_cap)
+    PARSE_RETURN
+}
+
+static uint8_t* forge_akm_suite_cap_tlv(void *memory_structure, uint16_t *len)
+{
+    map_akm_suite_cap_tlv_t *m = memory_structure;
+    uint8_t  *ret, *p, i;
+
+    /* Calculate TLV length */
+    uint16_t tlv_length = 2; /* bh_akm_suites_nr + fh_akm_suites_nr */
+    tlv_length += m->bh_akm_suites_nr * sizeof(map_akm_suite_t);
+    tlv_length += m->fh_akm_suites_nr * sizeof(map_akm_suite_t);
+
+    FORGE_MALLOC_RET
+
+    _I1B(&m->tlv_type,              &p);
+    _I2B(&tlv_length,               &p);
+
+    _I1B(&m->bh_akm_suites_nr,      &p);
+    for (i = 0; i < m->bh_akm_suites_nr; i++) {
+        _I1B(&m->bh_akm_suites[i].oui[0],           &p);
+        _I1B(&m->bh_akm_suites[i].oui[1],           &p);
+        _I1B(&m->bh_akm_suites[i].oui[2],           &p);
+        _I1B(&m->bh_akm_suites[i].akm_suite_type,   &p);
+    }
+
+    _I1B(&m->fh_akm_suites_nr,      &p);
+    for (i = 0; i < m->fh_akm_suites_nr; i++) {
+        _I1B(&m->fh_akm_suites[i].oui[0],           &p);
+        _I1B(&m->fh_akm_suites[i].oui[1],           &p);
+        _I1B(&m->fh_akm_suites[i].oui[2],           &p);
+        _I1B(&m->fh_akm_suites[i].akm_suite_type,   &p);
+    }
+
+    FORGE_RETURN
+}
+
+/*#######################################################################
 #                       PUBLIC FUNCTIONS                                #
 ########################################################################*/
 void map_r3_register_tlvs(void)
 {
-    I1905_REGISTER_TLV(TLV_TYPE_ENCRYPTED_PAYLOAD,                  encrypted_payload     );
-    I1905_REGISTER_TLV(TLV_TYPE_AP_WIFI6_CAPABILITIES,              ap_wifi6_cap          );
-    I1905_REGISTER_TLV(TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT, assoc_wifi6_sta_status);
-    I1905_REGISTER_TLV(TLV_TYPE_BSSID,                              bssid                 );
-    I1905_REGISTER_TLV(TLV_TYPE_1905_ENCAP_DPP,                     1905_encap_dpp        );
-    I1905_REGISTER_TLV(TLV_TYPE_1905_ENCAP_EAPOL,                   1905_encap_eapol      );
-    I1905_REGISTER_TLV(TLV_TYPE_DPP_MESSAGE,                        dpp_message           );
-    I1905_REGISTER_TLV(TLV_TYPE_DPP_CCE_INDICATION,                 dpp_cce_indication    );
-    I1905_REGISTER_TLV(TLV_TYPE_DPP_CHIRP_VALUE,                    dpp_chirp_value       );
-    I1905_REGISTER_TLV(TLV_TYPE_DEVICE_INVENTORY,                   device_inventory      );
+    I1905_REGISTER_TLV(TLV_TYPE_1905_LAYER_SECURITY_CAPABILITY,     1905_security_cap        );
+    I1905_REGISTER_TLV(TLV_TYPE_MIC,                                mic                      );
+    I1905_REGISTER_TLV(TLV_TYPE_ENCRYPTED_PAYLOAD,                  encrypted_payload        );
+    I1905_REGISTER_TLV(TLV_TYPE_AP_WIFI6_CAPABILITIES,              ap_wifi6_cap             );
+    I1905_REGISTER_TLV(TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT, assoc_wifi6_sta_status   );
+    I1905_REGISTER_TLV(TLV_TYPE_BSSID,                              bssid                    );
+    I1905_REGISTER_TLV(TLV_TYPE_1905_ENCAP_DPP,                     1905_encap_dpp           );
+    I1905_REGISTER_TLV(TLV_TYPE_1905_ENCAP_EAPOL,                   1905_encap_eapol         );
+    I1905_REGISTER_TLV(TLV_TYPE_DPP_MESSAGE,                        dpp_message              );
+    I1905_REGISTER_TLV(TLV_TYPE_DPP_CCE_INDICATION,                 dpp_cce_indication       );
+    I1905_REGISTER_TLV(TLV_TYPE_DPP_CHIRP_VALUE,                    dpp_chirp_value          );
+    I1905_REGISTER_TLV(TLV_TYPE_DEVICE_INVENTORY,                   device_inventory         );
+    I1905_REGISTER_TLV(TLV_TYPE_BSS_CONFIGURATION_REQUEST,          bss_configuration_request);
+    I1905_REGISTER_TLV(TLV_TYPE_BSS_CONFIGURATION_REPORT,           bss_configuration_report );
+    I1905_REGISTER_TLV(TLV_TYPE_AGENT_LIST,                         agent_list               );
+    I1905_REGISTER_TLV(TLV_TYPE_AKM_SUITE_CAPABILITIES,             akm_suite_cap            );
 }

@@ -34,9 +34,11 @@ libcontroller_a_SOURCES = map_ctrl_chan_sel.c \
                           map_ctrl_nbapi.c \
                           map_ctrl_onboarding_handler.c \
                           map_ctrl_post_onboarding_handler.c \
+                          map_ctrl_sta.c \
                           map_ctrl_tlv_helper.c \
                           map_ctrl_tlv_parser.c \
                           map_ctrl_topology_tree.c \
                           map_ctrl_utils.c \
+                          map_ctrl_vendor.c \
                           map_ctrl_wfa_capi.c
 

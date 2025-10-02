@@ -21,6 +21,8 @@ set(FACTORY_INDEPENDENT_SOURCES
     src_independent/extensions/map/map_r1_tlvs.c
     src_independent/extensions/map/map_r2_tlvs.c
     src_independent/extensions/map/map_r3_tlvs.c
+    src_independent/extensions/map/map_r4_tlvs.c
+    src_independent/extensions/map/map_r6_tlvs.c
 )
 
 set(FACTORY_INDEPENDENT_INCLUDES

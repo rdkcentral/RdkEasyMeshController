@@ -81,6 +81,11 @@ static cmdu_cbs_t g_cmdu_cbs[]={
         .handle_cb       = map_handle_ap_autoconfig_search,
     },
     {
+        .cmdu_type       = CMDU_TYPE_AP_AUTOCONFIGURATION_RESPONSE,              /* 1905.1 6.3.8 (type 0x0008) */
+        .validate_cb     = map_validate_ap_autoconfig_response,
+        .handle_cb       = map_handle_ap_autoconfig_response,
+    },
+    {
         .cmdu_type       = CMDU_TYPE_AP_AUTOCONFIGURATION_WSC,                   /* 1905.1 6.3.9 (type 0x0009) */
         .validate_cb     = map_validate_ap_autoconfig_wsc,
         .handle_cb       = map_handle_ap_autoconfig_wsc,
@@ -214,9 +219,31 @@ static cmdu_cbs_t g_cmdu_cbs[]={
         .handle_ale_cb   = map_handle_direct_encap_dpp,
     },
     {
+        .cmdu_type       = CMDU_TYPE_MAP_BSS_CONFIGURATION_REQUEST,             /* MAP_R3 17.1.53 (type 0x802c) */
+        .validate_ale_cb = map_validate_bss_configuration_request,
+        .handle_ale_cb   = map_handle_bss_configuration_request,
+    },
+    {
+        .cmdu_type       = CMDU_TYPE_MAP_BSS_CONFIGURATION_RESULT,              /* MAP_R3 17.1.55 (type 0x802e) */
+        .validate_ale_cb = map_validate_bss_configuration_result,
+        .handle_ale_cb   = map_handle_bss_configuration_result,
+    },
+    {
         .cmdu_type       = CMDU_TYPE_MAP_CHIRP_NOTIFICATION,                    /* MAP_R3 17.1.52 (type 0x802f) */
         .validate_ale_cb = map_validate_chirp_notification,
         .handle_ale_cb   = map_handle_chirp_notification,
+    },
+
+    /* MAP R6 */
+    {
+        .cmdu_type       = CMDU_TYPE_MAP_EARLY_AP_CAPABILITY_REPORT,            /* MAP_R6 17.1.62 (type 0x8043) */
+        .validate_ale_cb = map_validate_early_ap_capability_report,
+        .handle_ale_cb   = map_handle_early_ap_capability_report,
+    },
+    {
+        .cmdu_type       = CMDU_TYPE_MAP_AVAILABLE_SPECTRUM_INQUIRY,            /* MAP_R6 17.1.67 (type 0x8049) */
+        .validate_ale_cb = map_validate_available_spectrum_inquiry,
+        .handle_ale_cb   = map_handle_available_spectrum_inquiry,
     },
 };
 

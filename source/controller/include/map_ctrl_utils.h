@@ -21,13 +21,19 @@
 #include "map_data_model.h"
 #include "map_config.h"
 
-#define IS_ANY_SUBBAND_CHANNEL_SET(channel_set, channel, opclass) (!map_is_no_subband_channel_set(channel_set, channel, opclass))
+#define IS_ANY_SUBBAND_CHANNEL_SET(channel_set, op_class, channel) (!map_is_no_subband_channel_set(channel_set, op_class, channel))
 
 /** @brief Get controller configuration
  *
  *  @return pointer to config structure
  */
 map_controller_cfg_t* get_controller_cfg();
+
+/** @brief Get global allowed bandwidth per band
+ *
+ *  @return bandwidth
+ */
+uint16_t map_get_allowed_bandwidth(uint8_t band);
 
 /** @brief Parse client assoc frame
  *
@@ -37,6 +43,24 @@ map_controller_cfg_t* get_controller_cfg();
  *  @return                 0 success
  */
 int parse_update_client_capability(map_sta_info_t *sta, uint16_t assoc_frame_len, uint8_t* assoc_frame);
+
+/** @brief Parse client assoc frame for each affiliated STA
+ *
+ *  @param sta_mld:         sta mld for which assoc frame needs to be parsed
+ *  @param assoc_frame_len: length of assoc frame
+ *  @param assoc_frame:     assoc frame
+ *  @return                 0 success
+ */
+int parse_update_mld_client_capability(map_sta_mld_info_t *sta_mld, uint16_t assoc_frame_len, uint8_t* assoc_frame);
+
+
+/** @brief Parse stored client assoc frame for each affiliated STA
+ *
+ *  @param sta_mld:         sta mld for which assoc frame needs to be parsed
+ *  @force                  when true update when affiliated sta already has capabiliteis
+ *  @return                 0 success
+ */
+int parse_update_mld_aff_client_capability(map_sta_mld_info_t *sta_mld, bool force);
 
 /** @brief This function will update the source mac used for CMDU received from the ALE
  *
@@ -111,6 +135,15 @@ uint16_t map_get_freq_bands(map_radio_info_t *radio);
 bool map_is_5g_low_high(map_radio_info_t *radio);
 
 /**
+ *  @brief  Return true when radio is ap mld capable
+ */
+bool map_is_radio_ap_mld_capable(map_ale_info_t *ale, map_radio_info_t *radio);
+
+/**
+ *  @brief  Return true when radio is bsta mld capable
+ */
+bool map_is_radio_bsta_mld_capable(map_ale_info_t *ale, map_radio_info_t *radio);
+/**
  *  @brief  Guess profile used to configure bss.
  */
 map_profile_cfg_t *map_get_profile_from_bss(map_bss_info_t *bss);
@@ -128,7 +161,12 @@ uint8_t *map_get_wsc_attr(uint8_t *message, uint16_t message_size, uint16_t attr
 /**
  * @brief Check if channel is in op class and not its non operable list
  */
-bool map_is_channel_in_cap_op_class(map_op_class_t *cap_op_class, uint8_t channel);
+bool map_is_channel_in_cap_op_class(map_op_class_t *cap_op_class, uint8_t ctl_channel);
+
+/**
+ * @brief Check if channel is in 6G 320MHz op class and not its non operable list
+ */
+bool map_is_channel_in_cap_op_class_6G_320MHz(map_op_class_t *cap_op_class, bool upper, uint8_t ctl_channel);
 
 /**
  * @brief Get channel preference in op_class list
@@ -144,7 +182,8 @@ void map_update_radio_channels(map_radio_info_t *radio);
  *  @brief  Merge 2 op_class lists into 1 (taking lowest preference for each op_class/channel).
  */
 int map_merge_pref_op_class_list(map_op_class_list_t *merged_list, map_op_class_list_t *cap_list,
-                                 map_op_class_list_t *list1, map_op_class_list_t *list2);
+                                 map_op_class_list_t *list1, map_op_class_list_t *list2,
+                                 map_op_class_list_t *disallowed_list);
 
 /**
  *  @brief  Optimize op_class list by removing channel lists that contain all channels of an op_class.
@@ -152,14 +191,24 @@ int map_merge_pref_op_class_list(map_op_class_list_t *merged_list, map_op_class_
 void map_optimize_pref_op_class_list(map_op_class_list_t *list, map_op_class_list_t *cap_list);
 
 /**
- *  @brief  Check if none of the subband channels from chan/op_class are present in channels list
+ *  @brief  Check if none of the subband channels from op_class/channel are present in channels list
  */
-bool map_is_no_subband_channel_set(map_channel_set_t *channels, uint8_t chan, uint8_t op_class);
+bool map_is_no_subband_channel_set(map_channel_set_t *channels, uint8_t op_class, uint8_t channel);
 
 /**
- *  @brief  Check if all of the subband channels from chan/op_class are present in channels list
+ *  @brief  Check if none of the subband channels from 6G 320MHz op_class/channel are present in channels list
  */
-bool map_is_all_subband_channel_set(map_channel_set_t *channels, uint8_t chan, uint8_t op_class);
+bool map_is_no_subband_channel_set_6G_320MHz(map_channel_set_t *channels, uint8_t op_class, bool upper, uint8_t channel);
+
+/**
+ *  @brief  Check if all of the subband channels from op_class/channel are present in channels list
+ */
+bool map_is_all_subband_channel_set(map_channel_set_t *channels, uint8_t op_class, uint8_t channel);
+
+/**
+ *  @brief  Check if all of the subband channels from 6G 320MHz op_class/channel are present in channels list
+ */
+bool map_is_all_subband_channel_set_6G_320MHz(map_channel_set_t *channels, uint8_t op_class, bool upper, uint8_t channel);
 
 /**
  *  @brief  Sort op_classes and channels in op_class list.
@@ -177,6 +226,11 @@ bool map_is_cac_request_valid(map_radio_info_t *radio, uint8_t cac_method, uint8
 map_local_iface_t *map_find_local_iface(map_ale_info_t *ale, mac_addr mac);
 
 /**
+ *  @brief  Check if radio is bsta capable
+ */
+bool map_is_radio_bsta_capable(map_ale_info_t *ale, mac_addr radio_id);
+
+/**
  *  @brief  Find backhaul sta iface of ale based on mac
  */
 map_backhaul_sta_iface_t *map_find_bhsta_iface_from_ale(map_ale_info_t *ale, mac_addr sta_mac);
@@ -187,13 +241,33 @@ map_backhaul_sta_iface_t *map_find_bhsta_iface_from_ale(map_ale_info_t *ale, mac
 map_backhaul_sta_iface_t *map_find_bhsta_iface_gbl(mac_addr sta_mac, map_ale_info_t **ret_ale);
 
 /**
- *  @brief  Delete ht/vht/he/wifi6 capability tlv
+ *  @brief  Delete ht/vht/he/wifi6 capabilities
  */
 void map_free_ht_vht_he_wifi6_caps(map_radio_info_t *radio);
+
+/**
+ *  @brief  Delete wifi7 capability
+ */
+void map_free_wifi7_caps(map_radio_info_t *radio);
 
 /**
  *  @brief  Update global radio caps from ht/vht/he capability tlv
  */
 void map_update_radio_caps(map_radio_info_t *radio);
+
+/**
+ *  @brief  Return true when bssid must be an AP_MLD or sta_mac is a STA_MLD
+ */
+bool map_is_non_bss_ap_mld_or_sta_mld(map_ale_info_t *ale, mac_addr sta_mac, mac_addr bssid);
+
+/**
+ *  @brief  Return affiliated sta operating on band
+ */
+map_sta_info_t *map_get_aff_sta_from_band(map_sta_mld_info_t *sta_mld, uint8_t band);
+
+/**
+ *  @brief  Return first affiliated sta
+ */
+map_sta_info_t *map_get_aff_sta_first(map_sta_mld_info_t *sta_mld);
 
 #endif /* MAP_CTRL_UTILS_H_ */

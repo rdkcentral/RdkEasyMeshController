@@ -112,11 +112,12 @@ typedef enum {
  * @param[in] al_mac      : al mac address
  * @param[in] interface_cb: interface callback
  * @param[in] cmdu_cb     : cmdu callback
+ * @param[in] key_info_cb : key information callback
  *
  * @retval  0 For successful get operation
  */
 typedef bool (*i1905_cmdu_cb_t)(i1905_cmdu_t *cmdu);
-int i1905_init(uint8_t *al_mac, i1905_interface_cb_t interface_cb, i1905_cmdu_cb_t cmdu_cb);
+int i1905_init(uint8_t *al_mac, i1905_interface_cb_t interface_cb, i1905_cmdu_cb_t cmdu_cb, i1905_key_info_cb_t key_info_cb);
 
 
 /**
@@ -165,6 +166,42 @@ i1905_interface_info_t *i1905_get_interface_info(char *ifname);
  */
 void i1905_free_interface_info(i1905_interface_info_t *info);
 
+
+/**
+ * Get interface mac
+ *
+ * @param[in] if_name: interface name
+ * @param[out] mac: mac address of interface
+ *
+ */
+int i1905_get_interface_mac(char *if_name, mac_addr mac);
+
+
+/**
+ * Set interface type
+ *
+ * @param[in] if_name: interface name
+ * @param[in] type: interface type (INTERFACE_TYPE_IEEE_XXX)
+ *
+ */
+void i1905_set_interface_type(char *if_name, uint16_t type);
+
+
+/**
+ * Set interface 802.11 media specific info
+ *
+ * @param[in] if_name: interface name
+ * @param[in] network_membership: network_membsership (bssid)
+ * @param[in] role: network_membsership (IEEE80211_ROLE_XXX)
+ * @param[in] ap_channel_band: frequency band (IEEE80211_AP_CHANNEL_BAND_XXX)
+ * @param[in] ap_channel_center_freq_1: center frequency
+ * @param[in] ap_channel_center_freq_2: center frequency in case of 80P80
+ *
+ */
+void i1905_set_interface_80211_media_specific_info(char *if_name, mac_addr network_membership,
+                                                   uint8_t role, uint8_t ap_channel_band,
+                                                   uint8_t ap_channel_center_freq_1,
+                                                   uint8_t ap_channel_center_freq_2);
 
 /**
  * Get list of bridges

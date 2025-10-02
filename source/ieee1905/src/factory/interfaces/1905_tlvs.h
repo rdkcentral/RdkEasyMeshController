@@ -140,6 +140,7 @@
 #define MEDIA_TYPE_IEEE_802_11AD_60_GHZ            (0x0106)
 #define MEDIA_TYPE_IEEE_802_11AF                   (0x0107)
 #define MEDIA_TYPE_IEEE_802_11AX                   (0x0108) /* MAP R2 extension. One value all bands */
+#define MEDIA_TYPE_IEEE_802_11BE                   (0x0109) /* MAP R6 extension. One value all bands */
 #define MEDIA_TYPE_IEEE_1901_WAVELET               (0x0200)
 #define MEDIA_TYPE_IEEE_1901_FFT                   (0x0201)
 #define MEDIA_TYPE_MOCA_V1_1                       (0x0300)
@@ -153,12 +154,12 @@
 /*#######################################################################
 # IEEE802.11 frequency bands used in "Tables 6-23 and 6-25"             #
 ########################################################################*/
-/* TODO: also defined in platform_map.h */
+/* TODO: also defined in map_common_defines.h */
 #ifndef IEEE80211_FREQUENCY_BAND_2_4_GHZ
   #define IEEE80211_FREQUENCY_BAND_2_4_GHZ           (0x00)
   #define IEEE80211_FREQUENCY_BAND_5_GHZ             (0x01)
   #define IEEE80211_FREQUENCY_BAND_60_GHZ            (0x02)
-  #define IEEE80211_FREQUENCY_BAND_6_GHZ             (0x04)
+  #define IEEE80211_FREQUENCY_BAND_6_GHZ             (0x03)
   #define IEEE80211_FREQUENCY_BAND_UNKNOWN           (0xFF)
 #endif
 
@@ -579,6 +580,7 @@ typedef struct supportedFreqBandTLV {
 # WSC TLV associated structures ("Section 6.4.18")                      #
 ########################################################################*/
 /* Attributes used outside al_wsc.c */
+#define WSC_ATTR_AUTH_TYPE_FLAGS  (0x1004)
 #define WSC_ATTR_MAC_ADDR         (0x1020)
 #define WSC_ATTR_MANUFACTURER     (0x1021)
 #define WSC_ATTR_MODEL_NAME       (0x1023)
@@ -1067,6 +1069,13 @@ do {                                   \
     }
 
 
+#define FORGE_RESERVE(p, n) \
+do {                        \
+    memset(p, 0, n);        \
+    p += n;                 \
+} while(0);
+
+
 #define FORGE_RETURN                  \
     *len = TLV_HDR_SIZE + tlv_length; \
     return ret;
@@ -1120,6 +1129,9 @@ uint8_t *forge_1905_TLV_from_structure(uint8_t *memory_structure, uint16_t *len)
 *  "parse_1905_TLV_from_packet()"
 */
 void free_1905_TLV_structure(uint8_t *memory_structure);
+
+/* Same as above but do not free memory_structure itself (e.g could be on stack) */
+void free_1905_TLV_structure2(uint8_t *memory_structure);
 
 /* 'forge_1905_TLV_from_structure()' returns a regular buffer which can be freed
 *  using this macro defined to be free

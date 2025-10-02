@@ -134,7 +134,7 @@ typedef bool (*al1905_cmdu_cb_t)(i1905_cmdu_t *cmdu);
 */
 uint8_t start1905AL(mac_addr al_mac_address, uint8_t map_whole_network_flag,
                     char *registrar_interface, i1905_interface_cb_t interface_cb,
-                    al1905_cmdu_cb_t cmdu_cb);
+                    al1905_cmdu_cb_t cmdu_cb, i1905_key_info_cb_t key_info_cb);
 
 /* Stop 1905 AL layer */
 void stop1905AL(void);

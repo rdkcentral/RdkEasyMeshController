@@ -126,13 +126,14 @@ int map_validate_ap_autoconfig_search(i1905_cmdu_t *cmdu)
     int      supp_service_tlv_nr     = 0;
     int      searched_service_tlv_nr = 0;
     int      multiap_profile_tlv_nr  = 0;
+    int      chirp_value_tlv_nr      = 0;
     int      i;
 
     i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
         switch (*tlv) {
             case TLV_TYPE_AL_MAC_ADDRESS:
                 al_mac_tlv_nr++;
-            break;
+                break;
             case TLV_TYPE_SEARCHED_ROLE: {
                 i1905_searched_role_tlv_t *sr_tlv = (i1905_searched_role_tlv_t *)tlv;
                 searched_role_tlv_nr++;
@@ -147,7 +148,7 @@ int map_validate_ap_autoconfig_search(i1905_cmdu_t *cmdu)
             }
             case TLV_TYPE_AUTOCONFIG_FREQ_BAND:
                 freq_band_tlv_nr++;
-            break;
+                break;
             case TLV_TYPE_SUPPORTED_SERVICE: {
                 supp_service_tlv_nr++;
                 break;
@@ -171,10 +172,13 @@ int map_validate_ap_autoconfig_search(i1905_cmdu_t *cmdu)
             }
             case TLV_TYPE_MULTIAP_PROFILE:
                 multiap_profile_tlv_nr++;
-            break;
+                break;
+            case TLV_TYPE_DPP_CHIRP_VALUE:
+                chirp_value_tlv_nr++;
+                break;
             default:
                 log_unexpected_tlv(cmdu, *tlv);
-            break;
+                break;
         }
     }
 
@@ -184,6 +188,69 @@ int map_validate_ap_autoconfig_search(i1905_cmdu_t *cmdu)
     CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_SUPPORTED_SERVICE,    supp_service_tlv_nr    );
     CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_SEARCHED_SERVICE,     searched_service_tlv_nr);
     CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_MULTIAP_PROFILE,      multiap_profile_tlv_nr );
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_DPP_CHIRP_VALUE,      chirp_value_tlv_nr     );
+
+    return 0;
+}
+
+/* 1905.1 6.3.7 (type 0x0007) */
+int map_validate_ap_autoconfig_response(i1905_cmdu_t *cmdu)
+{
+    uint8_t *tlv;
+    size_t   idx;
+    int      supported_role_tlv_nr         = 0;
+    int      supported_freq_band_tlv_nr    = 0;
+    int      supp_service_tlv_nr           = 0;
+    int      multiap_profile_tlv_nr        = 0;
+    int      i;
+
+    i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
+        switch (*tlv) {
+            case TLV_TYPE_SUPPORTED_ROLE: {
+                i1905_supported_role_tlv_t *sr_tlv = (i1905_supported_role_tlv_t *)tlv;
+                supported_role_tlv_nr++;
+
+                /* Supported role must be registrar */
+                if (sr_tlv->role != IEEE80211_ROLE_REGISTRAR) {
+                    log_ctrl_e("invalid supported role[%d] tlv[%s] cmdu[%s]",
+                               sr_tlv->role, i1905_tlv_type_to_string(*tlv), i1905_cmdu_type_to_string(cmdu->message_type));
+                    return -1;
+                }
+                break;
+            }
+            case TLV_TYPE_SUPPORTED_FREQ_BAND:
+                supported_freq_band_tlv_nr++;
+            break;
+            case TLV_TYPE_SUPPORTED_SERVICE: {
+                map_supported_service_tlv_t* ss_tlv = (map_supported_service_tlv_t*)tlv;
+                supp_service_tlv_nr++;
+
+                /* One service must be agent */
+                for (i = 0; i < ss_tlv->services_nr; i++) {
+                    if (ss_tlv->services[i] == MAP_SERVICE_CONTROLLER) {
+                        break;
+                    }
+                }
+
+                if (i == ss_tlv->services_nr) {
+                    log_ctrl_e("no controller in supported services tlv[%s] cmdu[%s]",
+                               i1905_tlv_type_to_string(*tlv), i1905_cmdu_type_to_string(cmdu->message_type));
+                }
+                break;
+            }
+            case TLV_TYPE_MULTIAP_PROFILE:
+                multiap_profile_tlv_nr++;
+            break;
+            default:
+                log_unexpected_tlv(cmdu, *tlv);
+            break;
+        }
+    }
+
+    CHECK_ONE_TLV        (TLV_TYPE_SUPPORTED_ROLE,        supported_role_tlv_nr      );
+    CHECK_ONE_TLV        (TLV_TYPE_SUPPORTED_FREQ_BAND,   supported_freq_band_tlv_nr );
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_SUPPORTED_SERVICE,     supp_service_tlv_nr        );
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_MULTIAP_PROFILE,       multiap_profile_tlv_nr     );
 
     return 0;
 }
@@ -303,14 +370,17 @@ int map_validate_topology_query(i1905_cmdu_t *cmdu)
 /* 1905.1 6.3.3 (type 0x0002) */
 int map_validate_topology_response(i1905_cmdu_t *cmdu)
 {
-    uint8_t        *src_mac              = cmdu->cmdu_stream.src_mac_addr;
-    uint8_t        *tlv                  = NULL;
-    map_ale_info_t *ale                  = NULL;
+    uint8_t        *src_mac               = cmdu->cmdu_stream.src_mac_addr;
+    uint8_t        *tlv                   = NULL;
+    map_ale_info_t *ale                   = NULL;
     size_t          idx;
-    int             dev_info_tlv_nr      = 0;
-    int             supp_service_tlv_nr  = 0;
-    int             ap_op_bss_nr         = 0;
-    int             assoc_clients_tlv_nr = 0;
+    int             dev_info_tlv_nr       = 0;
+    int             supp_service_tlv_nr   = 0;
+    int             ap_op_bss_nr          = 0;
+    int             assoc_clients_tlv_nr  = 0;
+    int             bss_cfg_report_tlv_nr = 0;
+    int             ap_mld_cfg_tlv_nr     = 0;
+    int             bsta_mld_cfg_tlv_nr   = 0;
 
     i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
         switch (*tlv) {
@@ -353,16 +423,34 @@ int map_validate_topology_response(i1905_cmdu_t *cmdu)
             case TLV_TYPE_MULTIAP_PROFILE:
                 /* Optional */
             break;
+            case TLV_TYPE_BACKHAUL_STA_RADIO_CAPABILITIES:
+                /* Optional */
+            break;
+            case TLV_TYPE_BSS_CONFIGURATION_REPORT:
+                bss_cfg_report_tlv_nr++;
+            break;
+            case TLV_TYPE_AGENT_AP_MLD_CONFIGURATION:
+                ap_mld_cfg_tlv_nr++;
+            break;
+            case TLV_TYPE_BACKHAUL_STA_MLD_CONFIGURATION:
+                bsta_mld_cfg_tlv_nr++;
+            break;
+            case TLV_TYPE_ASSOCIATED_STA_MLD_CONFIGURATION:
+                /* Optional */
+            break;
             default:
                 log_unexpected_tlv(cmdu, *tlv);
             break;
         }
     }
 
-    CHECK_ONE_TLV        (TLV_TYPE_DEVICE_INFORMATION, dev_info_tlv_nr     );
-    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_SUPPORTED_SERVICE,  supp_service_tlv_nr );
-    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_AP_OPERATIONAL_BSS, ap_op_bss_nr        );
-    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_ASSOCIATED_CLIENTS, assoc_clients_tlv_nr);
+    CHECK_ONE_TLV        (TLV_TYPE_DEVICE_INFORMATION,             dev_info_tlv_nr      );
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_SUPPORTED_SERVICE,              supp_service_tlv_nr  );
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_AP_OPERATIONAL_BSS,             ap_op_bss_nr         );
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_ASSOCIATED_CLIENTS,             assoc_clients_tlv_nr );
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_BSS_CONFIGURATION_REPORT,       bss_cfg_report_tlv_nr);
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_AGENT_AP_MLD_CONFIGURATION,     ap_mld_cfg_tlv_nr    );
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_BACKHAUL_STA_MLD_CONFIGURATION, bsta_mld_cfg_tlv_nr  );
 
     return 0;
 }
@@ -545,10 +633,25 @@ int map_validate_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
             case TLV_TYPE_METRIC_COLLECTION_INTERVAL: /* Profile 2 */
                 metric_coll_int_tlv_nr++;
             break;
+            case TLV_TYPE_AP_RADIO_ADVANCED_CAPABILITIES:
+                /* Optional */
+            break;
             case TLV_TYPE_AP_WIFI6_CAPABILITIES:      /* Profile 3 */
                 /* Optional */
             break;
             case TLV_TYPE_DEVICE_INVENTORY:            /* Profile 3 */
+                /* Optional */
+            break;
+            case TLV_TYPE_1905_LAYER_SECURITY_CAPABILITY:  /* Profile 3 */
+                /* Optional */
+            break;
+            case TLV_TYPE_AKM_SUITE_CAPABILITIES:          /* Profile 3 */
+                /* Optional */
+            break;
+            case TLV_TYPE_WIFI7_AGENT_CAPABILITIES:
+                /* Optional */
+            break;
+            case TLV_TYPE_EHT_OPERATIONS:
                 /* Optional */
             break;
             default:
@@ -563,10 +666,12 @@ int map_validate_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
 
     /* Profile 2 requirements */
     if (ale->map_profile >= MAP_PROFILE_2) {
-        CHECK_ONE_TLV(TLV_TYPE_CHANNEL_SCAN_CAPABILITIES,  channel_scan_cap_tlv_nr);
-        CHECK_ONE_TLV(TLV_TYPE_CAC_CAPABILITIES,           cac_cap_tlv_nr         );
         CHECK_ONE_TLV(TLV_TYPE_PROFILE2_AP_CAPABILITY,     profile2_ap_cap_tlv_nr );
-        CHECK_ONE_TLV(TLV_TYPE_METRIC_COLLECTION_INTERVAL, metric_coll_int_tlv_nr );
+        if (cmdu->message_type == CMDU_TYPE_MAP_AP_CAPABILITY_REPORT) {
+            CHECK_ONE_TLV(TLV_TYPE_CHANNEL_SCAN_CAPABILITIES,  channel_scan_cap_tlv_nr);
+            CHECK_ONE_TLV(TLV_TYPE_CAC_CAPABILITIES,           cac_cap_tlv_nr         );
+            CHECK_ONE_TLV(TLV_TYPE_METRIC_COLLECTION_INTERVAL, metric_coll_int_tlv_nr );
+        }
     }
 
     return 0;
@@ -592,6 +697,9 @@ int map_validate_channel_preference_report(UNUSED map_ale_info_t *ale, i1905_cmd
             break;
             case TLV_TYPE_CAC_STATUS_REPORT:
                 cac_status_report_tlv_nr++;
+            break;
+            case TLV_TYPE_EHT_OPERATIONS:
+                /* Optional */
             break;
             default:
                 log_unexpected_tlv(cmdu, *tlv);
@@ -689,6 +797,12 @@ int map_validate_ap_metrics_response(UNUSED map_ale_info_t *ale, i1905_cmdu_t *c
                 /* Optional */
             break;
             case TLV_TYPE_ASSOCIATED_WIFI6_STA_STATUS_REPORT: /* Profile 3 */
+                /* Optional */
+            break;
+            case TLV_TYPE_AFFILIATED_AP_METRICS:
+                /* Optional */
+            break;
+            case TLV_TYPE_AFFILIATED_STA_METRICS:
                 /* Optional */
             break;
             default:
@@ -1020,3 +1134,108 @@ int map_validate_direct_encap_dpp(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu
 {
     return expect_one_tlv_type(cmdu, TLV_TYPE_DPP_MESSAGE);
 }
+
+/* MAP_R3 17.1.53 (type 0x802c) */
+int map_validate_bss_configuration_request(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    uint8_t *tlv;
+    size_t   idx;
+    int      map_profile_tlv_nr           = 0;
+    int      supported_service_tlv_nr     = 0;
+    int      ap_radio_basic_cap_tlv_nr    = 0;
+    int      bh_sta_radio_cap_tlv_nr      = 0;
+    int      profile2_ap_cap_tlv_nr       = 0;
+    int      ap_radio_advanced_cap_tlv_nr = 0;
+    int      bss_config_request_tlv_nr    = 0;
+
+    i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
+        switch (*tlv) {
+            case TLV_TYPE_MULTIAP_PROFILE:
+                map_profile_tlv_nr++;
+                break;
+            case TLV_TYPE_SUPPORTED_SERVICE:
+                supported_service_tlv_nr++;
+                break;
+            case TLV_TYPE_AP_RADIO_BASIC_CAPABILITIES:
+                ap_radio_basic_cap_tlv_nr++;
+                break;
+            case TLV_TYPE_BACKHAUL_STA_RADIO_CAPABILITIES:
+                bh_sta_radio_cap_tlv_nr++;
+                break;
+            case TLV_TYPE_PROFILE2_AP_CAPABILITY:
+                profile2_ap_cap_tlv_nr++;
+                break;
+            case TLV_TYPE_AP_RADIO_ADVANCED_CAPABILITIES:
+                ap_radio_advanced_cap_tlv_nr++;
+                break;
+            case TLV_TYPE_BSS_CONFIGURATION_REQUEST:
+                bss_config_request_tlv_nr++;
+                break;
+            case TLV_TYPE_AKM_SUITE_CAPABILITIES:
+                /* TODO It is mandatory according to standard. But it is not implemented in older bcm agents.
+                 * Made it optional to not break flow.
+                 */
+                break;
+            default:
+                log_unexpected_tlv(cmdu, *tlv);
+                break;
+        }
+    }
+    CHECK_ONE_TLV(TLV_TYPE_MULTIAP_PROFILE,                        map_profile_tlv_nr);
+    CHECK_ONE_TLV(TLV_TYPE_SUPPORTED_SERVICE,                      supported_service_tlv_nr);
+    CHECK_ONE_OR_MORE_TLV(TLV_TYPE_AP_RADIO_BASIC_CAPABILITIES,    ap_radio_basic_cap_tlv_nr);
+    CHECK_ONE_TLV(TLV_TYPE_PROFILE2_AP_CAPABILITY,                 profile2_ap_cap_tlv_nr);
+    CHECK_ONE_OR_MORE_TLV(TLV_TYPE_AP_RADIO_ADVANCED_CAPABILITIES, ap_radio_advanced_cap_tlv_nr);
+    CHECK_ONE_TLV(TLV_TYPE_BSS_CONFIGURATION_REQUEST,              bss_config_request_tlv_nr);
+
+    return 0;
+}
+
+/* MAP_R3 17.1.55 (type 0x802e) */
+int map_validate_bss_configuration_result(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    return expect_one_tlv_type(cmdu, TLV_TYPE_BSS_CONFIGURATION_REPORT);
+}
+
+/*#######################################################################
+#                       MAP R6 CMDU VALIDATION                          #
+########################################################################*/
+/* MAP_R6 17.1.62 (type 0x8043) */
+int map_validate_early_ap_capability_report(map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    return map_validate_ap_capability_report(ale, cmdu);
+}
+
+/* MAP_R6 17.1.67 (type 0x8049) */
+int map_validate_available_spectrum_inquiry(UNUSED map_ale_info_t *ale, i1905_cmdu_t *cmdu)
+{
+    uint8_t *tlv;
+    size_t   idx;
+    int      channel_preference_tlv_nr      = 0;
+    int      available_spec_inq_req_tlv_nr  = 0;
+    int      available_spec_inq_resp_tlv_nr = 0;
+
+    i1905_foreach_tlv_in_cmdu(tlv, cmdu, idx) {
+        switch (*tlv) {
+            case TLV_TYPE_CHANNEL_PREFERENCE:
+                channel_preference_tlv_nr++;
+            break;
+            case TLV_TYPE_AVAILABLE_SPECTRUM_INQUIRY_REQUEST:
+                available_spec_inq_req_tlv_nr++;
+            break;
+            case TLV_TYPE_AVAILABLE_SPECTRUM_INQUIRY_RESPONSE:
+                available_spec_inq_resp_tlv_nr++;
+            break;
+            default:
+                log_unexpected_tlv(cmdu, *tlv);
+            break;
+        }
+    }
+
+    CHECK_ZERO_OR_ONE_TLV(TLV_TYPE_CHANNEL_PREFERENCE,              channel_preference_tlv_nr );
+    CHECK_ONE_TLV(TLV_TYPE_AVAILABLE_SPECTRUM_INQUIRY_REQUEST,      available_spec_inq_req_tlv_nr);
+    CHECK_ONE_TLV(TLV_TYPE_AVAILABLE_SPECTRUM_INQUIRY_RESPONSE,     available_spec_inq_resp_tlv_nr);
+
+    return 0;
+}
+

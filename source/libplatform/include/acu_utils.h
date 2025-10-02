@@ -236,6 +236,10 @@ bool acu_mac_in_sorted_array(mac_addr mac, mac_addr *macs, size_t macs_nr);
 
 bool acu_mac_array_equal(mac_addr *macs1, size_t macs_nr1, mac_addr *macs2, size_t macs_nr2);
 
+int acu_mac_add_to_array(mac_addr mac, mac_addr **macs, size_t *macs_nr);
+
+int acu_mac_del_from_array(mac_addr mac, mac_addr **macs, size_t *macs_nr);
+
 /*#######################################################################
 #                       STRING OPERATIONS                               #
 ########################################################################*/
@@ -284,12 +288,16 @@ acu_retcode_t acu_evloop_timer_remaining(acu_evloop_timer_t *evloop_timer,
 extern void acu_evloop_fd_delete(acu_evloop_fd_t *evloop_fd);
 extern acu_evloop_fd_t *acu_evloop_fd_add_ex(int fd, unsigned flags,
     acu_evloop_fd_cb_t cb, void *userdata);
-
+#ifndef UNIT_TEST
 static inline acu_evloop_fd_t *acu_evloop_fd_add(int fd,
     acu_evloop_fd_cb_t cb, void *userdata)
 {
     return acu_evloop_fd_add_ex(fd, ACU_EVLOOP_READ, cb, userdata);
 }
+#else
+extern acu_evloop_fd_t *acu_evloop_fd_add(int fd, acu_evloop_fd_cb_t cb,
+    void *userdata);
+#endif // UNIT_TEST
 
 extern int acu_evloop_run(void);
 extern void acu_evloop_end(void);

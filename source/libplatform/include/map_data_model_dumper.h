@@ -36,4 +36,9 @@ void map_dm_dump_agent_info_tree(map_printf_cb_t print_cb);
  */
 void map_dm_dump_tunneled_messages(map_printf_cb_t print_cb, uint8_t *sta_mac, uint8_t type);
 
+/** @brief Dump mld structure
+ *
+ */
+void map_dm_dump_mld(map_printf_cb_t print_cb);
+
 #endif /* MAP_DATA_MODEL_DUMPER_H_ */

@@ -38,7 +38,7 @@ int map_timer_handler_init(void);
  *  This will register a new timer call back
  *
  *  @param
- *    frequency_ms    - Frequency of the callback
+ *    frequency_sec   - Frequency of the callback in seconds
  *    timer_id        - pointer to char will be filled unique timer id for later usage.
  *    args            - Callback args
  *    cb              - Function call back to be called upon timer expiry
@@ -50,6 +50,22 @@ int map_timer_register_callback(uint32_t    frequency_sec,
                                 void       *args,
                                 timer_cb_t  cb);
 
+/** @brief Register timer callback with more precision
+ *
+ *  This will register a new timer call back with more precision
+ *
+ *  @param
+ *    frequency_ms    - Frequency of the callback in miliseconds
+ *    timer_id        - pointer to char will be filled unique timer id for later usage.
+ *    args            - Callback args
+ *    cb              - Function call back to be called upon timer expiry
+ *
+ *  @return -1 or error, 0 on success
+ */
+int map_timer_register_callback_ms(uint32_t    frequency_ms,
+                                   const char *timer_id,
+                                   void       *args,
+                                   timer_cb_t  cb);
 
 /** @brief Check if the timer id is registered.
  *

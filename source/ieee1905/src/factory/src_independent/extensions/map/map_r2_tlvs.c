@@ -126,7 +126,14 @@ static uint8_t* forge_channel_scan_reporting_policy_tlv(void *memory_structure, 
 /*#######################################################################
 # Channel scan capabilities TLV ("Section 17.2.38")                     #
 ########################################################################*/
-TLV_FREE_FUNCTION(channel_scan_cap) {}
+TLV_FREE_FUNCTION(channel_scan_cap)
+{
+    uint8_t i;
+
+    for (i=0; i < m->radios_nr; i++) {
+        SFREE(m->radios[i].op_classes);
+    }
+}
 
 static uint8_t* parse_channel_scan_cap_tlv(uint8_t *packet_stream, uint16_t len)
 {
@@ -151,15 +158,20 @@ static uint8_t* parse_channel_scan_cap_tlv(uint8_t *packet_stream, uint16_t len)
 
         _E4B(&p, &ret->radios[i].min_scan_interval);
         _E1B(&p, &ret->radios[i].op_classes_nr);
-        PARSE_LIMIT(ret->radios[i].op_classes_nr, MAX_OP_CLASS);
 
-        for (j = 0; j < ret->radios[i].op_classes_nr; j++) {
-            _E1B(&p, &ret->radios[i].op_classes[j].op_class);
-            _E1B(&p, &channels_nr);
-            PARSE_LIMIT(channels_nr, MAX_CHANNEL_PER_OP_CLASS);
-            for (k = 0; k < channels_nr; k++) {
-                _E1B(&p, &channel);
-                map_cs_set(&ret->radios[i].op_classes[j].channels, channel);
+        if (ret->radios[i].op_classes_nr > 0) {
+            ret->radios[i].op_classes = calloc(ret->radios[i].op_classes_nr, sizeof(*ret->radios[i].op_classes));
+            if (ret->radios[i].op_classes == NULL) {
+                PARSE_FREE_RET_RETURN(channel_scan_cap)
+            }
+
+            for (j = 0; j < ret->radios[i].op_classes_nr; j++) {
+                _E1B(&p, &ret->radios[i].op_classes[j].op_class);
+                _E1B(&p, &channels_nr);
+                for (k = 0; k < channels_nr; k++) {
+                    _E1B(&p, &channel);
+                    map_cs_set(&ret->radios[i].op_classes[j].channels, channel);
+                }
             }
         }
     }
@@ -215,7 +227,14 @@ static uint8_t* forge_channel_scan_cap_tlv(void *memory_structure, uint16_t *len
 /*#######################################################################
 # Channel scan request TLV ("Section 17.2.39")                          #
 ########################################################################*/
-TLV_FREE_FUNCTION(channel_scan_request) {}
+TLV_FREE_FUNCTION(channel_scan_request)
+{
+    uint8_t i;
+
+    for (i=0; i < m->radios_nr; i++) {
+        SFREE(m->radios[i].op_classes);
+    }
+}
 
 static uint8_t* parse_channel_scan_request_tlv(uint8_t *packet_stream, uint16_t len)
 {
@@ -237,15 +256,20 @@ static uint8_t* parse_channel_scan_request_tlv(uint8_t *packet_stream, uint16_t 
     for (i = 0; i < ret->radios_nr; i++) {
         _EnB(&p, ret->radios[i].radio_id, 6);
         _E1B(&p, &ret->radios[i].op_classes_nr);
-        PARSE_LIMIT(ret->radios[i].op_classes_nr, MAX_OP_CLASS);
 
-        for (j = 0; j < ret->radios[i].op_classes_nr; j++) {
-            _E1B(&p, &ret->radios[i].op_classes[j].op_class);
-            _E1B(&p, &channels_nr);
-            PARSE_LIMIT(channels_nr, MAX_CHANNEL_PER_OP_CLASS);
-            for (k = 0; k < channels_nr; k++) {
-                _E1B(&p, &channel);
-                map_cs_set(&ret->radios[i].op_classes[j].channels, channel);
+        if (ret->radios[i].op_classes_nr > 0) {
+            ret->radios[i].op_classes = calloc(ret->radios[i].op_classes_nr, sizeof(*ret->radios[i].op_classes));
+            if (ret->radios[i].op_classes == NULL) {
+                PARSE_FREE_RET_RETURN(channel_scan_request)
+            }
+
+            for (j = 0; j < ret->radios[i].op_classes_nr; j++) {
+                _E1B(&p, &ret->radios[i].op_classes[j].op_class);
+                _E1B(&p, &channels_nr);
+                for (k = 0; k < channels_nr; k++) {
+                    _E1B(&p, &channel);
+                    map_cs_set(&ret->radios[i].op_classes[j].channels, channel);
+                }
             }
         }
     }
@@ -762,7 +786,16 @@ static uint8_t* forge_cac_status_report_tlv(void *memory_structure, uint16_t *le
 /*#######################################################################
 # CAC capabilities TLV ("Section 17.2.46")                              #
 ########################################################################*/
-TLV_FREE_FUNCTION(cac_cap) {}
+TLV_FREE_FUNCTION(cac_cap)
+{
+    uint8_t i, j;
+
+    for (i = 0; i < m->radios_nr; i++) {
+        for (j = 0; j < m->radios[i].cac_methods_nr; j++) {
+            SFREE(m->radios[i].cac_methods[j].op_classes);
+        }
+    }
+}
 
 static uint8_t* parse_cac_cap_tlv(uint8_t *packet_stream, uint16_t len)
 {
@@ -785,18 +818,25 @@ static uint8_t* parse_cac_cap_tlv(uint8_t *packet_stream, uint16_t len)
         _E1B(&p, &ret->radios[i].cac_methods_nr);
 
         for (j = 0; j < ret->radios[i].cac_methods_nr; j++) {
-            _E1B(&p, &ret->radios[i].cac_methods[j].cac_method);
-            _E3B(&p, &ret->radios[i].cac_methods[j].cac_duration);
-            _E1B(&p, &ret->radios[i].cac_methods[j].op_classes_nr);
-            PARSE_LIMIT(ret->radios[i].cac_methods[j].op_classes_nr, MAX_OP_CLASS);
+            map_cac_cap_tlv_method_t *cac_method = &ret->radios[i].cac_methods[j];
 
-            for (k = 0; k < ret->radios[i].cac_methods[j].op_classes_nr; k++) {
-                _E1B(&p, &ret->radios[i].cac_methods[j].op_classes[k].op_class);
-                _E1B(&p, &channels_nr);
-                PARSE_LIMIT(channels_nr, MAX_CHANNEL_PER_OP_CLASS);
-                for (l = 0; l < channels_nr; l++) {
-                    _E1B(&p, &channel);
-                    map_cs_set(&ret->radios[i].cac_methods[j].op_classes[k].channels, channel);
+            _E1B(&p, &cac_method->cac_method);
+            _E3B(&p, &cac_method->cac_duration);
+            _E1B(&p, &cac_method->op_classes_nr);
+
+            if (cac_method->op_classes_nr > 0) {
+                cac_method->op_classes = calloc(cac_method->op_classes_nr, sizeof(*cac_method->op_classes));
+                if (cac_method->op_classes == NULL) {
+                    PARSE_FREE_RET_RETURN(cac_cap)
+                }
+
+                for (k = 0; k < cac_method->op_classes_nr; k++) {
+                    _E1B(&p, &cac_method->op_classes[k].op_class);
+                    _E1B(&p, &channels_nr);
+                    for (l = 0; l < channels_nr; l++) {
+                        _E1B(&p, &channel);
+                        map_cs_set(&cac_method->op_classes[k].channels, channel);
+                    }
                 }
             }
         }
@@ -1463,12 +1503,12 @@ static uint8_t* parse_ap_ext_metrics_tlv(uint8_t *packet_stream, uint16_t len)
     ret->tlv_type = TLV_TYPE_AP_EXTENDED_METRICS;
 
     _EnB(&p, &ret->bssid, 6);
-    _E4B(&p, &ret->ucast_bytes_tx);
-    _E4B(&p, &ret->ucast_bytes_rx);
-    _E4B(&p, &ret->mcast_bytes_tx);
-    _E4B(&p, &ret->mcast_bytes_rx);
-    _E4B(&p, &ret->bcast_bytes_tx);
-    _E4B(&p, &ret->bcast_bytes_rx);
+    _E4B(&p, &ret->tx_ucast_bytes);
+    _E4B(&p, &ret->rx_ucast_bytes);
+    _E4B(&p, &ret->tx_mcast_bytes);
+    _E4B(&p, &ret->rx_mcast_bytes);
+    _E4B(&p, &ret->tx_bcast_bytes);
+    _E4B(&p, &ret->rx_bcast_bytes);
 
     PARSE_CHECK_INTEGRITY(ap_ext_metrics)
     PARSE_RETURN
@@ -1485,12 +1525,12 @@ static uint8_t* forge_ap_ext_metrics_tlv(void *memory_structure, uint16_t *len)
     _I1B(&m->tlv_type,       &p);
     _I2B(&tlv_length,        &p);
     _InB(&m->bssid,          &p, 6);
-    _I4B(&m->ucast_bytes_tx, &p);
-    _I4B(&m->ucast_bytes_rx, &p);
-    _I4B(&m->mcast_bytes_tx, &p);
-    _I4B(&m->mcast_bytes_rx, &p);
-    _I4B(&m->bcast_bytes_tx, &p);
-    _I4B(&m->bcast_bytes_rx, &p);
+    _I4B(&m->tx_ucast_bytes, &p);
+    _I4B(&m->rx_ucast_bytes, &p);
+    _I4B(&m->tx_mcast_bytes, &p);
+    _I4B(&m->rx_mcast_bytes, &p);
+    _I4B(&m->tx_bcast_bytes, &p);
+    _I4B(&m->rx_bcast_bytes, &p);
 
     FORGE_RETURN
 }

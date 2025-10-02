@@ -47,17 +47,17 @@ static const map_profile_cfg_t g_teardown_profile;
 ########################################################################*/
 static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio,
                            i1905_wsc_m2_cfg_t *m2_profiles, uint8_t max_m2_profiles, uint8_t *ret_m2_profiles_nr,
-                           map_traffic_separation_policy_tlv_t *tsp_tlv)
+                           map_traffic_separation_policy_tlv_t *tsp_tlv, bool suppress_logs)
 {
-    map_controller_cfg_t *cfg            = get_controller_cfg();
-    uint16_t              freq_bands     = map_get_freq_bands(radio);
-    bool                  is_gateway     = map_is_local_agent(ale); /* Note: at this moment, the controller is expected to run on a gateway */
-    bool                  is_extender    = !is_gateway;
-    int                   prim_vid       = map_cfg_get()->primary_vlan_id;
-    uint8_t               m2_profiles_nr = 0;
-    unsigned int          i, j;
+    map_controller_cfg_t     *cfg            = get_controller_cfg();
+    uint16_t                  freq_bands     = map_get_freq_bands(radio);
+    bool                      is_gateway     = map_is_local_agent(ale); /* Note: at this moment, the controller is expected to run on a gateway */
+    bool                      is_extender    = !is_gateway;
+    int                       prim_vid       = map_cfg_get()->primary_vlan_id;
+    uint8_t                   m2_profiles_nr = 0;
+    unsigned int              i, j;
 
-    log_ctrl_n("[get_m2_profiles] configure ale[%s] gw[%d] ext[%d] radio[%s] max_bss[%d] max_vid[%d] band[%s%s%s%s]",
+    log_ctrl_n_cond(!suppress_logs, "[get_m2_profiles] configure ale[%s] gw[%d] ext[%d] radio[%s] max_bss[%d] max_vid[%d] band[%s%s%s%s]",
                ale->al_mac_str, is_gateway ? 1 : 0, is_extender ? 1 : 0,
                radio->radio_id_str, radio->max_bss, ale->agent_capability.max_vid_count,
                freq_bands & MAP_M2_BSS_RADIO2G  ? "2G "  : "",
@@ -126,7 +126,7 @@ static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio,
         m2_cfg->map_ext |= (bss_state & MAP_FRONTHAUL_BSS) ? WSC_WFA_MAP_ATTR_FLAG_FRONTHAUL_BSS : 0;
         m2_cfg->map_ext |= (bss_state & MAP_BACKHAUL_BSS)  ? WSC_WFA_MAP_ATTR_FLAG_BACKHAUL_BSS  : 0;
 
-        log_ctrl_n("[get_m2_profiles] use profile idx[%d] and map_ext[0x%02x] for bss[%d]",
+        log_ctrl_n_cond(!suppress_logs, "[get_m2_profiles] use profile idx[%d] and map_ext[0x%02x] for bss[%d]",
                     profile->profile_idx, m2_cfg->map_ext, m2_profiles_nr);
 
         m2_profiles_nr++;
@@ -146,6 +146,7 @@ static int get_m2_profiles(map_ale_info_t *ale, map_radio_info_t *radio,
     return 0;
 
 teardown:
+    set_radio_state_teardown_sent(&radio->state);
     m2_profiles[0].profile = &g_teardown_profile;
     m2_profiles[0].map_ext = WSC_WFA_MAP_ATTR_FLAG_TEARDOWN;
     *ret_m2_profiles_nr = 1;
@@ -165,6 +166,144 @@ static int get_wsc_m2_tlv(char *iface_name, i1905_wsc_data_t *wsc_params, i1905_
     wsc_m2_tlv->tlv_type       = wsc_params->m2.tlv_type;
     wsc_m2_tlv->wsc_frame_size = wsc_params->m2.wsc_frame_size;
     wsc_m2_tlv->wsc_frame      = wsc_params->m2.wsc_frame;
+
+    return 0;
+}
+
+static bool find_aff_ap(map_agent_ap_mld_conf_tlv_t *ap_mld_conf_tlv, uint8_t mld_idx, mac_addr radio_id)
+{
+    uint8_t i;
+
+    for (i = 0; i < MAX_RADIO_PER_AGENT; i++) {
+        if (!maccmp(ap_mld_conf_tlv->ap_mlds[mld_idx].aff_aps[i].radio_id, radio_id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool find_mld(map_agent_ap_mld_conf_tlv_t *ap_mld_conf_tlv, const char *ssid, uint8_t ssid_len, uint8_t *mld_idx)
+{
+    uint8_t i;
+
+    for (i = 0; i < MAX_MLD_PER_AGENT; i++) {
+        if (ssid_len == ap_mld_conf_tlv->ap_mlds[i].ssid_len && !memcmp(ssid, ap_mld_conf_tlv->ap_mlds[i].ssid, ssid_len)) {
+            *mld_idx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+static int get_ap_mld_config_tlv(map_ale_info_t *ale, map_agent_ap_mld_conf_tlv_t *ap_mld_conf_tlv)
+{
+    map_radio_info_t    *radio;
+    map_mld_modes_t     *mld_modes;
+    uint8_t              i;
+    uint8_t              mld_idx;
+    uint8_t              profile_count = 0;
+    bool                 new_mld;
+    i1905_wsc_m2_cfg_t   profiles[MAX_BSS_PER_RADIO];
+
+    ap_mld_conf_tlv->tlv_type = TLV_TYPE_AGENT_AP_MLD_CONFIGURATION;
+
+    map_dm_foreach_radio(ale, radio) {
+        if (!radio->wifi7_caps) {
+            continue;
+        }
+
+        mld_modes = &radio->wifi7_caps->ap_mld_modes;
+        profile_count = 0;
+        memset(profiles, 0, sizeof(profiles));
+
+        /* Get matching profiles for the radio*/
+        if (get_m2_profiles(ale, radio, profiles, MAX_BSS_PER_RADIO, &profile_count, NULL, true)) {
+            continue;
+        }
+
+        for (i = 0; i < profile_count; i++) {
+            const map_profile_cfg_t *profile = profiles[i].profile;
+            if(profile->mld_id < 0) {
+                /* non-mld profile */
+                continue;
+            }
+
+            new_mld = !find_mld(ap_mld_conf_tlv, profile->bss_ssid, strlen(profile->bss_ssid), &mld_idx);
+            if (new_mld) {
+                /* New MLD*/
+                mld_idx = ap_mld_conf_tlv->ap_mld_nr;
+
+                ap_mld_conf_tlv->ap_mlds[mld_idx].ssid_len = strlen(profile->bss_ssid);
+                memcpy(ap_mld_conf_tlv->ap_mlds[mld_idx].ssid, profile->bss_ssid, sizeof(profile->bss_ssid));
+
+                ap_mld_conf_tlv->ap_mlds[mld_idx].str   = mld_modes->str;
+                ap_mld_conf_tlv->ap_mlds[mld_idx].nstr  = mld_modes->nstr;
+                ap_mld_conf_tlv->ap_mlds[mld_idx].emlsr = mld_modes->emlsr;
+                ap_mld_conf_tlv->ap_mlds[mld_idx].emlmr = mld_modes->emlmr;
+
+                ap_mld_conf_tlv->ap_mld_nr++;
+            } else {
+                /* Existing MLD*/
+                ap_mld_conf_tlv->ap_mlds[mld_idx].str   &= mld_modes->str;
+                ap_mld_conf_tlv->ap_mlds[mld_idx].nstr  &= mld_modes->nstr;
+                ap_mld_conf_tlv->ap_mlds[mld_idx].emlsr &= mld_modes->emlsr;
+                ap_mld_conf_tlv->ap_mlds[mld_idx].emlmr &= mld_modes->emlmr;
+            }
+
+            if (!find_aff_ap(ap_mld_conf_tlv, mld_idx, radio->radio_id)) {
+                maccpy(ap_mld_conf_tlv->ap_mlds[mld_idx].aff_aps[ap_mld_conf_tlv->ap_mlds[mld_idx].aff_ap_nr].radio_id, radio->radio_id);
+                ap_mld_conf_tlv->ap_mlds[mld_idx].aff_ap_nr++;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static int get_bsta_mld_config_tlv(map_ale_info_t *ale, map_bsta_mld_conf_tlv_t *bsta_mld_conf_tlv)
+{
+    map_radio_info_t    *radio;
+    map_mld_modes_t     *mld_modes;
+    uint8_t              i;
+    uint8_t              profile_count = 0;
+    i1905_wsc_m2_cfg_t   profiles[MAX_BSS_PER_RADIO];
+
+    bsta_mld_conf_tlv->tlv_type = TLV_TYPE_BACKHAUL_STA_MLD_CONFIGURATION;
+
+    bsta_mld_conf_tlv->bsta_mld_mac_valid = 0;
+    bsta_mld_conf_tlv->ap_mld_mac_valid = 0;
+
+    map_dm_foreach_radio(ale, radio) {
+        if (!radio->wifi7_caps) {
+            continue;
+        }
+
+        mld_modes = &radio->wifi7_caps->bsta_mld_modes;
+
+        bsta_mld_conf_tlv->str   |= mld_modes->str;
+        bsta_mld_conf_tlv->nstr  |= mld_modes->nstr;
+        bsta_mld_conf_tlv->emlsr |= mld_modes->emlsr;
+        bsta_mld_conf_tlv->emlmr |= mld_modes->emlmr;
+
+        profile_count = 0;
+        memset(profiles, 0, sizeof(profiles));
+        /* Get matching profiles for the radio*/
+        if (get_m2_profiles(ale, radio, profiles, MAX_BSS_PER_RADIO, &profile_count, NULL, true)) {
+            continue;
+        }
+
+        for (i = 0; i < profile_count; i++) {
+            const map_profile_cfg_t *profile = profiles[i].profile;
+            if(profile->mld_id < 0 || !(profile->bss_state & MAP_BACKHAUL_BSS)) {
+                /* non-mld profile */
+                continue;
+            }
+
+            bsta_mld_conf_tlv->aff_bstas[bsta_mld_conf_tlv->aff_bsta_nr].aff_bsta_mac_valid = 0;
+            maccpy(bsta_mld_conf_tlv->aff_bstas[bsta_mld_conf_tlv->aff_bsta_nr].radio_id, radio->radio_id);
+            bsta_mld_conf_tlv->aff_bsta_nr++;
+        }
+    }
 
     return 0;
 }
@@ -193,7 +332,7 @@ static int fill_upstream_iface_link_metrics(map_ale_info_t *ale, uint8_t **tlvs)
     return 2;
 }
 
-static int fill_iface_link_metrics(map_ale_info_t *ale, uint8_t **tlvs, array_list_t *list)
+static int fill_iface_link_metrics(map_ale_info_t *ale, uint8_t **tlvs, int tlvs_len, array_list_t *list)
 {
     map_ale_info_t             *root_ale = get_root_ale_node();
     map_neighbor_link_metric_t *neigh_lm;
@@ -203,6 +342,10 @@ static int fill_iface_link_metrics(map_ale_info_t *ale, uint8_t **tlvs, array_li
     bind_list_iterator(&iterator, list);
 
     while ((neigh_lm = get_next_list_object(&iterator))) {
+        if ((tlvs_nr + 2) > tlvs_len) {
+            return -1;
+        }
+
         /* Ignore link to controller */
         if (!maccmp(neigh_lm->al_mac, root_ale->al_mac)) {
             continue;
@@ -576,19 +719,88 @@ int map_send_link_metric_response_error(map_ale_info_t *ale, uint16_t mid, uint8
     return map_send_cmdu(ale->al_mac, &cmdu, &mid);
 }
 
+/* 1905.1 6.3.7 (type 0x0007) */
+int map_send_autoconfig_search(void)
+{
+#define NUM_AUTOCONFIG_SEARCH_TLVS 7 /* al_mac, searched_role, freq_band, supp_service, searched_service, map_profile, eom */
+    i1905_cmdu_t                      cmdu                             = {0};
+    uint8_t                          *tlvs[NUM_AUTOCONFIG_SEARCH_TLVS] = {0};
+    i1905_al_mac_address_tlv_t        al_mac_addr_tlv                  = {0};
+    i1905_searched_role_tlv_t         searched_role_tlv                = {0};
+    i1905_autoconfig_freq_band_tlv_t  autoconfig_freq_band_tlv         = {0};
+    map_supported_service_tlv_t       supported_service_tlv            = {0};
+    map_searched_service_tlv_t        searched_service_tlv             = {0};
+    map_multiap_profile_tlv_t         map_profile_tlv                  = {0};
+    mac_addr                          mcast_address                    = {0};
+
+    i1905_get_mcast_mac(mcast_address);
+
+    /* Get al_mac_address_tlv */
+    if (i1905_get(NULL, I1905_GET_ALMAC_TLV, &al_mac_addr_tlv, NULL)) {
+        log_ctrl_e("AL_MAC_TLV  i1905_get failed");
+        return -1;
+    }
+
+    /* Get searched_role_tlv */
+    if (i1905_get(NULL, I1905_GET_SEARCHEDROLE_TLV, &searched_role_tlv, NULL)) {
+        log_ctrl_e("SEARCHED_ROLE_TLV  i1905_get failed");
+        return -1;
+    }
+
+    /* Get autoconfig_freq_band_tlv*/
+    autoconfig_freq_band_tlv.tlv_type  = TLV_TYPE_AUTOCONFIG_FREQ_BAND;
+    autoconfig_freq_band_tlv.freq_band = IEEE80211_FREQUENCY_BAND_2_4_GHZ;
+
+    /* Get supported_service_tlv */
+    supported_service_tlv.tlv_type    = TLV_TYPE_SUPPORTED_SERVICE;
+    supported_service_tlv.services_nr = 1;
+    supported_service_tlv.services[0] = MAP_SERVICE_CONTROLLER;
+
+    /* Get searched_service_tlv */
+    searched_service_tlv.tlv_type    = TLV_TYPE_SEARCHED_SERVICE;
+    searched_service_tlv.services_nr = 1;
+    searched_service_tlv.services[0] = MAP_SERVICE_CONTROLLER;
+
+    /* Get map_profile_tlv */
+    map_profile_tlv.tlv_type    = TLV_TYPE_MULTIAP_PROFILE;
+    map_profile_tlv.map_profile = get_controller_cfg()->map_profile;
+
+    /* Create CMDU */
+    cmdu.message_version = CMDU_MESSAGE_VERSION_1905_1_2013;
+    cmdu.message_type    = CMDU_TYPE_AP_AUTOCONFIGURATION_SEARCH;
+    cmdu.message_id      = 0;
+    cmdu.relay_indicator = RELAY_INDICATOR_ON;
+    cmdu.list_of_TLVs    = tlvs;
+    map_strlcpy(cmdu.interface_name, "all", sizeof(cmdu.interface_name));
+
+    tlvs[0] = (uint8_t *)&al_mac_addr_tlv;
+    tlvs[1] = (uint8_t *)&searched_role_tlv;
+    tlvs[2] = (uint8_t *)&autoconfig_freq_band_tlv;
+    tlvs[3] = (uint8_t *)&supported_service_tlv;
+    tlvs[4] = (uint8_t *)&searched_service_tlv;
+    tlvs[5] = (uint8_t *)&map_profile_tlv;
+
+    return map_send_cmdu(mcast_address, &cmdu, NULL);
+}
+
 /* 1905.1 6.3.8 (type 0x0008) */
 int map_send_autoconfig_response(i1905_cmdu_t *recv_cmdu, bool ale_is_agent)
 {
     i1905_al_mac_address_tlv_t       *al_mac_tlv;
     i1905_autoconfig_freq_band_tlv_t *autoconfig_freq_band_tlv;
     i1905_cmdu_t                      cmdu                     = {0};
-    uint8_t                          *tlvs[5]                  = {0}; /* supp_role, supp_freq_band, supp_service, map_profile,  NULL */
+    uint8_t                          *tlvs[8]                  = {0}; /* supp_role, supp_freq_band, supp_service, 1905_sec_cap, map_profile, controller_cap + EOM + optional chirp value TLV */
     i1905_supported_role_tlv_t        supported_role_tlv       = {0};
     i1905_supported_freq_band_data_t  supp_freq_band_data      = {0};
     i1905_supported_freq_band_tlv_t   supported_freq_band_tlv  = {0};
     map_supported_service_tlv_t       supported_service_tlv    = {0};
     map_multiap_profile_tlv_t         map_profile_tlv          = {0};
+    map_controller_capability_tlv_t   controller_cap_tlv       = {0};
+    map_1905_security_cap_tlv_t       i1905_security_cap_tlv   = {0};
+    map_dpp_chirp_value_tlv_t        *rx_chirp_value_tlv       = NULL;
+    map_dpp_chirp_value_tlv_t         tx_chirp_value_tlv       = {0};
     int8_t                            status                   = 0;
+    map_dpp_chirp_value_tlv_t        *chirp_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_DPP_CHIRP_VALUE, recv_cmdu);
 
     do {
         if (!recv_cmdu) {
@@ -639,6 +851,41 @@ int map_send_autoconfig_response(i1905_cmdu_t *recv_cmdu, bool ale_is_agent)
         map_profile_tlv.tlv_type    = TLV_TYPE_MULTIAP_PROFILE;
         map_profile_tlv.map_profile = get_controller_cfg()->map_profile;
 
+        /* Controller Capability TLV */
+        controller_cap_tlv.tlv_type      = TLV_TYPE_CONTROLLER_CAPABILITY;
+        controller_cap_tlv.capability   |= MAP_CONTROLLER_CAP_KIBMIB_COUNTER;
+        if (MLD_ENABLED() && !chirp_tlv) {
+            controller_cap_tlv.capability   |= MAP_CONTROLLER_CAP_EARLY_AP_CAP;
+        }
+
+        /* 1905 Layer Security Capability TLV */
+        i1905_security_cap_tlv.tlv_type             = TLV_TYPE_1905_LAYER_SECURITY_CAPABILITY;
+        i1905_security_cap_tlv.onboarding_protocol  = MAP_1905_ONBOARDING_PROTOCOL_DPP;
+        i1905_security_cap_tlv.mic_algorithm        = MAP_1905_MIC_ALGO_HMAC_SHA256;
+        i1905_security_cap_tlv.encryption_algorithm = MAP_1905_ENCRPYT_ALGO_AES_SIV;
+
+        /* Get Chirp Value TLV from received cmdu */
+        rx_chirp_value_tlv = i1905_get_tlv_from_cmdu(TLV_TYPE_DPP_CHIRP_VALUE, recv_cmdu);
+        if (rx_chirp_value_tlv) {
+            /* look for a matching dpp chirp hash value from the list */
+            if (map_dm_get_dpp_hash(rx_chirp_value_tlv->hash)) {
+                log_ctrl_d("DPP Chirp Value TLV hash found in the list");
+
+                tx_chirp_value_tlv.tlv_type = TLV_TYPE_DPP_CHIRP_VALUE;
+                tx_chirp_value_tlv.hash_len = rx_chirp_value_tlv->hash_len;
+
+                tx_chirp_value_tlv.hash     = calloc(1, tx_chirp_value_tlv.hash_len);
+                if (!tx_chirp_value_tlv.hash) {
+                    ERROR_EXIT(status)
+                }
+
+                memcpy(tx_chirp_value_tlv.hash, rx_chirp_value_tlv->hash, rx_chirp_value_tlv->hash_len);
+                tx_chirp_value_tlv.hash_validity = 1;
+            } else {
+                rx_chirp_value_tlv = NULL;
+            }
+        }
+
         /* Create CMDU */
         cmdu.message_version = CMDU_MESSAGE_VERSION_1905_1_2013;
         cmdu.message_type    = CMDU_TYPE_AP_AUTOCONFIGURATION_RESPONSE;
@@ -651,6 +898,11 @@ int map_send_autoconfig_response(i1905_cmdu_t *recv_cmdu, bool ale_is_agent)
         tlvs[1] = (uint8_t *)&supported_freq_band_tlv;
         tlvs[2] = (uint8_t *)&supported_service_tlv;
         tlvs[3] = (uint8_t *)&map_profile_tlv;
+        tlvs[4] = (uint8_t *)&controller_cap_tlv;
+        tlvs[5] = (uint8_t *)&i1905_security_cap_tlv;
+        if (rx_chirp_value_tlv) {
+            tlvs[7] = (uint8_t *)&tx_chirp_value_tlv;
+        }
 
         /* The spec implies (certification test plan) the messages to be sent to the AL MAC address of the 1905 device
            intead the source mac address, CMDUs that has ALMAC tlv can be handled this way
@@ -659,6 +911,10 @@ int map_send_autoconfig_response(i1905_cmdu_t *recv_cmdu, bool ale_is_agent)
             ERROR_EXIT(status)
         }
     } while (0);
+
+    if (tx_chirp_value_tlv.hash) {
+        free(tx_chirp_value_tlv.hash);
+    }
 
     return status;
 }
@@ -669,12 +925,16 @@ int map_send_autoconfig_wsc_m2(map_ale_info_t *ale, map_radio_info_t *radio, i19
     i1905_cmdu_t                         cmdu                          = {0};
     i1905_wsc_tlv_t                     *wsc_m1_tlv;
     i1905_wsc_tlv_t                      wsc_m2_tlv[MAX_BSS_PER_RADIO] = {{0}};
+    map_agent_ap_mld_conf_tlv_t          ap_mld_conf_tlv               = {0};
+    map_bsta_mld_conf_tlv_t              bsta_mld_conf_tlv             = {0};
     map_ap_radio_identifier_tlv_t        radio_id_tlv                  = {0};
     map_default_8021q_settings_tlv_t     default_8021q_settings_tlv    = {0};
     map_traffic_separation_policy_tlv_t  traffic_separation_policy_tlv = {0};
     map_cfg_t                           *cfg                           = map_cfg_get();
     bool                                 add_ts_tlv                    = ale->agent_capability.profile_2_ap_cap_valid;
     bool                                 add_def_8021q_tlv             = TS_ENABLED() && add_ts_tlv;
+    bool                                 add_ap_mld_conf_tlv           = MLD_ENABLED() && map_is_radio_ap_mld_capable(ale, radio);
+    bool                                 add_bsta_mld_conf_tlv         = MLD_ENABLED() && map_is_radio_bsta_mld_capable(ale, radio);
     int8_t                               status                        = 0;
     uint8_t                              tlvs_nr                       = 0;
     uint8_t                              wsc_tlv_count                 = 0;
@@ -710,13 +970,17 @@ int map_send_autoconfig_wsc_m2(map_ale_info_t *ale, map_radio_info_t *radio, i19
 
         /* Get to be configured profiles */
         if (get_m2_profiles(ale, radio, m2_profiles, MAX_BSS_PER_RADIO, &wsc_tlv_count,
-                            add_ts_tlv ? &traffic_separation_policy_tlv : NULL)) {
+                            add_ts_tlv ? &traffic_separation_policy_tlv : NULL, false)) {
             ERROR_EXIT(status)
         }
 
+        add_ap_mld_conf_tlv   &= !is_radio_teardown_sent(radio->state);
+        add_bsta_mld_conf_tlv &= !is_radio_teardown_sent(radio->state);
+
         /* Get total number of TLVs required and allocate memory accordingly */
         tlvs_nr = wsc_tlv_count + /* radio_id */ 1 + /* eom */ 1 +
-                  (add_ts_tlv ? 1 : 0) + (add_def_8021q_tlv ? 1 : 0);
+                  (add_ts_tlv ? 1 : 0) + (add_def_8021q_tlv ? 1 : 0) +
+                  (add_ap_mld_conf_tlv ? 1 : 0) + (add_bsta_mld_conf_tlv ? 1 : 0);
 
         if (!(cmdu.list_of_TLVs = calloc(tlvs_nr, sizeof(uint8_t *)))) {
             log_ctrl_e("calloc failed");
@@ -753,6 +1017,22 @@ int map_send_autoconfig_wsc_m2(map_ale_info_t *ale, map_radio_info_t *radio, i19
             }
 
             cmdu.list_of_TLVs[current_tlv++] = (uint8_t *)&wsc_m2_tlv[i];
+        }
+
+        if (add_ap_mld_conf_tlv) {
+            if (get_ap_mld_config_tlv(ale, &ap_mld_conf_tlv)) {
+                ERROR_EXIT(status)
+            }
+
+            cmdu.list_of_TLVs[current_tlv++] = (uint8_t *)&ap_mld_conf_tlv;
+        }
+
+        if (add_bsta_mld_conf_tlv) {
+            if (get_bsta_mld_config_tlv(ale, &bsta_mld_conf_tlv)) {
+                ERROR_EXIT(status)
+            }
+
+            cmdu.list_of_TLVs[current_tlv++] = (uint8_t *)&bsta_mld_conf_tlv;
         }
 
         if (0 != status) {
@@ -824,19 +1104,38 @@ static int send_autoconfig_renew(const char *ifname, mac_addr dest_mac, uint8_t 
 }
 
 /* 1905.1 6.3.10 (type 0x000A) */
-int map_send_autoconfig_renew(uint8_t freq_band, uint16_t *mid)
+int map_send_autoconfig_renew(uint8_t freq_band, uint16_t *mid, bool reset_onboarding)
 {
     mac_addr dest_mac;
+    int ret;
 
     i1905_get_mcast_mac(dest_mac);
 
-    return send_autoconfig_renew("all", dest_mac, freq_band, RELAY_INDICATOR_ON, mid);
+    ret = send_autoconfig_renew("all", dest_mac, freq_band, RELAY_INDICATOR_ON, mid);
+
+    if (ret == 0 && reset_onboarding) {
+        map_reset_all_agent_nodes_onboarding_status();
+    }
+
+    return ret;
 }
 
 /* 1905.1 6.3.10 (type 0x000A) */
-int map_send_autoconfig_renew_ucast(map_ale_info_t *ale, uint8_t freq_band, uint16_t *mid)
+int map_send_autoconfig_renew_ucast(map_ale_info_t *ale, uint8_t freq_band, uint16_t *mid, bool reset_onboarding)
 {
-    return send_autoconfig_renew(ale->iface_name, ale->al_mac, freq_band, RELAY_INDICATOR_OFF, mid);
+    int ret;
+
+    if (ale == NULL) {
+        return -1;
+    }
+
+    ret = send_autoconfig_renew(ale->iface_name, ale->al_mac, freq_band, RELAY_INDICATOR_OFF, mid);
+
+    if (ret == 0 && reset_onboarding) {
+        map_reset_agent_node_onboarding_status(ale);
+    }
+
+    return ret;
 }
 
 /* 1905.1 6.3.13 (type 0x0004) */
@@ -1107,6 +1406,7 @@ int map_send_channel_selection_request(void *args, uint16_t *mid)
     uint8_t                         idx = 0;
     map_ale_info_t                 *ale;
     map_radio_info_t               *radio;
+    int                             ret = -1;
 
     memset(chan_pref_tlvs, 0, sizeof(chan_pref_tlvs));
     memset(transmit_pwr_tlvs, 0, sizeof(transmit_pwr_tlvs));
@@ -1122,7 +1422,10 @@ int map_send_channel_selection_request(void *args, uint16_t *mid)
         }
 
         /* Channel preference TLV */
-        map_fill_channel_preference_tlv(&chan_pref_tlvs[idx], radio, pref_type->pref);
+        if (map_fill_channel_preference_tlv(&chan_pref_tlvs[idx], radio, pref_type->pref)) {
+            log_ctrl_e("map_fill_channel_preference_tlv failed");
+            goto cleanup;
+        }
         tlvs[tlvs_nr++] = (uint8_t *)&chan_pref_tlvs[idx];
 
         /* Optional transmit power TLV */
@@ -1141,7 +1444,14 @@ int map_send_channel_selection_request(void *args, uint16_t *mid)
     cmdu.list_of_TLVs    = tlvs;
     map_strlcpy(cmdu.interface_name, ale->iface_name, sizeof(cmdu.interface_name));
 
-    return map_send_cmdu(ale->al_mac, &cmdu, mid);
+    ret = map_send_cmdu(ale->al_mac, &cmdu, mid);
+
+cleanup:
+    for (idx = 0; idx < tlvs_nr; idx++) {
+        free_1905_TLV_structure2(tlvs[idx]);
+    }
+
+    return ret;
 }
 
 /* MAP_R2 17.1.14 (type 0x8009) */
@@ -1160,6 +1470,25 @@ int map_send_client_capability_query(void *args, uint16_t *mid)
     /* Client info tlv */
     maccpy(tlv.bssid, bss->bssid);
     maccpy(tlv.sta_mac, sta->mac);
+
+    return send_cmdu_one_tlv(ale, CMDU_TYPE_MAP_CLIENT_CAPABILITY_QUERY, TLV_TYPE_CLIENT_INFO, &tlv, mid);
+}
+
+/* TODO: find better way if there will be many CMDU to be sent using sta or mld_sta */
+int map_send_mld_client_capability_query(void *args, uint16_t *mid)
+{
+    map_sta_mld_info_t    *sta_mld = args;
+    map_ap_mld_info_t     *ap_mld;
+    map_ale_info_t        *ale;
+    map_client_info_tlv_t  tlv = {0};
+
+    if (!sta_mld || !(ap_mld = sta_mld->ap_mld) || !(ale = ap_mld->ale)) {
+        return -1;
+    }
+
+    /* Client info tlv */
+    maccpy(tlv.bssid, ap_mld->mac);
+    maccpy(tlv.sta_mac, sta_mld->mac);
 
     return send_cmdu_one_tlv(ale, CMDU_TYPE_MAP_CLIENT_CAPABILITY_QUERY, TLV_TYPE_CLIENT_INFO, &tlv, mid);
 }
@@ -1232,7 +1561,7 @@ int map_send_combined_infrastructure_metrics(map_ale_info_t *ale, uint16_t *mid)
         tlvs_nr += cnt;
 
         /* Ethernet links */
-        if ((cnt = fill_iface_link_metrics(foreach_ale, &tlvs[tlvs_nr], foreach_ale->eth_neigh_link_metric_list)) < 0) {
+        if ((cnt = fill_iface_link_metrics(foreach_ale, &tlvs[tlvs_nr], MAX_TLVS_IN_COMBINED_INFRA - tlvs_nr, foreach_ale->eth_neigh_link_metric_list)) < 0) {
             goto cleanup;
         }
         tlvs_nr += cnt;
@@ -1241,11 +1570,18 @@ int map_send_combined_infrastructure_metrics(map_ale_info_t *ale, uint16_t *mid)
         map_dm_foreach_radio(foreach_ale, foreach_radio) {
             map_dm_foreach_bss(foreach_radio, foreach_bss) {
 
+                if (tlvs_nr >= MAX_TLVS_IN_COMBINED_INFRA) {
+                    goto cleanup;
+                }
+
                 /* Wireless links */
-                if ((cnt = fill_iface_link_metrics(foreach_ale, &tlvs[tlvs_nr], foreach_bss->neigh_link_metric_list)) < 0) {
+                if ((cnt = fill_iface_link_metrics(foreach_ale, &tlvs[tlvs_nr], MAX_TLVS_IN_COMBINED_INFRA - tlvs_nr, foreach_bss->neigh_link_metric_list)) < 0) {
                     goto cleanup;
                 }
                 tlvs_nr += cnt;
+                if (tlvs_nr >= MAX_TLVS_IN_COMBINED_INFRA) {
+                    goto cleanup;
+                }
 
                 if ((ap_metrics_tlv = map_get_ap_metrics_tlv(foreach_bss))) {
                     tlvs[tlvs_nr++] = (uint8_t *)ap_metrics_tlv;
@@ -1521,10 +1857,94 @@ int map_send_dpp_chirp_notification(map_dpp_chirp_value_tlv_t *chirp_value_tlv_l
     return ret;
 }
 
+/* MAP_R3 17.1.54 (type 0x802D) */
+int map_send_bss_config_response(map_ale_info_t *ale, map_bss_configuration_response_tlv_t *bss_config_resp_tlv, uint16_t *mid)
+{
+    i1905_cmdu_t                         cmdu                          = {0};
+    map_cfg_t                           *cfg                           = map_cfg_get();
+    map_default_8021q_settings_tlv_t     default_8021q_settings_tlv    = {0};
+    map_traffic_separation_policy_tlv_t  traffic_separation_policy_tlv = {0};
+    bool                                 add_ts_tlv                    = ale->agent_capability.profile_2_ap_cap_valid;
+    bool                                 add_def_8021q_tlv             = TS_ENABLED() && add_ts_tlv;
+    int8_t                               status                        = 0;
+    uint8_t                              tlvs_nr                       = 0;
+    uint8_t                              current_tlv                   = 0;
+
+    do {
+        /* Create cmdu */
+        cmdu.message_version  =  CMDU_MESSAGE_VERSION_1905_1_2013;
+        cmdu.message_type     =  CMDU_TYPE_MAP_BSS_CONFIGURATION_RESPONSE;
+        cmdu.message_id       =  0;
+        cmdu.relay_indicator  =  RELAY_INDICATOR_OFF;
+        map_strlcpy(cmdu.interface_name, ale->iface_name, sizeof(cmdu.interface_name));
+
+        /* Traffic separation tlvs */
+        if (add_def_8021q_tlv) {
+            map_fill_default_8021q_settings_tlv(cfg, &default_8021q_settings_tlv);
+        }
+        if (add_ts_tlv) {
+            if (TS_ENABLED()) {
+                map_fill_traffic_separation_policy_tlv(get_controller_cfg(), cfg->primary_vlan_id,
+                                                       ale->agent_capability.max_vid_count,
+                                                       &traffic_separation_policy_tlv);
+            } else {
+                /* If TS is disabled add an empty ts tlv so agent can remove any existing vlan */
+                map_fill_empty_traffic_separation_policy_tlv(&traffic_separation_policy_tlv);
+            }
+        }
+
+        /* Get total number of TLVs required and allocate memory accordingly */
+        tlvs_nr = (add_ts_tlv ? 1 : 0) + (add_def_8021q_tlv ? 1 : 0) + /* bss cfg resp*/ 1;
+
+        if (!(cmdu.list_of_TLVs = calloc(tlvs_nr, sizeof(uint8_t *)))) {
+            log_ctrl_e("calloc failed");
+            ERROR_EXIT(status)
+        }
+
+        /* Default 8021q settings TLV and traffic separation policy TLV */
+        if (add_def_8021q_tlv) {
+            cmdu.list_of_TLVs[current_tlv++] = (uint8_t *)&default_8021q_settings_tlv;
+        }
+        if (add_ts_tlv) {
+            cmdu.list_of_TLVs[current_tlv++] = (uint8_t *)&traffic_separation_policy_tlv;
+        }
+
+        cmdu.list_of_TLVs[current_tlv++] = (uint8_t *)bss_config_resp_tlv;
+
+        if (map_send_cmdu(ale->al_mac, &cmdu, mid)) {
+            ERROR_EXIT(status)
+        }
+    } while (0);
+
+    free(cmdu.list_of_TLVs);
+
+    return status;
+}
+
 /* MAP_R3 17.1.56 (type 0x802A) */
 int map_send_direct_encap_dpp(map_ale_info_t *ale, map_dpp_message_tlv_t *dpp_message_tlv, uint16_t *mid)
 {
     return send_cmdu_one_tlv(ale, CMDU_TYPE_MAP_DIRECT_ENCAP_DPP, TLV_TYPE_DPP_MESSAGE, dpp_message_tlv, mid);
+}
+
+/* MAP_R3 17.1.58 (type 0x8035) */
+int map_send_agent_list_message(map_ale_info_t *ale, uint16_t *mid)
+{
+    map_agent_list_tlv_t tlv;
+    map_ale_info_t *tmp;
+
+    tlv.agent_nr = 0;
+    map_dm_foreach_ale(tmp) {
+        map_agent_entry_t *agent = &tlv.entries[tlv.agent_nr];
+        maccpy(agent->al_mac, tmp->al_mac);
+        agent->map_profile = tmp->map_profile;
+
+        /* security field needs to be set ONLY for Multi-AP Profile-3 devices onboarded with DPP Onboarding */
+        agent->security = (tmp->dpp_info.onboarding_status && tmp->map_profile >= MAP_PROFILE_3) ? 0x01 : 0x00;
+        tlv.agent_nr++;
+    }
+
+    return send_cmdu_one_tlv(ale, CMDU_TYPE_MAP_AGENT_LIST, TLV_TYPE_AGENT_LIST, &tlv, mid);
 }
 
 /*#######################################################################

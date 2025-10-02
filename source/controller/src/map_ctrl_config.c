@@ -121,15 +121,11 @@ static void profile_update_cb(void)
            as per section 7.1 in the Multiap specification.
         */
 
-        if (map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA)) {
+        if (map_send_autoconfig_renew(IEEE80211_FREQUENCY_BAND_2_4_GHZ, MID_NA, true)) {
             log_ctrl_e("map_send_autoconfig_renew failed");
             break;
         }
 
-        /* This will also cause resending of policy config request which is required to update
-           traffic separation policy
-        */
-        map_reset_all_agent_nodes_onboarding_status();
     } while(0);
 }
 
@@ -223,14 +219,14 @@ static map_cfg_cbs_t g_monitor_cfg_cbs = {
 };
 
 static map_cfg_cbs_t g_running_cfg_cbs = {
-    .enable_cb                      = enable_running_cb,
-    .update_cb                      = update_cb,
-    .profile_update_cb              = profile_update_cb,
-    .allowed_channel_list_update_cb = allowed_channel_list_update_cb,
-    .allowed_bandwidth_update_cb    = allowed_bandwidth_update_cb,
-    .bandlock_5g_update_cb          = bandlock_5g_update_cb,
-    .radio_channel_cb               = radio_channel_cb,
-    .radio_bandwidth_cb             = radio_bandwidth_cb,
+    .enable_cb                          = enable_running_cb,
+    .update_cb                          = update_cb,
+    .profile_update_cb                  = profile_update_cb,
+    .allowed_channel_list_update_cb     = allowed_channel_list_update_cb,
+    .allowed_bandwidth_update_cb        = allowed_bandwidth_update_cb,
+    .bandlock_5g_update_cb              = bandlock_5g_update_cb,
+    .radio_channel_cb                   = radio_channel_cb,
+    .radio_bandwidth_cb                 = radio_bandwidth_cb,
 };
 
 /*#######################################################################
